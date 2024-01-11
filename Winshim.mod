@@ -1,5 +1,20 @@
 MODULE Winshim;  IMPORT SYSTEM;
 
+CONST
+  (* Platform independent file open kinds *)
+  OpenRO*      = 0;  (* Open r/o, fail if doesn't exist *)
+  OpenRW*      = 1;  (* Open r/w, fail if doesn't exist *)
+  OpenNew*     = 2;  (* Open r/w, fail if already exists *)
+  OpenReplace* = 3;  (* Open r/w, repace existing file if any *)
+
+  (* System library procedure indices *)
+  NewProc                = 0;
+  (* error traps *)
+  AssertionFailureProc   = 1;
+  ArraySizeMismatchProc  = 2;
+  UnterminatedStringProc = 3;
+
+
 TYPE
   CodeHeaderPtr = POINTER TO CodeHeader;
   CodeHeader* = RECORD
@@ -69,13 +84,97 @@ VAR
   LoadAdr:   INTEGER;   (* Where to load next module *)
   HWnd:      INTEGER;   (* Set if a window has been created *)
 
+  (* System functions *)
+  NewPointer:         PROCEDURE(ptr, len: INTEGER);
+  AssertionFailure:   PROCEDURE;
+  ArraySizeMismatch:  PROCEDURE;
+  UnterminatedString: PROCEDURE;
+
 
 PROCEDURE NoLog(s: ARRAY OF BYTE); BEGIN END NoLog;
 
-PROCEDURE assert(expectation: BOOLEAN);
+(* -------------------------------------------------------------------------- *)
+(* This code runs in-place before the Oberon 2GB memory is reserved           *)
+(* System functions have not been set up, meaning                             *)
+(*   The code may not use system functions such as NEW, ASSERT etc.           *)
+(*   Faults like Array size mismatch or unterminated string will crash        *)
+(* Any global variables set to code addresses must be rest after Winshim is   *)
+(*   moved to Oberon memory.                                                  *)
+(* -------------------------------------------------------------------------- *)
+
+PROCEDURE PrepareOberonMachine;
+CONST
+  MEMRESERVE           = 2000H;
+  MEMCOMMIT            = 1000H;
+  PAGEEXECUTEREADWRITE = 40H;
+VAR
+  reserveadr:   INTEGER;
+  moduleadr:    INTEGER;
+  modulesize:   INTEGER;        (* loaded length including global vars *)
+  modulelength: SYSTEM.CARD32;  (* image length from code file         *)
+  bootsize:     INTEGER;
+  res:          INTEGER;
+  hdr:          CodeHeaderPtr;
 BEGIN
-  IF ~expectation THEN Log("Assertion failure."); Log(crlf); ExitProcess(99) END
+  (* Reserve 2GB memory for the Oberon machine *)
+  reserveadr := VirtualAlloc(0, 80000000H, MEMRESERVE, PAGEEXECUTEREADWRITE);
+  (*ws("Reserved 2GB mem at ");  wh(reserveadr);  wsl("H.");*)
+
+  (* Determine loaded size of all modules *)
+  bootsize   := Header.imports + Header.varsize;
+  (*ws("bootsize "); wh(bootsize); wsl("H.");*)
+  modulesize := bootsize;
+  (*ws("modulesize "); wh(modulesize); wsl("H.");*)
+  moduleadr  := (SYSTEM.VAL(INTEGER, Header) + bootsize + 15) DIV 16 * 16;  (* Address of first module for Oberon machine *)
+  (*
+  ws("Looking for modules to load starting at "); wh(moduleadr); wsl("H.");
+  WriteModuleHeader(moduleadr);
+  *)
+  hdr        := SYSTEM.VAL(CodeHeaderPtr, moduleadr);
+  (*ws("Potential first module length "); wh(hdr.length); wsl("H.");*)
+  WHILE hdr.length > 0 DO
+    (*
+    ws("Module at "); wh(moduleadr); ws("H, length "); wh(hdr.length); wsl("H.");
+    WriteModuleHeader(moduleadr);
+    *)
+    INC(modulesize, hdr.imports + hdr.varsize);
+    INC(moduleadr, hdr.length);
+    hdr := SYSTEM.VAL(CodeHeaderPtr, moduleadr);
+  END;
+
+  (* Commit enough for the modules being loaded. *)
+  OberonAdr := VirtualAlloc(reserveadr, modulesize, MEMCOMMIT, PAGEEXECUTEREADWRITE);
+  (*ws("Committed ");  wh(modulesize);  ws("H bytes at ");  wh(OberonAdr);  wsl("H.");*)
+END PrepareOberonMachine;
+
+(* -------------------------------------------------------------------------- *)
+
+
+PROCEDURE assert(expectation: BOOLEAN);
+VAR res: INTEGER;
+BEGIN
+  IF ~expectation THEN
+    Log("Assertion failure."); Log(crlf);
+    res := CloseHandle(Stdout);
+    ExitProcess(99)
+  END
 END assert;
+
+PROCEDURE NewPointerHandler(ptr, len: INTEGER);
+BEGIN
+  Log("NewPointer called.");  Log(crlf);
+  ExitProcess(99)
+END NewPointerHandler;
+
+PROCEDURE AssertionFailureHandler();
+BEGIN Log("ASSERT failed.");  Log(crlf);  ExitProcess(99)  END AssertionFailureHandler;
+
+PROCEDURE ArraySizeMismatchHandler();
+BEGIN Log("Array size mismatch.");  Log(crlf);  ExitProcess(99)  END ArraySizeMismatchHandler;
+
+PROCEDURE UnterminatedStringHandler();
+BEGIN Log("Unterminated string.");  Log(crlf);  ExitProcess(99)  END UnterminatedStringHandler;
+
 
 (* -------------------------------------------------------------------------- *)
 
@@ -233,6 +332,49 @@ BEGIN
   IF j >= LEN( d) THEN DEC(j) END;  d[j] := 0X
 END Append;
 
+
+(* ---------------------------------------------------------------------------- *)
+(* -------------- Platform independent low level file operations -------------- *)
+(* ---------------------------------------------------------------------------- *)
+
+PROCEDURE FileOpen*(name: ARRAY OF CHAR; openkind: INTEGER; VAR handle: INTEGER): INTEGER;
+VAR
+  name16:      ARRAY 261 OF SYSTEM.CARD16;
+  disposition: INTEGER;
+  flags:       INTEGER;
+  access:      INTEGER;
+  mode:        INTEGER;
+  res:         INTEGER;
+BEGIN
+  IF openkind = OpenNew THEN
+    disposition := 1;         (* Create new *)
+    flags       := 4000100H;  (* FileFlagDeleteOnClose, FileAttributeTemporary *)
+  ELSIF openkind = OpenReplace THEN
+    disposition := 2;         (* Create always *)
+    flags       := 0;
+  ELSE
+    disposition := 3;         (* Open existing *)
+    flags       := 0;
+  END;
+
+  IF openkind = OpenRO THEN
+    access := 080000000H;  (* GenericRead *)
+    mode   := 1;           (* FileShareRead *)
+  ELSE
+    access := 0C0000000H;  (* GenericRead, GenericWrite *)
+    mode   := 7;           (* FileShareRead, FileShareWrite, FileShareDelete *)
+  END;
+
+  res := Utf8ToUtf16(name, name16);
+  res := CreateFileW(SYSTEM.ADR(name16), access, mode, 0, disposition, flags, 0);
+  IF res < 0 THEN
+    handle := 0;  res := GetLastError()
+  ELSE
+    handle := res;  res := 0
+  END
+RETURN res END FileOpen;
+
+
 (* ---------------------------------------------------------------------------- *)
 
 PROCEDURE WriteStdout(s: ARRAY OF BYTE);
@@ -319,6 +461,7 @@ BEGIN
   GetString(modadr + SYSTEM.SIZE(CodeHeader), modname, len);
   WHILE (hdr.length # 0) & (modname # name) DO
     modadr := (modadr + hdr.imports + hdr.varsize + 15) DIV 16 * 16;
+    (*ws(".. considering ");  WriteModuleHeader(modadr);*)
     hdr := SYSTEM.VAL(CodeHeaderPtr, modadr);
     IF hdr.length > 0 THEN
       GetString(modadr + SYSTEM.SIZE(CodeHeader), modname, len)
@@ -332,7 +475,7 @@ RETURN modadr END FindModule;
 PROCEDURE LoadModule(modadr: INTEGER);  (* Load module whose code image is at modadr *)
 VAR
   adr:         INTEGER;
-  loadedsize:  INTEGER;
+  loadedsize:  SYSTEM.CARD32;
   hdr:         CodeHeaderPtr;
   impmod:      ARRAY 32 OF CHAR;
   modules:     ARRAY 64 OF INTEGER; (* Import from up to 64 modules *)
@@ -355,13 +498,15 @@ BEGIN
 
   hdr := SYSTEM.VAL(CodeHeaderPtr, modadr);
   SYSTEM.COPY(modadr, LoadAdr, hdr.imports);  (* Copy up to but excluding import table *)
-  loadedsize := hdr.imports + hdr.varsize;
 
+  loadedsize := (hdr.imports + hdr.varsize + 15) DIV 16 * 16;
   (*ws("Loaded size "); wh(loadedsize); wsl("H.");*)
+  SYSTEM.PUT(LoadAdr, loadedsize);      (* Update length in header to loaded size *)
+  SYSTEM.PUT(LoadAdr + loadedsize, 0);  (* Add sentinel zero length module *)
 
   (* Build list of imported module header addresses *)
   adr := modadr + hdr.imports;
-  GetString(adr, impmod, len);  INC(adr, len);  (* Ignore key *)
+  GetString(adr, impmod, len);  INC(adr, len);
   SYSTEM.GET(adr, key);  INC(adr, 8);
   i := 0;
   WHILE impmod[0] # 0X DO
@@ -371,6 +516,8 @@ BEGIN
     SYSTEM.GET(adr, key);  INC(adr, 8);
   END;
   modules[i] := 0;
+
+  (*wsl("Built list of imported module header addresses.");*)
 
   adr := (adr + 15) DIV 16 * 16;
   SYSTEM.GET(adr, importcount);  INC(adr, 4);
@@ -384,19 +531,32 @@ BEGIN
     ws("H, impno "); wh(impno);
     ws("H, to offset "); wh(offset); wsl("H.");
     *)
-    assert(modno > 0);  (* TODO modno 0 is boot fn *)
-    impmodadr := modules[modno-1];
-    expadr := ExportedAddress(SYSTEM.VAL(CodeHeaderPtr, impmodadr), impno-1);
-    (*
-    ws("expadr  "); wh(expadr); wsl("H.");
-    ws("LoadAdr "); wh(LoadAdr); wsl("H.");
-    ws("offset  "); wh(offset); wsl("H.");
-    *)
-    SYSTEM.GET(LoadAdr + offset, disp);
-    (*ws("disp    -"); wh(-disp); wsl("H.");*)
-    disp := expadr + disp - LoadAdr;
-    (*ws("disp'   -"); wh(-disp); wsl("H.");*)
-    SYSTEM.PUT(LoadAdr + offset, disp);
+    IF modno = 0 THEN  (* system function *)
+      SYSTEM.GET(LoadAdr + offset, disp);
+      (*ws("disp    -"); wh(-disp); wsl("H.");*)
+      IF    impno = NewProc                THEN disp := SYSTEM.ADR(NewPointer)         + disp - LoadAdr
+      ELSIF impno = AssertionFailureProc   THEN disp := SYSTEM.ADR(AssertionFailure)   + disp - LoadAdr
+      ELSIF impno = ArraySizeMismatchProc  THEN disp := SYSTEM.ADR(ArraySizeMismatch)  + disp - LoadAdr
+      ELSIF impno = UnterminatedStringProc THEN disp := SYSTEM.ADR(UnterminatedString) + disp - LoadAdr
+      ELSE  assert(FALSE)
+      END;
+      (*ws("disp'   -"); wh(-disp); wsl("H.");*)
+      SYSTEM.PUT(LoadAdr + offset, disp)
+    ELSE
+      assert(modno > 0);
+      impmodadr := modules[modno-1];
+      expadr := ExportedAddress(SYSTEM.VAL(CodeHeaderPtr, impmodadr), impno-1);
+      (*
+      ws("expadr  "); wh(expadr); wsl("H.");
+      ws("LoadAdr "); wh(LoadAdr); wsl("H.");
+      ws("offset  "); wh(offset); wsl("H.");
+      *)
+      SYSTEM.GET(LoadAdr + offset, disp);
+      (*ws("disp    -"); wh(-disp); wsl("H.");*)
+      disp := expadr + disp - LoadAdr;
+      (*ws("disp'   -"); wh(-disp); wsl("H.");*)
+      SYSTEM.PUT(LoadAdr + offset, disp)
+    END;
     INC(i)
   END;
 
@@ -423,50 +583,6 @@ VAR pc: INTEGER;
 BEGIN SYSTEM.GET(SYSTEM.ADR(pc) + 8, pc);
 RETURN pc END GetPC;
 
-PROCEDURE PrepareOberonMachine;
-CONST
-  MEMRESERVE           = 2000H;
-  MEMCOMMIT            = 1000H;
-  PAGEEXECUTEREADWRITE = 40H;
-VAR
-  reserveadr:   INTEGER;
-  moduleadr:    INTEGER;
-  modulesize:   INTEGER;        (* loaded length including global vars *)
-  modulelength: SYSTEM.CARD32;  (* image length from code file         *)
-  bootsize:     INTEGER;
-  res:          INTEGER;
-  hdr:          CodeHeaderPtr;
-BEGIN
-  (* Reserve 2GB memory for the Oberon machine *)
-  reserveadr := VirtualAlloc(0, 80000000H, MEMRESERVE, PAGEEXECUTEREADWRITE);
-  (*ws("Reserved 2GB mem at ");  wh(reserveadr);  wsl("H.");*)
-
-  (* Determine loaded size of all modules *)
-  bootsize   := Header.imports + Header.varsize;
-  (*ws("bootsize "); wh(bootsize); wsl("H.");*)
-  modulesize := bootsize;
-  (*ws("modulesize "); wh(modulesize); wsl("H.");*)
-  moduleadr  := (SYSTEM.VAL(INTEGER, Header) + bootsize + 15) DIV 16 * 16;  (* Address of first module for Oberon machine *)
-  (*
-  ws("Looking for modules to load starting at "); wh(moduleadr); wsl("H.");
-  WriteModuleHeader(moduleadr);
-  *)
-  hdr        := SYSTEM.VAL(CodeHeaderPtr, moduleadr);
-  (*ws("Potential first module length "); wh(hdr.length); wsl("H.");*)
-  WHILE hdr.length > 0 DO
-    (*
-    ws("Module at "); wh(moduleadr); ws("H, length "); wh(hdr.length); wsl("H.");
-    WriteModuleHeader(moduleadr);
-    *)
-    INC(modulesize, hdr.imports + hdr.varsize);
-    INC(moduleadr, hdr.length);
-    hdr := SYSTEM.VAL(CodeHeaderPtr, moduleadr);
-  END;
-
-  (* Commit enough for the modules being loaded. *)
-  OberonAdr := VirtualAlloc(reserveadr, modulesize, MEMCOMMIT, PAGEEXECUTEREADWRITE);
-  (*ws("Committed ");  wh(modulesize);  ws("H bytes at ");  wh(OberonAdr);  wsl("H.");*)
-END PrepareOberonMachine;
 
 PROCEDURE LoadRemainingModules;
 VAR moduleadr: INTEGER;  modulelength: SYSTEM.CARD32;
@@ -486,6 +602,8 @@ BEGIN
     moduleadr := (moduleadr + modulelength + 15) DIV 16 * 16;
     SYSTEM.GET(moduleadr, modulelength);
   END;
+
+  SYSTEM.PUT(LoadAdr, 0);  (* Mark end of loaded modules *)
   (*wsl("LoadRemainingModules complete.")*)
 END LoadRemainingModules;
 
@@ -516,17 +634,20 @@ BEGIN
   SYSTEM.COPY(SYSTEM.VAL(INTEGER, Header), OberonAdr, Header.imports + Header.varsize);
   (*ws("Transferring PC from original load at ");  wh(GetPC());  wsl("H.");*)
   IncPC(OberonAdr - SYSTEM.VAL(INTEGER, Header));  (* Transfer to copied code *)
-  (*ws("Transferred PC to code copied to Oberon memory at ");  wh(GetPC());  wsl("H.");*)
+  ws("Transferred PC to code copied to Oberon memory at ");  wh(GetPC());  wsl("H.");
 
-  (*
-  WriteExports(OberonAdr + Header.exports);
-  ws("First code module at "); wh(SYSTEM.VAL(INTEGER, Header) + Header.imports + Header.varsize); wsl("H.");
-  ws("Oberon loaded boot module ends at "); wh(OberonAdr + Header.imports + Header.varsize); wsl("H.");
-  *)
+  Log := WriteStdout;  (* Correct Log fn address following move *)
+
+  (* Initialise system fuction handlers *)
+  NewPointer         := NewPointerHandler;
+  AssertionFailure   := AssertionFailureHandler;
+  ArraySizeMismatch  := ArraySizeMismatchHandler;
+  UnterminatedString := UnterminatedStringHandler;
+
 
   LoadAdr := (OberonAdr + Header.imports + Header.varsize + 15) DIV 16 * 16;
 
-  (* ws("crlf at "); wh(SYSTEM.ADR(crlf)); wsl("H.");*)
+  (*ws("crlf at "); wh(SYSTEM.ADR(crlf)); wsl("H.");*)
 
   LoadRemainingModules;
 

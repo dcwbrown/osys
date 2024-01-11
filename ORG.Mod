@@ -536,8 +536,10 @@ BEGIN
     LoadAddressReg(rbase, x);
     IF x.type.form = ORB.String THEN
       LoadImmediate(rlength, x.n)
+    ELSIF x.type.form = ORB.Array THEN
+      LoadImmediate(rlength, x.type.len)   (* array length in bytes *)
     ELSE
-      LoadImmediate(rlength, x.type.size)  (* array length in bytes *)
+      LoadImmediate(rlength, x.type.size)  (* record size in bytes *)
     END
   END;
   FreeRegs(x);
@@ -905,9 +907,10 @@ BEGIN
 END RestoreReg;
 
 
-PROCEDURE CallSysFn(sysfn: INTEGER);
+PROCEDURE CallSysFn(sysfn: INTEGER);  (* Generates 6 bytes *)
 BEGIN
-  X64.Emit(0E8H);
+  (*X64.Emit(0E8H);*)
+  X64.Emit(0FFH);  X64.Emit(15H);  (* 00 010 101 *)  (* call [relative-address] *)
   ImpFix[ImpFInx].offset := X64.PC;
   ImpFix[ImpFInx].fix    := sysfn;  (* 16/module 0, 16/impno sysfn *)
   INC(ImpFInx);
@@ -942,7 +945,7 @@ BEGIN Trace(TraceAny, "StoreStruct(x: "); l.Item(x, Trc);  l.s(", y: ", Trc); l.
       ELSE
         (* Generate code to fail on differing size *)
         OpModRegRm(Cmp+1, Reg, slen, 8, dlen, -1, 0, 0, 0);
-        X64.Emit(74H);   X64.Emit(5);  (* je: if sizes match skip failure *)
+        X64.Emit(74H);   X64.Emit(6);  (* je: if sizes match skip failure *)
         CallSysFn(ArraySizeMismatchProc)
       END
     END;
@@ -991,7 +994,7 @@ BEGIN Trace(TraceAny, "CopyString(x: "); l.Item(x, Trc);  l.s(", y: ", Trc); l.I
     LoadStructure(dadr, dlen, x);
     (* Check length at run time *)
     OpModRegRm(Cmp+1, Reg, slen, 8, dlen, -1, 0, 0, 0);
-    X64.Emit(76H);   X64.Emit(5);  (* jbe: if source fits in dest skip failure *)
+    X64.Emit(76H);   X64.Emit(6);  (* jbe: if source fits in dest skip failure *)
     CallSysFn(ArraySizeMismatchProc)
   END;
 
@@ -1108,7 +1111,9 @@ BEGIN
     ELSE
       (* First pass array length or type descriptor address, if any *)
       IF (ftype.form = ORB.Array) & (ftype.len < 0) THEN ASSERT(x.type.len >= 0);
-        IF x.type.form = ORB.Array THEN
+        IF x.mode = String THEN
+          PushImmediate(x.n)
+        ELSIF x.type.form = ORB.Array THEN
           PushImmediate(x.type.len)
         ELSE
           PushImmediate(x.type.size) (* Passing non-array to ARRAY OF BYTE *)
@@ -1518,7 +1523,7 @@ BEGIN Trace(TraceAny, "Assert(x: ");  l.Item(x, Trc);  l.sl(")", Trc);
   IF x.mode # Cond THEN LoadFlags(x) END;
   IF x.n > 1 THEN
     ASSERT(x.n DIV 16 = 8);
-    X64.Emit(x.n - 10H);  X64.Emit(5);  (* Skip over call instruction if condition met *)
+    X64.Emit(x.n - 10H);  X64.Emit(6);  (* Skip over call instruction if condition met *)
   END;
   IF x.n # 1 THEN CallSysFn(AssertionFailureProc) END;  (* Jump to assert failure handler *)
   Disassemble(x.mode, "ASSERT")
@@ -1924,14 +1929,14 @@ Trace(TraceAny, "StringRelation("); l.Sym(op, Trc);
   OpModRegRm(Cmp+2, Eadr, RAX, 1, RSI, y.n, 0, 0, 0);   (* cmp    al,[rsi+y.n] *)
   Disassemble(0, "Compare one byte");
 
-  X64.Emit(75H);  X64.Emit(0BH);                        (* jne    end               *)
+  X64.Emit(75H);  X64.Emit(0CH);                        (* jne    end               *)
   Disassemble(0, "If string mismatch");
 
   X64.Emit(8); X64.Emit(0C0H);                          (* or     al,al             *)
   X64.Emit(0E0H); X64.Emit(lbl-(X64.PC+1));             (* loopne lbl               *)
   Disassemble(0, "If not out of bytes, loop back");
 
-  X64.Emit(74H);  X64.Emit(5);                          (* je     end               *)
+  X64.Emit(74H);  X64.Emit(6);                          (* je     end               *)
   Disassemble(0, "If strings match");
 
   CallSysFn(UnterminatedStringProc);  (* error handler *)

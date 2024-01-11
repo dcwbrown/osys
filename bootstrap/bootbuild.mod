@@ -6,8 +6,9 @@ CONST BuildCompiler = FALSE;
 
 BEGIN
   ORP.CompileFile("Winshim.mod");
-  ORP.CompileFile("Linktest.mod");
-  ORP.CompileFile("Linktest2.mod");
+  IF ORS.errcnt = 0 THEN ORP.CompileFile("Files.mod")     END;
+  IF ORS.errcnt = 0 THEN ORP.CompileFile("Linktest.mod")  END;
+  IF ORS.errcnt = 0 THEN ORP.CompileFile("Linktest2.mod") END;
   IF BuildCompiler THEN
     IF ORS.errcnt = 0 THEN ORP.CompileFile("Boot.mod")      END;
     IF ORS.errcnt = 0 THEN ORP.CompileFile("Heap.mod")      END;
@@ -26,6 +27,7 @@ BEGIN
     IF ORS.errcnt = 0 THEN ORP.CompileFile("bootbuild.mod") END
   END;
   IF ORS.errcnt = 0 THEN
+    WinPE.AddModule("Files.code");
     WinPE.AddModule("Linktest.code");
     WinPE.AddModule("Linktest2.code");
     WinPE.Generate("Linktest2.exe")

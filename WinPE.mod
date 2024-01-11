@@ -264,12 +264,12 @@ END WriteImports;
 PROCEDURE CopyFile(name: ARRAY OF CHAR);
 VAR  f: Files.File;  r: Files.Rider;  buf: ARRAY 1000H OF BYTE;
 BEGIN
+  w.s("Adding "); w.s(name); w.s(" at file offset "); w.h(Files.Pos(Exe)); w.sl("H.");
   ASSERT(Files.Pos(Exe) MOD 16 = 0);
   f := Files.Old(name);
   IF f = NIL THEN
     w.s("Couldn't copy '"); w.s(name); w.sl("'."); K.Halt(99)
   END;
-  w.s("Adding module "); w.s(name); w.sl(".");
   Files.Set(r, f, 0);
   WHILE ~r.eof DO
     Files.ReadBytes(r, buf, LEN(buf));

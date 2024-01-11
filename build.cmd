@@ -2,7 +2,7 @@
 ::
 @cd bootstrap
 @mkdir build >NUL 2>NUL
-@..\smoc\Build /v /b build /s ./;.. bootbuild
+@..\smoc\Build /v /b build /s ./;../smoc;.. bootbuild
 @if errorlevel 1 goto end
 @cd ..
 ::
@@ -11,11 +11,13 @@
 @del *.smb >NUL
 @del *.code >NUL
 ::
+@echo ------------------------------------------------------------------------
 @bootstrap\build\bootbuild
 @if errorlevel 1 goto end
 ::
 :: run linktest2
 ::
+@echo ------------------------------------------------------------------------
 @linktest2
 ::
 :end
