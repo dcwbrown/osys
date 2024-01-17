@@ -71,15 +71,18 @@ TYPE
   (* Mod      key                            *)
 
   ObjDesc* = RECORD
-    class*, exno*: BYTE;
-    expo*, rdo*:   BOOLEAN;   (* exported / read-only                      *)
-    lev*:          INTEGER;   (* >0: local stack frame, lev = proc nesting *)
-                              (*  0: module globals                        *)
-                              (* <0: -imported module num (-1 .. -16)      *)
-    next*, dsc*:   Object;
-    type*:         Type;
-    name*:         ORS.Ident;
-    val*:          INTEGER
+    class*: BYTE;
+    exno*:  BYTE;      (* export number in object file              *)
+    expo*:  BOOLEAN;   (* whether exported as a symbol              *)
+    rdo*:   BOOLEAN;   (* exported / read-only                      *)
+    lev*:   INTEGER;   (* >0: local stack frame, lev = proc nesting *)
+                       (*  0: module globals                        *)
+                       (* <0: -imported module num (-1 .. -16)      *)
+    next*:   Object;
+    dsc*:    Object;
+    type*:   Type;
+    name*:   ORS.Ident;
+    val*:    INTEGER
   END;
 
   ModDesc* = RECORD (ObjDesc) orgname*: ORS.Ident END;
@@ -137,9 +140,21 @@ VAR new, x: Object;
 BEGIN x := topScope;
   WHILE (x.next # NIL) & (x.next.name # id) DO x := x.next END;
   IF x.next = NIL THEN
-    NEW(new); new.name := id; new.class := class; new.next := NIL; new.rdo := FALSE; new.dsc := NIL;
-    x.next := new; obj := new
-  ELSE obj := x.next; ORS.Mark("mult def")
+    NEW(new);
+    new.class := class;
+    new.exno  := 0;
+    new.expo  := FALSE;
+    new.rdo   := FALSE;
+    new.lev   := 0;
+    new.next  := NIL;
+    new.dsc   := NIL;
+    new.type  := NIL;
+    new.name  := id;
+    new.val   := 0;
+    x.next := new;
+    obj    := new
+  ELSE
+    obj := x.next; ORS.Mark("mult def")
   END
 END NewObj;
 
@@ -229,6 +244,7 @@ VAR key: INTEGER;
     fld, par, obj, mod: Object;
     t: Type;
     name, modname: ORS.Ident;
+    b: BYTE;
 BEGIN Read(R, ref);
   IF ref < 0 THEN T := typtab[-ref]  (*already read*)
   ELSE NEW(t); T := t; typtab[ref] := t; t.mno := thismod.lev;
@@ -239,7 +255,7 @@ BEGIN Read(R, ref);
     ELSIF form = Record THEN
       InType(R, thismod, t.base);
       IF t.base.form = NoTyp THEN t.base := NIL; obj := NIL ELSE obj := t.base.dsc END;
-      Files.ReadNum(R, t.len); (*TD adr/exno*)
+      Files.ReadNum(R, t.len);     (*TD adr/exno*)
       Files.ReadNum(R, t.nofpar);  (*ext level*)
       Files.ReadNum(R, t.size);
       Read(R, class);
@@ -251,9 +267,11 @@ BEGIN Read(R, ref);
       t.dsc := obj
     ELSIF form = Proc THEN
       InType(R, thismod, t.base);  Files.ReadNum(R, t.len);
+      Files.ReadByte(R, b);  t.native := b # 0;
       obj := NIL; np := 0; Read(R, class);
       WHILE class # 0 DO  (*parameters*)
         NEW(par); par.class := class; Read(R, readonly); par.rdo := readonly = 1;
+        Files.ReadNum(R, par.val);
         InType(R, thismod, par.type); par.next := obj; obj := par; INC(np); Read(R, class)
       END;
       t.dsc := obj; t.nofpar := np; t.size := WordSize
@@ -306,7 +324,7 @@ BEGIN
         obj.next := thismod.dsc; thismod.dsc := obj; Read(R, class)
       END;
     ELSE
-      w.s("Import("); w.s(modid); w.s(", "); w.s(modid1); w.sl(")");
+      w.Noskip; w.s("Import("); w.s(modid); w.s(", "); w.s(modid1); w.sl("):");
       ORS.Mark("import not available")
     END
   END
@@ -329,6 +347,7 @@ VAR obj, mod, fld: Object;
       OutPar(R, par.next, n-1); cl := par.class;
       Write(R, cl);
       IF par.rdo THEN Write(R, 1) ELSE Write(R, 0) END;
+      Files.WriteNum(R, par.val);
       OutType(R, par.type)
     END
   END OutPar;
@@ -336,10 +355,13 @@ VAR obj, mod, fld: Object;
   PROCEDURE FindHiddenPointers(VAR R: Files.Rider; typ: Type; offset: INTEGER);
     VAR fld: Object; i, n: INTEGER;
   BEGIN
-    IF (typ.form = Pointer) OR (typ.form = NilTyp) THEN Write(R, Fld); Write(R, 0); Files.WriteNum(R, offset)
-    ELSIF typ.form = Record THEN fld := typ.dsc;
+    IF (typ.form = Pointer) OR (typ.form = NilTyp) THEN
+      Write(R, Fld); Write(R, 0); Files.WriteNum(R, offset)
+    ELSIF typ.form = Record THEN
+      fld := typ.dsc;
       WHILE fld # NIL DO FindHiddenPointers(R, fld.type, fld.val + offset); fld := fld.next END
-    ELSIF typ.form = Array THEN i := 0; n := typ.len;
+    ELSIF typ.form = Array THEN
+      i := 0; n := typ.len;
       WHILE i < n DO FindHiddenPointers(R, typ.base, typ.base.size * i + offset); INC(i) END
     END
   END FindHiddenPointers;
@@ -365,7 +387,8 @@ BEGIN
       END;
       Write(R, 0)
     ELSIF t.form = Proc THEN
-      OutType(R, t.base); Files.WriteNum(R, t.len); OutPar(R, t.dsc, t.nofpar); Write(R, 0)
+      OutType(R, t.base);  Files.WriteNum(R, t.len);  Files.WriteByte(R, ORD(t.native));
+      OutPar(R, t.dsc, t.nofpar); Write(R, 0)
     END;
     IF (t.mno > 0) & (obj # NIL) THEN  (*re-export, output name*)
       mod := topScope.next;
@@ -383,7 +406,10 @@ VAR x, sum, oldkey: INTEGER;
     obj, obj0: Object;
     filename: ORS.Ident;
     F, F1: Files.File; R, R1: Files.Rider;
-BEGIN Ref := Record + 1; MakeFileName(filename, modid, ".smb");
+BEGIN
+  w.Noskip; w.s("Exporting module "); w.s(modid); w.sl(".");
+  Ref := Record + 1;
+  MakeFileName(filename, modid, ".smb");
   F := Files.New(filename); Files.Set(R, F, 0);
   Files.WriteInt(R, 0); (*placeholder*)
   Files.WriteInt(R, 0); (*placeholder for key to be inserted at the end*)
@@ -397,7 +423,9 @@ BEGIN Ref := Record + 1; MakeFileName(filename, modid, ".smb");
         IF obj.type.form = Record THEN
           obj0 := topScope.next;  (*check whether this is base of previously declared pointer types*)
           WHILE obj0 # obj DO
-            IF (obj0.type.form = Pointer) & (obj0.type.base = obj.type) & (obj0.type.ref > 0) THEN Write(R, obj0.type.ref) END;
+            IF (obj0.type.form = Pointer) & (obj0.type.base = obj.type) & (obj0.type.ref > 0) THEN
+              Write(R, obj0.type.ref)
+            END;
             obj0 := obj0.next
           END
         END;
@@ -413,15 +441,20 @@ BEGIN Ref := Record + 1; MakeFileName(filename, modid, ".smb");
     obj := obj.next
   END;
   REPEAT Write(R, 0) UNTIL Files.Length(F) MOD 4 = 0;
+
   FOR Ref := Record+1 TO maxTypTab-1 DO typtab[Ref] := NIL END;
+
   Files.Set(R, F, 0); sum := 0; Files.ReadInt(R, x);  (* compute key (checksum) *)
   WHILE ~R.eof DO sum := sum + x; Files.ReadInt(R, x) END;
+
   F1 := Files.Old(filename); (*sum is new key*)
   IF F1 # NIL THEN Files.Set(R1, F1, 4); Files.ReadInt(R1, oldkey) ELSE oldkey := sum+1 END;
   IF sum # oldkey THEN
     IF newSF OR (F1 = NIL) THEN
-      key := sum; newSF := TRUE; Files.Set(R, F, 4); Files.WriteInt(R, sum); Files.Register(F)  (*insert checksum*)
-    ELSE ORS.Mark("new symbol file inhibited")
+      key := sum; newSF := TRUE; Files.Set(R, F, 4); Files.WriteInt(R, sum);  (* insert checksum *)
+      Files.Register(F)
+    ELSE
+      ORS.Mark("new symbol file inhibited")
     END
   ELSE newSF := FALSE; key := sum
   END

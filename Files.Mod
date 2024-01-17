@@ -1,5 +1,5 @@
 MODULE Files;
-IMPORT SYSTEM, S := Winshim;
+IMPORT SYSTEM, Kernel, Shim := Winshim;
 
 (* Adapted Oberon 07 by NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013 *)
 
@@ -21,7 +21,7 @@ TYPE
   END;
 
 VAR
-  first:        File;  (*list of open files*)
+  first: File;  (* list of open files *)
 
 (*
 PROCEDURE Canonise(name: ARRAY OF CHAR; VAR canonical: ARRAY OF CHAR);
@@ -39,17 +39,19 @@ BEGIN
   f := first;
   WHILE (f # NIL) & (f.name # name) DO f := f.next END;
   IF f = NIL THEN
-    res := S.FileOpen(name, S.OpenRW, h);
+    res := Shim.FileOpen(name, Shim.OpenRW, h);
     IF res > 0 THEN (* error encountered *)
       f := NIL
     ELSE
       NEW(f);
-      f.next := first;  first := f;
+      (*Shim.ws("File allocated at "); Shim.wh(SYSTEM.VAL(INTEGER, f)); Shim.wsl("H.");*)
+      f.next       := first;  first := f;
       f.registered := TRUE;
       f.name       := name;
       f.handle     := h;
     END
-  END
+  END;
+  Shim.wsl("Old complete.");
 RETURN f END Old;
 
 BEGIN first := NIL
@@ -449,4 +451,4 @@ BEGIN (*field "next" has offset 0*)
   END
 END RestoreList;
 
-END Files.
+BEGIN END Files.

@@ -1021,7 +1021,7 @@ BEGIN
   ELSIF form = ORB.String  THEN s("String",  buf)
   ELSIF form = ORB.Array   THEN s("Array",   buf)
   ELSIF form = ORB.Record  THEN s("Record",  buf)
-  ELSE ASSERT(FALSE)
+  ELSE s("<", buf); i(form, buf); s(">", buf)
   END
 END Form;
 
@@ -1136,18 +1136,19 @@ END Cond;
 
 PROCEDURE Mode*(mode: INTEGER; VAR buf: Buffer);
 BEGIN
-  IF    mode = ORB.Head   THEN s("Head",   buf)
-  ELSIF mode = ORB.SProc  THEN s("SProc",  buf)
-  ELSIF mode = ORB.Typ    THEN s("Typ",    buf)
-  ELSIF mode = X64.Cond   THEN s("Cond",   buf)
-  ELSIF mode = X64.Const  THEN s("Const",  buf)
-  ELSIF mode = X64.Reg    THEN s("Reg",    buf)
-  ELSIF mode = X64.Stkind THEN s("Stkind", buf)
-  ELSIF mode = X64.Eadr   THEN s("Eadr",   buf)
-  ELSIF mode = X64.Code   THEN s("Code",   buf)
-  ELSIF mode = X64.String THEN s("String", buf)
-  ELSIF mode = X64.Global THEN s("Global", buf)
-  ELSIF mode = X64.Import THEN s("Import", buf)
+  IF    mode = ORB.Head    THEN s("Head",   buf)
+  ELSIF mode = ORB.SProc   THEN s("SProc",  buf)
+  ELSIF mode = ORB.Typ     THEN s("Typ",    buf)
+  ELSIF mode = X64.Cond    THEN s("Cond",   buf)
+  ELSIF mode = X64.Const   THEN s("Const",  buf)
+  ELSIF mode = X64.Reg     THEN s("Reg",    buf)
+  ELSIF mode = X64.Stkind  THEN s("Stkind", buf)
+  ELSIF mode = X64.Eadr    THEN s("Eadr",   buf)
+  ELSIF mode = X64.Code    THEN s("Code",   buf)
+  ELSIF mode = X64.String  THEN s("String", buf)
+  ELSIF mode = X64.Global  THEN s("Global", buf)
+  ELSIF mode = X64.Import  THEN s("Import", buf)
+  ELSIF mode = X64.Impcode THEN s("Impcode", buf)
   ELSE  ASSERT(FALSE)
   END
 END Mode;
@@ -1171,7 +1172,7 @@ BEGIN
     s("(NIL)", buf)
   ELSE
     c("(", buf);
-    IF t.ref # 0 THEN Form(t.ref, buf) ELSE Form(t.form, buf) END;
+    IF t.form = ORB.Int64 THEN Form(t.ref, buf) ELSE Form(t.form, buf) END;
     s(", mno ", buf);  i(t.mno, buf);
     IF t.len # 0 THEN s(", len ", buf);  i(t.len, buf) END;
     s(", size ", buf);  i(t.size, buf);

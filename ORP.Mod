@@ -17,14 +17,14 @@ TYPE
   END;
 
 VAR
-  sym:         INTEGER;                     (* last symbol read *)
-  dc:          INTEGER;                     (* data counter *)
-  level, exno: INTEGER;
-  newSF:       BOOLEAN;                     (* new symbol file option flag *)
-  modid:       ORS.Ident;
-  pbsList:     PtrBase;                     (* list of names of pointer base types *)
-  dummy:       ORB.Object;
-  W:           Texts.Writer;
+  sym:     INTEGER;             (* last symbol read *)
+  dc:      INTEGER;             (* data counter *)
+  level:   INTEGER;
+  newSF:   BOOLEAN;             (* new symbol file option flag *)
+  modid:   ORS.Ident;
+  pbsList: PtrBase;             (* list of names of pointer base types *)
+  dummy:   ORB.Object;
+  W:       Texts.Writer;
 
   (* Forward procedures *)
   expression:  PROCEDURE(VAR x: X64.Item);
@@ -748,7 +748,8 @@ BEGIN NEW(typ);  typ.form := ORB.NoTyp;  typ.base := NIL;  typ.mno := -level;  t
     bot := obj;
     IF sym = ORS.semicolon THEN ORS.Get(sym) ELSIF sym # ORS.end THEN ORS.Mark(" ;  or END") END
   END;
-  typ.form := ORB.Record;  typ.dsc := bot;  typ.size := (offset + 7) DIV 8 * 8;  type := typ
+  typ.form := ORB.Record;  typ.dsc := bot;  typ.size := (offset + 7) DIV 8 * 8;
+  type := typ
 END RecordType;
 
 (* Formal parameter section - one or more comma separated vars of one type   *)
@@ -940,11 +941,7 @@ BEGIN (*sync*) pbsList := NIL;
       obj.expo := expo;
       obj.lev  := level;
       IF tp.typobj = NIL THEN tp.typobj := obj END;
-      IF expo & (obj.type.form = ORB.Record) THEN
-        obj.exno := exno;  INC(exno)
-      ELSE
-        obj.exno := 0
-      END;
+      IF expo & (obj.type.form = ORB.Record) THEN obj.exno := 1 END;
       IF tp.form = ORB.Record THEN
         ptbase := pbsList;  (*check whether this is base of a pointer type;  search and fixup*)
         WHILE ptbase # NIL DO
@@ -971,7 +968,7 @@ BEGIN (*sync*) pbsList := NIL;
         AlignUp(varsize, tp.size);
         obj.val  := varsize;
         varsize  := varsize + tp.size;
-        IF obj.expo THEN obj.exno := exno;  INC(exno) END;
+        IF obj.expo THEN obj.exno := 1 END;
         obj := obj.next
       END;
       Check(ORS.semicolon, "; missing")
@@ -1018,7 +1015,7 @@ BEGIN ORS.Get(sym);
     proc.val    := -1;
     proc.lev    := level;
     CheckExport(proc.expo);
-    IF proc.expo THEN proc.exno := exno;  INC(exno) END;
+    IF proc.expo THEN proc.exno := 1 END;
     ORB.OpenScope;  INC(level);  type.base := ORB.noType;
 
     ProcedureType(type);  (*formal parameter list*)
@@ -1101,8 +1098,11 @@ BEGIN ORS.Get(sym);
 END ProcedureDecl;
 
 PROCEDURE Module(sourcefn: ARRAY OF CHAR);
-VAR key: INTEGER;
-    impid, impid1: ORS.Ident;
+VAR key:    INTEGER;
+    impid:  ORS.Ident;
+    impid1: ORS.Ident;
+    exno:   INTEGER;
+    obj:    ORB.Object;
 BEGIN Texts.WriteString(W, "  compiling ");  ORS.Get(sym);
   IF sym # ORS.module THEN ORS.Mark("must start with MODULE")
   ELSE
@@ -1114,7 +1114,7 @@ BEGIN Texts.WriteString(W, "  compiling ");  ORS.Get(sym);
     ELSE ORS.Mark("identifier expected")
     END;
     Check(ORS.semicolon, "no ;");
-    level := 0;  dc := 0;  exno := 1;  key := 0;
+    level := 0;  dc := 0;  key := 0;
 
     IF sym = ORS.import THEN
       ORS.Get(sym);
@@ -1153,7 +1153,32 @@ BEGIN Texts.WriteString(W, "  compiling ");  ORS.Get(sym);
     END;
     IF sym # ORS.period THEN ORS.Mark("period missing") END;
 
+    (* Identify record descriptors that need exporting because they are
+       referenced by exported pointer types *)
+    obj := ORB.topScope.next;
+    WHILE obj # NIL DO
+      IF (obj.class = ORB.Typ) & (obj.type.form = ORB.Pointer) & (obj.type.base.typobj # NIL) THEN
+      IF obj.type.base.typobj.exno = 0 THEN
+          l.s("Adding type descriptor table export for ", Tr);
+          l.s(obj.name, Tr);  l.s(" -> ", Tr);
+          l.s(obj.type.base.typobj.name, Tr);  l.l(Tr);
+        END;
+        obj.type.base.typobj.exno := 1;
+      END;
+      obj := obj.next
+    END;
+
+    (* Allocate export numbers *)
+    exno := 1;
+    obj := ORB.topScope.next;
+    WHILE obj # NIL DO
+      IF obj.exno > 0 THEN obj.exno := exno; INC(exno) END;
+      obj := obj.next
+    END;
+
     IF ORS.errcnt = 0 THEN
+      Texts.WriteString(W, "Exporting symbols for module ");
+      Texts.WriteString(W, modid); Texts.WriteLn(W);
       ORB.Export(modid, newSF, key);
       IF newSF THEN Texts.WriteString(W, " new symbol file") END
     END;

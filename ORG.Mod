@@ -45,17 +45,18 @@ CONST
   AllFree* = {0..3,5..15};  (* RSP (4) is reserved *)
 
   (* Promote X64 item modes to ORG *)
-  (* Mode                   Description        n                   offset                      *)
-  (*                        -----------------  ------------------  --------------------------- *)
-  Cond    = X64.Cond;    (* Condition          CF, CT, CO..CG      0                           *)
-  Const   = X64.Const;   (* Constant           value               0                           *)
-  Reg     = X64.Reg;     (* Register           register (0-15)     0                           *)
-  Stkind  = X64.Stkind;  (* Stack indirect     stack offset        0                           *)
-  Eadr    = X64.Eadr;    (* Effective address  base register       relative to base            *)
-  Code    = X64.Code;    (* Code offset        0                   code offset                 *)
-  String  = X64.String;  (* String offset      string length       current string block offset *)
-  Global  = X64.Global;  (* VAR offset         0                   VAR block offset            *)
-  Import  = X64.Import;  (* Import             16/modno, 16/impno  0                           *)
+  (* Mode                     Description        n                   offset                      *)
+  (*                          -----------------  ------------------  --------------------------- *)
+  Cond     = X64.Cond;     (* Condition          CF, CT, CO..CG      0                           *)
+  Const    = X64.Const;    (* Constant           value               0                           *)
+  Reg      = X64.Reg;      (* Register           register (0-15)     0                           *)
+  Stkind   = X64.Stkind;   (* Stack indirect     stack offset        0                           *)
+  Eadr     = X64.Eadr;     (* Effective address  base register       relative to base            *)
+  Code     = X64.Code;     (* Code offset        0                   code offset                 *)
+  String   = X64.String;   (* String offset      string length       current string block offset *)
+  Global   = X64.Global;   (* VAR offset         0                   VAR block offset            *)
+  Import   = X64.Import;   (* Import             16/modno, 16/impno  0                           *)
+  Impcode  = X64.Impcode;  (* Imported code var  16/modno, 16/impno  0                           *)
 
   (* Dyadic ALU operations, values correspond to x86 instruction set *)
   Plus*  = X64.Plus;
@@ -183,8 +184,13 @@ BEGIN
 
     (* reg from/to mem *)
 
-    ASSERT(mode IN {Eadr, Code, String, Global, Import});
+    ASSERT(mode IN {Eadr, Code, String, Global, Import, Impcode});
     ASSERT(index # RSP);  (* Not supported by X64 *)
+
+    IF mode IN {Import, Impcode} THEN
+      ASSERT(n MOD 1000H > 0)  (* Import numbers start at 1 *)
+    END;
+
     IF mode = Eadr THEN base := n MOD 8 ELSE base := -1 END;
     IF index >= 0 THEN index := index MOD 8 END;
 
@@ -221,14 +227,15 @@ BEGIN
     END;
 
     (* Fixup Code/String/Global/Import offsets *)
-    IF mode IN {Code, String, Global, Import} THEN
+    IF mode IN {Code, String, Global, Import, Impcode} THEN
       ASSERT(dispsize = 4);
       DEC(offset, X64.PC + 4 + immsize)  (* Make offset relative to next instruction *)
     END;
-    IF    mode = String THEN StrFix[StrFInx] := X64.PC;  INC(StrFInx)
-    ELSIF mode = Global THEN VarFix[VarFInx] := X64.PC;  INC(VarFInx)
-    ELSIF mode = Import THEN ImpFix[ImpFInx].offset := X64.PC;
-                             ImpFix[ImpFInx].fix := n; INC(ImpFInx)
+    IF     mode = String   THEN StrFix[StrFInx] := X64.PC;  INC(StrFInx)
+    ELSIF  mode = Global   THEN VarFix[VarFInx] := X64.PC;  INC(VarFInx)
+    ELSIF (mode = Import)
+       OR (mode = Impcode) THEN ImpFix[ImpFInx].offset := X64.PC;
+                                ImpFix[ImpFInx].fix := n; INC(ImpFInx)
     END;
 
     IF dispsize = 1 THEN
@@ -245,10 +252,10 @@ END ModRegRm;
 
 PROCEDURE OpModRegRm(op, mode, reg, size, n, index, scale, offset, immsize: INTEGER);
 BEGIN
-  IF ~(mode IN {Reg, Eadr, Code, String, Global, Import}) THEN
+  IF ~(mode IN {Reg, Eadr, Code, String, Global, Import, Impcode}) THEN
     Trace(TraceAny, "** mode "); l.i(mode, Trc); l.sl(" **", Trc);
   END;
-  ASSERT(mode IN {Reg, Eadr, Code, String, Global, Import});
+  ASSERT(mode IN {Reg, Eadr, Code, String, Global, Import, Impcode});
   Prefices(mode, reg, size, n, index);
   IF op >= 100H THEN X64.Emit(op DIV 100H) END;
   X64.Emit(op MOD 100H);
@@ -483,13 +490,25 @@ BEGIN
     DeparToReg(reg, x)
   ELSIF (x.mode = Eadr) & (x.index < 0) & (offset = 0) THEN
     MoveReg(reg, x.n)
-  ELSIF (x.mode IN {Eadr, Code, String, Global, Import}) THEN
+  ELSIF (x.mode IN {Eadr, Code, String, Global, Import, Impcode}) THEN
     OpModRegRm(8DH, x.mode, reg, 8, x.n, x.index, x.scale, offset, 0);  (* lea *)
     Disassemble(x.mode, "LoadAddress")
   ELSE
     ASSERT(FALSE)
   END
 END LoadAddressReg;
+
+PROCEDURE LoadTypeAddress(reg: INTEGER; t: ORB.Type);
+BEGIN
+  ASSERT(t.form = ORB.Record);
+  IF t.mno > 0 THEN (* Import *)
+    OpModRegRm(8DH, Import, reg, 8, t.mno * 10000H + t.len, -1, 0, 0, 0);  (* lea *)
+    Disassemble(Import, "Load imported type address")
+  ELSE (* Code relative *)
+    OpModRegRm(8DH, Code, reg, 8, 0, -1, 0, t.len, 0);  (* lea *)
+    Disassemble(Code, "Load local type address")
+  END;
+END LoadTypeAddress;
 
 PROCEDURE Load(VAR x: Item);
 VAR reg: INTEGER;
@@ -627,6 +646,7 @@ BEGIN
 END PushMem;
 
 PROCEDURE PushAdr*(VAR x: Item);
+VAR reg: INTEGER;
 BEGIN
   IF x.mode = Stkind THEN
     PushMem(Eadr, FALSE, 8, RSP, -1, 0, x.n + 8 * X64.SPO)
@@ -635,12 +655,25 @@ BEGIN
       & ((x.n # RSP) OR (X64.SPO = 0)) THEN
     PushReg(x.n)
   ELSIF x.mode IN {Eadr, Code, String, Global, Import} THEN
-    LoadAddress(x);  PushReg(x.n)
+    reg := FirstFreeReg();
+    LoadAddressReg(reg, x);  PushReg(reg)
   ELSE
     ASSERT(FALSE)
-  END;
-  FreeRegs(x)
+  END
 END PushAdr;
+
+PROCEDURE PushTypeAdr*(VAR x: Item);
+VAR reg: INTEGER;
+BEGIN
+  ASSERT(x.type.form = ORB.Pointer);
+  ASSERT(x.type.base.form = ORB.Record);
+  IF x.mode = Stkind THEN
+    PushMem(Eadr, FALSE, 8, RSP, -1, 0, x.n + 8 * X64.SPO + 8)  (* descriptor address *)
+  ELSE
+    reg := FirstFreeReg();
+    LoadTypeAddress(reg, x.type.base);  PushReg(reg);  (* Pass record descriptor *)
+  END
+END PushTypeAdr;
 
 PROCEDURE Push*(VAR x: Item);
 VAR reg, offset: INTEGER;
@@ -650,7 +683,7 @@ BEGIN
   ELSIF x.mode = Reg   THEN PushReg(x.n)
   ELSIF x.mode = Cond THEN
     IF x.n < 2 THEN PushImmediate(x.n) ELSE Load(x);  PushReg(x.n) END
-  ELSIF x.mode IN {Stkind, Eadr, Code, String, Global, Import} THEN
+  ELSIF x.mode IN {Stkind, Eadr, Code, String, Global, Import, Impcode} THEN
     Depar(x);
     offset := x.offset;
     IF (x.mode = Eadr) & (x.n = RSP) THEN INC(offset, X64.SPO * 8) END;
@@ -804,10 +837,12 @@ BEGIN
       x.mode := Const;  x.n := y.val
     END
   ELSIF y.class = ORB.Var THEN
-      IF    y.lev > 0 THEN x.mode := Eadr;    x.n := RSP;  x.offset := y.val;
-      ELSIF y.lev = 0 THEN x.mode := Global;  x.n := 0;    x.offset := y.val;
-      ELSE(*y.lev < 0 *)   x.mode := Import;  x.n := LSL(-y.lev, 16) + y.val;
-      END
+    IF    y.lev > 0 THEN x.mode := Eadr;    x.n := RSP;  x.offset := y.val;
+    ELSIF y.lev = 0 THEN x.mode := Global;  x.n := 0;    x.offset := y.val;
+    ELSE(*y.lev < 0 *)
+      IF y.type.form = ORB.Proc THEN x.mode := Impcode ELSE x.mode := Import END;
+      x.n := LSL(-y.lev, 16) + y.val;
+    END
   ELSIF y.class = ORB.Par THEN
     x.mode := Stkind;  x.n := y.val
   ELSE
@@ -945,7 +980,7 @@ BEGIN Trace(TraceAny, "StoreStruct(x: "); l.Item(x, Trc);  l.s(", y: ", Trc); l.
       ELSE
         (* Generate code to fail on differing size *)
         OpModRegRm(Cmp+1, Reg, slen, 8, dlen, -1, 0, 0, 0);
-        X64.Emit(74H);   X64.Emit(6);  (* je: if sizes match skip failure *)
+        X64.Emit(73H);   X64.Emit(6);  (* jae: if source fits in target *)
         CallSysFn(ArraySizeMismatchProc)
       END
     END;
@@ -1159,6 +1194,7 @@ BEGIN
   PushImmediate(x.n);  X64.AdjustStack(1);  (* Pass string length *)
   PushAdr(x);          X64.AdjustStack(1);  (* Pass string address *)
   Disassemble(x.mode, "StringParam");
+  FreeRegs(x)
 END StringParam;
 
 
@@ -1176,7 +1212,7 @@ BEGIN
     Free := AllFree
   END;
   ASSERT(x.type.form = ORB.Proc);
-  ASSERT(x.mode IN {Eadr, Global, Code, Import});
+  ASSERT(x.mode IN {Eadr, Global, Code, Import, Impcode});
 
   stackspace := x.type.len;  (* Only used for Windows native ABI calls *)
   IF stackspace < 32 THEN stackspace := 32 END;
@@ -1218,7 +1254,7 @@ BEGIN
   l.s("), SPO ", Trc);         l.i(X64.SPO, Trc);
   l.s(", type.len ", Trc);  l.i(x.type.len, Trc);  l.l(Trc);
   ASSERT(x.type.form = ORB.Proc);
-  ASSERT(x.mode IN {Eadr, Global, Code, Import});
+  ASSERT(x.mode IN {Eadr, Global, Code, Import, Impcode});
 
   IF x.type.native THEN  (* Adjust to 16 byte aligned pos *)
     OpModRegRm(87H, Reg, RBP, 8, RSP, -1, 0, 0, 0);  (* xchg rsp,rbp *)
@@ -1226,7 +1262,7 @@ BEGIN
   END;
 
   IF x.type.form = ORB.Proc THEN
-    IF x.mode IN {Eadr, Global} THEN
+    IF x.mode IN {Eadr, Global, Impcode} THEN
       OpModRegRm(0FFH, x.mode, 2, 4, x.n, x.index, x.scale, x.offset, 0)  (* call [addr] *)
     ELSE
       X64.Emit(0E8H);
@@ -1474,7 +1510,7 @@ END REG;
 
 PROCEDURE Adr*(VAR x: Item);
 BEGIN Trace(TraceAny, "Adr(x "); l.Item(x, Trc); l.sl(")", Trc);
-  IF x.mode IN {Stkind, Eadr, Code, String, Global, Import} THEN
+  IF x.mode IN {Stkind, Eadr, Code, String, Global, Import, Impcode} THEN
     LoadAddress(x);  x.mode := Reg
   ELSE
     ORS.Mark("not addressable")
@@ -1534,8 +1570,9 @@ BEGIN
   Trace(TraceAny, "New(x: ");  l.Item(x, Trc);
   l.s("), base type ", Trc);   l.Type(x.type.base, Trc); l.l(Trc);
   ASSERT(x.mode IN {Stkind, Eadr, Global, Import});
-  PushAdr(x);  FreeRegs(x);          X64.AdjustStack(1);
-  PushImmediate(x.type.base.size);   X64.AdjustStack(1);
+  PushAdr(x);      X64.AdjustStack(1);
+  PushTypeAdr(x);  X64.AdjustStack(1);
+  FreeRegs(x);
   CallSysFn(NewProc);
   X64.AdjustStack(-2);
   Disassemble(x.mode, "New")
@@ -1917,8 +1954,8 @@ Trace(TraceAny, "StringRelation("); l.Sym(op, Trc);
   SaveExchange(-1,   RAX, saveax);
   Disassemble(0, "Adjust registers for loop lodsb");
 
-  OpModRegRm(003BH, Reg, RCX, 8, y.index, -1, 0, 0, 0); (* cmp   xlen,ylen *)
-  OpModRegRm(0F47H, Reg, RCX, 8, y.index, -1, 0, 0, 0); (* cmova xlen,ylen *)
+  OpModRegRm(003BH, Reg, RCX, 8, y.index, -1, 0, 0, 0); (* cmp    xlen,ylen *)
+  OpModRegRm(0F47H, Reg, RCX, 8, y.index, -1, 0, 0, 0); (* cmova  xlen,ylen *)
   Disassemble(0, "Determine shorter string length");
 
   OpModRegRm(Minus+3, Reg, y.n, 8, RSI, -1, 0, 0, 0);   (* sub    y.n,rsi      *)
@@ -2291,7 +2328,7 @@ END For2;
 
 (* ---- Type descriptor construction and testing ---- *)
 
-PROCEDURE EmitInt(i: INTEGER; comment: ARRAY OF CHAR);
+PROCEDURE EmitInt(i: INTEGER;  comment: ARRAY OF CHAR);
 BEGIN
   IF Disasmpc < X64.PC THEN Disassemble(0, "") END;
   ASSERT(Disasmpc = X64.PC);
@@ -2349,16 +2386,16 @@ BEGIN
   ShowFields(T);
 
   s := T.size; (* Convert size for heap allocation *)
-  IF    s <= 24  THEN s := 32
-  ELSIF s <= 56  THEN s := 64
-  ELSIF s <= 120 THEN s := 128
-  ELSE                s := (s+263) DIV 256 * 256
+  IF    s <= 48  THEN s := 64
+  ELSIF s <= 112 THEN s := 128
+  ELSIF s <= 240 THEN s := 256
+  ELSE                s := (s + 527) DIV 512 * 512
   END;
 
   T.len := X64.PC;  (* T.len overriden to be adddress of descriptor for record types *)
 
   EmitInt(s, "Type size including heap overhead");
-  k          := T.nofpar;      (* extension level! *)
+  k  := T.nofpar;  (* extension level! *)
   IF k > 3 THEN
     ORS.Mark("ext level too large")
   ELSE
@@ -2370,24 +2407,6 @@ BEGIN
   END;
   FindPtrFlds(T, 0);
   EmitInt(-1, "end of type");
-
-
-  (*
-  T.len      := adr;
-  Tdesc[Tdx] := s;  INC(Tdx);
-  k          := T.nofpar;      (* extension level! *)
-  IF k > 3 THEN
-    ORS.Mark("ext level too large")
-  ELSE
-    Q(T);
-    WHILE k < 3 DO Tdesc[Tdx] := -1; INC(Tdx); INC(k) END
-  END;
-  FindPtrFlds(T, 0, Trc);
-  Tdesc[Tdx] := -1;  INC(Tdx);
-  IF Tdx >= MaxTD THEN
-    ORS.Mark("too many record types"); Tdx := 0
-  END
-  *)
 END BuildTD;
 
 PROCEDURE TypeTest*(VAR x: X64.Item; T: ORB.Type; varpar, isguard: BOOLEAN);
@@ -2445,6 +2464,7 @@ PROCEDURE EmitPtrs(typ: ORB.Type; adr: INTEGER);
 VAR fld: ORB.Object;  i, s: INTEGER;
 BEGIN
   IF (typ.form = ORB.Pointer) OR (typ.form = ORB.NilTyp) THEN
+    l.s("  ptrec  ", Trc); l.h(adr, Trc); l.sl("H.", Trc);
     X64.EmitBytes(8, adr)
   ELSIF typ.form = ORB.Record THEN
     fld := typ.dsc;
@@ -2456,6 +2476,7 @@ BEGIN
 END EmitPtrs;
 
 PROCEDURE Close*(modid: ORS.Ident; key, exno: INTEGER);
+(* Note: export numbers are 1 .. exno-1 *)
 VAR
   i:      INTEGER;
   reslen: INTEGER;
@@ -2486,7 +2507,8 @@ BEGIN
   X64.Header.varsize := Varsize;
   X64.Header.key     := key;
 
-  (* Emit global VAR pointer table *)
+
+  (* -------------------- Emit global VAR pointer table --------------------- *)
   X64.Align(16);
   X64.Header.pointers := X64.PC;  (* Set global VAR pointer table address *)
   obj := ORB.topScope.next;
@@ -2496,7 +2518,8 @@ BEGIN
   END;
   X64.EmitBytes(8, -1);
 
-  (* Emit command table *)
+
+  (* -------------------------- Emit command table -------------------------- *)
   X64.Align(16);
   X64.Header.commands := X64.PC;   (* Set command table address *)
   obj := ORB.topScope.next;
@@ -2509,34 +2532,46 @@ BEGIN
   END;
   X64.Emit(0);
 
-  (* Determine export table offset and resident length *)
+
+  (* ---------- Determine export table offset and resident length ----------- *)
   X64.Align(16);
   X64.Header.exports := X64.PC;     (* Set export table address *)
   reslen := (X64.PC + exno * 4 + 15) DIV 16 * 16;
+  (* Note there are exno-1 export entries plus a -1 terminator *)
 
-  (* Emit export table *)
-  l.l(Trc);  l.sl("Exports:", Trc);
+
+  (* -------------------------- Emit export table --------------------------- *)
+  l.l(Trc);  l.sl("Object file exports:", Trc);
   obj := ORB.topScope.next;
   WHILE obj # NIL DO  (* entries *)
     IF obj.exno # 0 THEN
-      IF    obj.class = ORB.Const THEN ASSERT(obj.type.form = ORB.Proc);
-                                       l.s("  proc   ", Trc); l.h(obj.val, Trc); l.sl("H.", Trc);
-                                       X64.EmitBytes(4, obj.val)
-      ELSIF obj.class = ORB.Var   THEN l.s("  var    ", Trc); l.h(reslen + obj.val, Trc); l.sl("H.", Trc);
-                                       X64.EmitBytes(4, reslen + obj.val)
-      ELSIF obj.class = ORB.Typ   THEN
-        IF obj.type.form = ORB.Record THEN
-          l.s("  record ", Trc); l.h(obj.type.len, Trc); l.sl("H.", Trc);
-          X64.EmitBytes(4, obj.type.len MOD 10000H)
+      i := -1;
+      IF    obj.class = ORB.Const                  THEN i := obj.val;  ASSERT(obj.type.form = ORB.Proc)
+      ELSIF obj.class = ORB.Var                    THEN i := obj.val + reslen
+      ELSIF obj.class = ORB.Typ THEN
+        IF obj.type.form = ORB.Record              THEN i := obj.type.len
         ELSIF (obj.type.form = ORB.Pointer)
-            & ((obj.type.base.typobj = NIL) OR (obj.type.base.typobj.exno = 0)) THEN
-          l.s("  ptr    ", Trc); l.h(obj.type.base.len, Trc); l.sl("H.", Trc);
-          X64.EmitBytes(4, obj.type.base.len MOD 10000H)
+            & (   (obj.type.base.typobj = NIL)
+               OR (obj.type.base.typobj.exno = 0)) THEN i := obj.type.base.len; ASSERT(FALSE)
         END
-      END
+      END;
+      ASSERT(i >= 0);
+      X64.EmitBytes(4, i);
+      l.s("  ", Trc);  l.i(obj.exno, Trc); l.s(": ", Trc);
+      l.h(i, Trc);  l.s("H. ", Trc);  l.Object(obj, Trc); l.l(Trc)
     END;
     obj := obj.next
   END;
+
+(*
+  (* Types required by pointers *)
+  obj := ORB.topScope.next;
+  WHILE obj # NIL DO  (*pointer variables*)
+    IF obj.class = ORB.Var THEN EmitPtrs(obj.type, obj.val) END;
+    obj := obj.next
+  END;
+*)
+
   l.s("Export count ", Trc); l.i((X64.PC - X64.Header.exports) DIV 4, Trc); l.sl(".", Trc);
   X64.EmitBytes(4, -1);  (* Mark end of table *)
 
