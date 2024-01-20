@@ -169,12 +169,15 @@ BEGIN s := topScope;
 END thisObj;
 
 PROCEDURE SystemImported*(): BOOLEAN;
-VAR obj: Object;
-BEGIN obj := topScope.dsc;
-  WHILE (obj # NIL)  & ~((obj IS Module) & (obj(Module).orgname = "SYSTEM")) DO
-    obj := obj.next
-  END;
-RETURN obj # NIL END SystemImported;
+VAR s, x: Object;
+BEGIN s := topScope;
+  REPEAT x := s.next;
+    WHILE (x # NIL) & ~((x IS Module) & (x(Module).orgname = "SYSTEM")) DO
+      x := x.next
+    END;
+    s := s.dsc
+  UNTIL (x # NIL) OR (s = NIL);
+RETURN x # NIL END SystemImported;
 
 PROCEDURE thisimport*(mod: Object): Object;
 VAR obj: Object;

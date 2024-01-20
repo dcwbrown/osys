@@ -45,17 +45,18 @@ CONST
 
   (* X64 processor item representation *)
 
-  (* Mode           Description        n                   offset                      *)
-  (*                -----------------  ------------------  --------------------------- *)
-  Cond*   = 20;  (* Condition          CF, CT, CO..CG      0                           *)
-  Const*  = 21;  (* Constant           value               0                           *)
-  Reg*    = 22;  (* Register           register (0-15)     0                           *)
-  Stkind* = 23;  (* Stack indirect     stack offset        0                           *)
-  Eadr*   = 24;  (* Effective address  base register       relative to base            *)
-  Code*   = 25;  (* Code offset        0                   code offset                 *)
-  String* = 26;  (* String offs & len  string length       current string block offset *)
-  Global* = 27;  (* VAR offset         0                   VAR block offset            *)
-  Import* = 28;  (* Import             16/modno, 16/impno  0                           *)
+  (* Mode           Description         n                   offset                      *)
+  (*                ------------------  ------------------  --------------------------- *)
+  Cond*    = 20;  (* Condition          CF, CT, CO..CG      0                           *)
+  Const*   = 21;  (* Constant           value               0                           *)
+  Reg*     = 22;  (* Register           register (0-15)     0                           *)
+  Stkind*  = 23;  (* Stack indirect     stack offset        0                           *)
+  Eadr*    = 24;  (* Effective address  base register       relative to base            *)
+  Code*    = 25;  (* Code offset        0                   code offset                 *)
+  String*  = 26;  (* String offs & len  string length       current string block offset *)
+  Global*  = 27;  (* VAR offset         0                   VAR block offset            *)
+  Import*  = 28;  (* Import             16/modno, 16/impno  0                           *)
+  Impcode* = 29;  (* Imported code var  16/modno, 16/impno  0                           *)
 
 
 TYPE

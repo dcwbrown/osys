@@ -19,7 +19,8 @@ BEGIN IF ~skipline THEN
   K.WriteLog(SYSTEM.ADR(bytes), len)
 END END writesz;
 
-PROCEDURE SkipLine*; BEGIN skipline := TRUE END SkipLine;
+PROCEDURE SkipLine*; BEGIN skipline := TRUE  END SkipLine;
+PROCEDURE Noskip*;   BEGIN skipline := FALSE END Noskip;
 
 PROCEDURE l*();
 BEGIN

@@ -573,7 +573,7 @@ VAR op: INTEGER;
 BEGIN
   IF size = 1 THEN op := 088H ELSE op := 089H END;
   OpModRegRm(op, mode, sreg, size, n, index, scale, offset, 0);
-  Disassemble(mode, "StoreRegToMem")
+  (*Disassemble(mode, "StoreRegToMem")*)
 END StoreRegToMem;
 
 PROCEDURE StoreReg(reg: INTEGER; VAR x: Item);
@@ -1321,11 +1321,21 @@ BEGIN
   END
 END Call;
 
-PROCEDURE Enter*(parmsize, locsize: INTEGER);
+PROCEDURE Enter*(parmsize, locsize: INTEGER; native: BOOLEAN);
 VAR i, count: INTEGER;
 BEGIN
   Trace(TraceAny, "Enter(parmsize $"); l.h(parmsize, Trc);
   l.s(", locsize $", Trc);             l.h(locsize, Trc);   l.sl(")", Trc);
+
+  IF native THEN
+    (* For native procedures, deposit reg params on stack *)
+    StoreRegToMem(RCX, Eadr, 8, RSP, -1, 0, 08H);
+    StoreRegToMem(RDX, Eadr, 8, RSP, -1, 0, 10H);
+    StoreRegToMem(8,   Eadr, 8, RSP, -1, 0, 18H);
+    StoreRegToMem(9,   Eadr, 8, RSP, -1, 0, 20H);
+    Disassemble(Eadr, "Save native procedure parameters to stack.");
+  END;
+
   ASSERT(locsize MOD 8 = 0);
   count := locsize DIV 8;
   IF count > 0 THEN

@@ -101,6 +101,17 @@ BEGIN
   END
 END CheckExport;
 
+PROCEDURE CheckNative(VAR native: BOOLEAN);
+BEGIN
+  native := sym = ORS.minus;
+  IF native THEN  (* Native (win32/linux/bsd) procedure or record *)
+    ORS.Get(sym);
+    IF ~ORB.SystemImported() THEN
+      ORS.Mark("'-' native mark requires importing SYSTEM.")
+    END
+  END
+END CheckNative;
+
 PROCEDURE IsExtension(t0, t1: ORB.Type): BOOLEAN;
 BEGIN (*t1 is an extension of t0*)
   RETURN (t0 = t1) OR (t1 # NIL) & IsExtension(t0, t1.base)
@@ -835,7 +846,7 @@ BEGIN
 END CheckRecLevel;
 
 PROCEDURE Type0(VAR type: ORB.Type);
-VAR obj: ORB.Object;  ptbase: PtrBase;
+VAR obj: ORB.Object;  ptbase: PtrBase;  native: BOOLEAN;
 BEGIN type := ORB.intType;  (*sync*)
   IF (sym # ORS.ident) & (sym < ORS.array) THEN ORS.Mark("not a type");
     REPEAT ORS.Get(sym) UNTIL (sym = ORS.ident) OR (sym >= ORS.array)
@@ -848,9 +859,9 @@ BEGIN type := ORB.intType;  (*sync*)
     END
   ELSIF sym = ORS.array THEN ORS.Get(sym);  ArrayType(type)
   ELSIF sym = ORS.record THEN
-    ORS.Get(sym);  RecordType(type);  Check(ORS.end, "no END")
+    ORS.Get(sym);  CheckNative(native);  RecordType(type);  Check(ORS.end, "no END")
   ELSIF sym = ORS.pointer THEN
-    ORS.Get(sym);  Check(ORS.to, "no TO");
+    ORS.Get(sym);  CheckNative(native);  Check(ORS.to, "no TO");
     NEW(type);  type.form := ORB.Pointer;  type.size := ORG.WordSize;  type.base := ORB.intType;
     IF sym = ORS.ident THEN
       obj := ORB.thisObj();
@@ -870,14 +881,8 @@ BEGIN type := ORB.intType;  (*sync*)
     END
   ELSIF sym = ORS.procedure THEN
     ORS.Get(sym);  ORB.OpenScope;
-    NEW(type);  type.form := ORB.Proc;  type.size := ORG.WordSize;  type.native := FALSE;
-    IF sym = ORS.minus THEN  (* Native (win32/linux/bsd) procedure *)
-      IF ORB.SystemImported() THEN
-        type.native := TRUE;  ORS.Get(sym)
-      ELSE
-        ORS.Mark("Native procedures recognised only when SYSTEM imported.")
-      END
-    END;
+    NEW(type);  type.form := ORB.Proc;  type.size := ORG.WordSize;
+    CheckNative(type.native);
     ProcedureType(type);  type.dsc := ORB.topScope.next;  ORB.CloseScope
   ELSE ORS.Mark("illegal type")
   END
@@ -1003,14 +1008,15 @@ VAR proc, obj:   ORB.Object;
     L:           INTEGER;
     i:           INTEGER;
     longestname: INTEGER;
-BEGIN ORS.Get(sym);
+    native:      BOOLEAN;
+BEGIN ORS.Get(sym);  CheckNative(native);
   IF sym = ORS.ident THEN
     ORS.CopyId(procid);  ORS.Get(sym);
     ORB.NewObj(proc, ORS.id, ORB.Const);
     NEW(type);
     type.form   := ORB.Proc;
     type.size   := ORG.WordSize;
-    type.native := FALSE;
+    type.native := native;
     proc.type   := type;
     proc.val    := -1;
     proc.lev    := level;
@@ -1030,11 +1036,17 @@ BEGIN ORS.Get(sym);
     proc.val := ORG.Here();
     type.dsc := ORB.topScope.next;
 
-    (* So far, parameter and local var addresses start at 0 and increment *)
-    (* towards frame size (type.len). Since the X64 stack grows towards   *)
-    (* lower addresses, and since we push the parameters first on the     *)
-    (* stack (i.e. at higher addresses) and in source text order,we need  *)
-    (* to reverse the addressing of parameters and local vars.            *)
+    (* FPSection has recorded parameter offsets in obj.val. All parameter  *)
+    (* offsets are negative corresponding to val being the offset of the   *)
+    (* previous parameter minus 8 or 16 depending in the parameter size.   *)
+    (* For normal parameter passing these are the correct offsets relative *)
+    (* to the initial stack position before pushing parameters, so we need *)
+    (* to add the framesize to each parameter offset to make them relative *)
+    (* to the value of rsp uring procedure excution.                       *)
+    (* For native procedures the job is a little more complex, as Windows  *)
+    (* pushes parameters in reverse order. Fortunately native parameter    *)
+    (* passing is limited to 8 byte paremeters: we do not support passing  *)
+    (* of arrays or records other than by the use of SYSTEM.ADR.           *)
 
     l.CatchupSource;
     l.s("Procedure declaration '", Tr);  l.s(procid, Tr);  l.sl("'.", Tr);
@@ -1047,21 +1059,19 @@ BEGIN ORS.Get(sym);
       IF slen(obj.name) > longestname THEN longestname := slen(obj.name) END;
       obj := obj.next
     END;
+
     obj := type.dsc;
     WHILE obj # NIL DO
       IF obj.class IN {ORB.Var, ORB.Par} THEN
-        IF obj.val < 0 THEN (* Fixup parameter offsets *)
-          INC(obj.val, framesize)
+        IF obj.val < 0 THEN (* Fixup parameter offset *)
+          IF native THEN
+            obj.val := framesize - type.len - obj.val - 8  (* Note - all native parms are 8 bytes *)
+          ELSE
+            INC(obj.val, framesize)  (* Normal parameter *)
+          END
         END;
         l.Class(obj.class, Tr);  l.s(" ", Tr);  l.sn(obj.name, longestname, Tr);
         l.s(" adr $", Tr);       l.hn(obj.val, 6, Tr);
-      (*
-      ELSIF obj.class = ORB.Const THEN
-        ORG.wclass(obj.class);  w.s(" "); w.sn(obj.name, longestname);
-        w.s(" val $");  w.h(obj.val)
-      ELSE
-        ORG.wclass(obj.class);  w.s(" "); w.sn(obj.name, longestname);
-      *)
       END;
       l.s(" type ", Tr);  l.Type(obj.type, Tr);
       l.l(Tr);
@@ -1076,7 +1086,7 @@ BEGIN ORS.Get(sym);
     END;
 
     (* Compile procedure body *)
-    ORG.Enter(parmsize, locsize);
+    ORG.Enter(parmsize, locsize, native);
     IF sym = ORS.begin THEN ORS.Get(sym);  StatSequence END;
     IF sym = ORS.return THEN
       ORS.Get(sym);  expression(x);
@@ -1157,7 +1167,9 @@ BEGIN Texts.WriteString(W, "  compiling ");  ORS.Get(sym);
        referenced by exported pointer types *)
     obj := ORB.topScope.next;
     WHILE obj # NIL DO
-      IF (obj.class = ORB.Typ) & (obj.type.form = ORB.Pointer) & (obj.type.base.typobj # NIL) THEN
+      IF (obj.class = ORB.Typ)
+       & (obj.type.form = ORB.Pointer)
+       & (obj.type.base.typobj # NIL) THEN
       IF obj.type.base.typobj.exno = 0 THEN
           l.s("Adding type descriptor table export for ", Tr);
           l.s(obj.name, Tr);  l.s(" -> ", Tr);
@@ -1172,7 +1184,7 @@ BEGIN Texts.WriteString(W, "  compiling ");  ORS.Get(sym);
     exno := 1;
     obj := ORB.topScope.next;
     WHILE obj # NIL DO
-      IF obj.exno > 0 THEN obj.exno := exno; INC(exno) END;
+      IF obj.exno # 0 THEN obj.exno := exno; INC(exno) END;
       obj := obj.next
     END;
 

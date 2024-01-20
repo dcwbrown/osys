@@ -28,6 +28,43 @@ TYPE
     key*:      INTEGER;
   END;
 
+  (* -------------------- Windows exception structures -------------------- *)
+
+  Exception = POINTER- TO ExceptionRecord;
+  ExceptionRecord = RECORD-
+    ExceptionCode:        SYSTEM.CARD32;
+    ExceptionFlags:       SYSTEM.CARD32;
+    ExceptionRecord:      Exception;  (* Chained (nested) exception *)
+    ExceptionAddress:     INTEGER;
+    NumberParameters:     SYSTEM.CARD32;
+    ExceptionInformation: ARRAY 15 OF INTEGER;  (* Addresses *)
+  END;
+
+  Context = POINTER- TO ContextRecord;
+  ContextRecord = RECORD-
+    P1Home, P2Home, P3Home, P4Home, P5Home, P6Home: INTEGER;
+    ContextFlags, MxCsr:                            SYSTEM.CARD32;
+    SegCs, SegDs, SegEs, SegFs, SegGs, SegSs:       SYSTEM.CARD16;
+    EFlags:                                         SYSTEM.CARD32;
+    Dr0, Dr1, Dr2, Dr3, Dr6, Dr7:                   INTEGER;  (* Debug registers *)
+    Rax, Rcx, Rdx, Rbx, Rsp, Rbp, Rsi, Rdi:         INTEGER;
+    R8,  R9,  R10, R11, R12, R13, R14, R15, Rip:    INTEGER;
+    FloatingPointContext:                           ARRAY 64 OF INTEGER; (* varies *)
+    VectorRegisters:                                ARRAY 52 OF INTEGER; (* 26 x M128A *)
+    VectorControl:                                  INTEGER;
+    DebugControl:                                   INTEGER;
+    LastBranchToRip:                                INTEGER;
+    LastBranchFromRip:                              INTEGER;
+    LastExceptionToRip:                             INTEGER;
+    LastExceptionFromRip:                           INTEGER;
+  END;
+
+  ExceptionPointers = POINTER- TO ExceptionPointersDesc;
+  ExceptionPointersDesc = RECORD-
+    exception: Exception;
+    context:   Context
+  END;
+
 
 VAR
   (* WinPE.mod builds the executable with the following Winshim variables pre-loaded *)
@@ -65,8 +102,8 @@ VAR
                             (* fInfoLevelId Must be 0 (GetFileExInfoStandard) *)
   GetLastError*:            PROCEDURE-(): INTEGER;
 
-  AddVectoredExceptionHandler:    PROCEDURE-(first, filter: INTEGER);
-  GetSystemTimePreciseAsFileTime: PROCEDURE-(tickAdr: INTEGER): INTEGER;
+  AddVectoredExceptionHandler*:    PROCEDURE-(first, filter: INTEGER);
+  GetSystemTimePreciseAsFileTime*: PROCEDURE-(tickAdr: INTEGER): INTEGER;
 
   (* Pre-loaded User32 imports *)
   MessageBoxA:        PROCEDURE-(hWnd, lpText, lpCaption, uType: INTEGER)(*: INTEGER*);
@@ -85,7 +122,7 @@ VAR
   HWnd:      INTEGER;   (* Set if a window has been created *)
 
   (* System functions *)
-  NewPointer:         PROCEDURE(ptr, len: INTEGER);
+  NewPointer*:        PROCEDURE(ptr, tag: INTEGER);
   AssertionFailure:   PROCEDURE;
   ArraySizeMismatch:  PROCEDURE;
   UnterminatedString: PROCEDURE;
@@ -297,7 +334,7 @@ BEGIN
 END MessageBox;
 
 
-(* ---------------------------------------------------------------------------- *)
+(* -------------------------------------------------------------------------- *)
 
 PROCEDURE IntToHex*(n: INTEGER; VAR s: ARRAY OF CHAR);
 VAR d, i, j: INTEGER;  ch: CHAR;
@@ -333,9 +370,9 @@ BEGIN
 END Append;
 
 
-(* ---------------------------------------------------------------------------- *)
+(* -------------------------------------------------------------------------- *)
 (* -------------- Platform independent low level file operations -------------- *)
-(* ---------------------------------------------------------------------------- *)
+(* -------------------------------------------------------------------------- *)
 
 PROCEDURE FileOpen*(name: ARRAY OF CHAR; openkind: INTEGER; VAR handle: INTEGER): INTEGER;
 VAR
@@ -375,7 +412,7 @@ BEGIN
 RETURN res END FileOpen;
 
 
-(* ---------------------------------------------------------------------------- *)
+(* -------------------------------------------------------------------------- *)
 
 PROCEDURE WriteStdout(s: ARRAY OF BYTE);
 VAR written, result: INTEGER;
@@ -383,7 +420,7 @@ BEGIN
   result := WriteFile(Stdout, SYSTEM.ADR(s), Length(s), SYSTEM.ADR(written), 0);
 END WriteStdout;
 
-(* ---------------------------------------------------------------------------- *)
+(* -------------------------------------------------------------------------- *)
 
 PROCEDURE ws*(s: ARRAY OF CHAR); BEGIN Log(s) END ws;
 
@@ -397,7 +434,16 @@ PROCEDURE wh*(n: INTEGER);
 VAR hex: ARRAY 32 OF CHAR;
 BEGIN IntToHex(n, hex);  Log(hex) END wh;
 
-(* ---------------------------------------------------------------------------- *)
+(* -------------------------------------------------------------------------- *)
+
+PROCEDURE WriteModuleName(adr: INTEGER);
+VAR hdr: CodeHeaderPtr;  ch: CHAR;
+BEGIN
+  hdr := SYSTEM.VAL(CodeHeaderPtr, adr);
+  INC(adr, SYSTEM.SIZE(CodeHeader));
+  SYSTEM.GET(adr, ch);
+  WHILE ch # 0X DO wc(ch);  INC(adr);  SYSTEM.GET(adr, ch) END;
+END WriteModuleName;
 
 PROCEDURE WriteModuleHeader(adr: INTEGER);
 VAR hdr: CodeHeaderPtr;  ch: CHAR;
@@ -429,7 +475,7 @@ BEGIN
   END
 END WriteExports;
 
-(* ---------------------------------------------------------------------------- *)
+(* -------------------------------------------------------------------------- *)
 
 PROCEDURE GetString(adr: INTEGER; VAR s: ARRAY OF CHAR; VAR len: INTEGER);
 VAR i: INTEGER;
@@ -440,7 +486,19 @@ BEGIN i := 0;
   (*ws(s); wsl("'.")*)
 END GetString;
 
-(* ---------------------------------------------------------------------------- *)
+
+(* ----------------------- Windows exception handling ----------------------- *)
+
+PROCEDURE- ExceptionHandler(p: ExceptionPointers);  (* Called by Windows *)
+TYPE
+BEGIN
+  wl;  ws("** Exception ");  wh(p.exception.ExceptionCode);
+  ws("H at address ");  wh(p.exception.ExceptionAddress);  wsl("H. **");
+  (*ws("  flags:   ");  wh(p.exception.ExceptionFlags);    wsl("H.");*)
+  ExitProcess(99);
+END ExceptionHandler;
+
+(* -------------------------------------------------------------------------- *)
 
 PROCEDURE ExportedAddress(modhdr: CodeHeaderPtr; index: INTEGER): INTEGER;
 VAR exportoffset: SYSTEM.CARD32;
@@ -495,6 +553,10 @@ BEGIN
   WriteModuleHeader(modadr);
   ws("Loading to "); wh(LoadAdr); wsl("H.");
   *)
+  ws("Loading ");  WriteModuleName(modadr);
+  ws(" at ");      wh(LoadAdr);
+  ws("H, from ");  wh(modadr);  wsl("H.");
+  WriteModuleHeader(modadr);
 
   hdr := SYSTEM.VAL(CodeHeaderPtr, modadr);
   SYSTEM.COPY(modadr, LoadAdr, hdr.imports);  (* Copy up to but excluding import table *)
@@ -505,15 +567,14 @@ BEGIN
   SYSTEM.PUT(LoadAdr + loadedsize, 0);  (* Add sentinel zero length module *)
 
   (* Build list of imported module header addresses *)
+  i := 0;
   adr := modadr + hdr.imports;
   GetString(adr, impmod, len);  INC(adr, len);
-  SYSTEM.GET(adr, key);  INC(adr, 8);
-  i := 0;
   WHILE impmod[0] # 0X DO
+    SYSTEM.GET(adr, key);  INC(adr, 8);
     modules[i] := FindModule(impmod, key);
     INC(i);
-    GetString(adr, impmod, len);  INC(adr, len);
-    SYSTEM.GET(adr, key);  INC(adr, 8);
+    GetString(adr, impmod, len);  INC(adr, len)
   END;
   modules[i] := 0;
 
@@ -521,16 +582,17 @@ BEGIN
 
   adr := (adr + 15) DIV 16 * 16;
   SYSTEM.GET(adr, importcount);  INC(adr, 4);
+  ws("Import count "); wh(importcount); wsl("H.");
   i := 0;
   WHILE i < importcount DO
     SYSTEM.GET(adr, offset); INC(adr, 4);
     SYSTEM.GET(adr, impno);  INC(adr, 2);
     SYSTEM.GET(adr, modno);  INC(adr, 2);
-    (*
-    ws("Import from module "); wh(modno);
+
+    ws("  import from module "); wh(modno);
     ws("H, impno "); wh(impno);
     ws("H, to offset "); wh(offset); wsl("H.");
-    *)
+
     IF modno = 0 THEN  (* system function *)
       SYSTEM.GET(LoadAdr + offset, disp);
       (*ws("disp    -"); wh(-disp); wsl("H.");*)
@@ -569,7 +631,7 @@ BEGIN
   (*wsl("LoadModule complete.")*)
 END LoadModule;
 
-(* ---------------------------------------------------------------------------- *)
+(* -------------------------------------------------------------------------- *)
 
 PROCEDURE IncPC(increment: INTEGER);  (* Update return address by increment *)
 VAR pc: INTEGER;
@@ -607,7 +669,7 @@ BEGIN
   (*wsl("LoadRemainingModules complete.")*)
 END LoadRemainingModules;
 
-(* ---------------------------------------------------------------------------- *)
+(* -------------------------------------------------------------------------- *)
 
 BEGIN
   HWnd := 0;
@@ -644,6 +706,8 @@ BEGIN
   ArraySizeMismatch  := ArraySizeMismatchHandler;
   UnterminatedString := UnterminatedStringHandler;
 
+  (* Trap OS exceptions *)
+  AddVectoredExceptionHandler(1, SYSTEM.ADR(ExceptionHandler));
 
   LoadAdr := (OberonAdr + Header.imports + Header.varsize + 15) DIV 16 * 16;
 
