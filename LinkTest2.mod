@@ -23,7 +23,7 @@ BEGIN
   UNTIL r1.eof;
   Files.Register(f2);
 
-  Files.DumpFiles;
+  (*Files.DumpFiles;*)
 END TestFiles;
 
 PROCEDURE TestBadPointer;
@@ -60,15 +60,17 @@ END TestDivideByZero;
 PROCEDURE TestTexts;
 VAR W: Texts.Writer;
 BEGIN
-  P.wsl("Calling Texts.OpenWriter(W)");
+  (*P.wsl("Calling Texts.OpenWriter(W)");*)
   Texts.OpenWriter(W);
-  P.wsl("Returned from Texts.OpenWriter(W)");
+  (*P.wsl("Returned from Texts.OpenWriter(W)");*)
   Texts.WriteString(W, "Texts testing.");
   Texts.WriteLn(W);
+  (*
   P.ws("Calling Texts.Append, W at "); P.wh(SYSTEM.ADR(W));
   P.ws("H, W.buf at ");                P.wh(SYSTEM.VAL(INTEGER, W.buf));
   P.ws("H, W.buf.len ");               P.wh(W.buf.len);
   P.wsl("H.");
+  *)
   Texts.Append(Oberon.Log, W.buf);
 END TestTexts;
 

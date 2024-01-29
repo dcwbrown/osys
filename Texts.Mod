@@ -211,10 +211,10 @@ END Close;
 
 PROCEDURE OpenBuf* (B: Buffer);
 BEGIN
-  P.ws("OpenBuf(B): "); DumpBuffer(B); P.wl;
+  (*P.ws("OpenBuf(B): "); DumpBuffer(B); P.wl;*)
   NEW(B.header); (*null piece*)
   B.last := B.header;  B.len := 0;
-  P.ws("OpenBuf returning: ");  DumpBuffer(B); P.wl;
+  (*P.ws("OpenBuf returning: ");  DumpBuffer(B); P.wl;*)
 END OpenBuf;
 
 PROCEDURE FindPiece (T: Text; pos: INTEGER; VAR org: INTEGER; VAR pce: Piece);
@@ -293,12 +293,14 @@ END Insert;
 
 PROCEDURE Append* (T: Text; B: Buffer);
 BEGIN
+  (*
   P.ws("Texts.Append(T, B at "); P.wh(SYSTEM.VAL(INTEGER, B));
   P.ws("H by val, ");            P.wh(SYSTEM.ADR(B));
   P.ws("H by adr), B.len ");     P.wh(B.len);
   P.ws("H, B.header ");          P.wh(SYSTEM.VAL(INTEGER, B.header));
   P.ws("H, B.last ");            P.wh(SYSTEM.VAL(INTEGER, B.last));
   P.wsl("H.");
+  *)
   Insert(T, T.len, B)
 END Append;
 
@@ -461,16 +463,16 @@ END Scan;
 
 PROCEDURE OpenWriter* (VAR W: Writer);
 BEGIN
-  P.wsl("Texts.OpenWriter creating W.buf.");
+  (*P.wsl("Texts.OpenWriter creating W.buf.");*)
   NEW(W.buf);
   OpenBuf(W.buf);
-  P.ws("OpenBuf returned buffer "); DumpBuffer(W.buf); P.wsl(".");
+  (*P.ws("OpenBuf returned buffer "); DumpBuffer(W.buf); P.wsl(".");*)
   W.fnt := Fonts.Default;
   W.col := 15;
   W.voff := 0;
-  P.ws("After W.voff :=, W "); DumpWriter(W); P.wsl(".");
+  (*P.ws("After W.voff :=, W "); DumpWriter(W); P.wsl(".");*)
   Files.Set(W.rider, Files.New(""), 0);
-  P.ws("After Files.Set, W "); DumpWriter(W); P.wsl(".");
+  (*P.ws("After Files.Set, W "); DumpWriter(W); P.wsl(".");*)
 END OpenWriter;
 
 PROCEDURE SetFont* (VAR W: Writer; fnt: Fonts.Font);
@@ -488,7 +490,7 @@ END SetOffset;
 PROCEDURE Write* (VAR W: Writer; ch: CHAR);
 VAR p: Piece;
 BEGIN
-  P.ws("Texts.Write(W, '"); P.wc(ch); P.ws("'). W.buf: "); DumpBuffer(W.buf); P.wl;
+  (*P.ws("Texts.Write(W, '"); P.wc(ch); P.ws("'). W.buf: "); DumpBuffer(W.buf); P.wl;*)
   IF (W.buf.last.fnt # W.fnt) OR (W.buf.last.col # W.col) OR (W.buf.last.voff # W.voff) THEN
     NEW(p);
     p.f   := Files.Base(W.rider);

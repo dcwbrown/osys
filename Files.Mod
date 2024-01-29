@@ -73,7 +73,7 @@ BEGIN
       f.next       := first;  first := f;
     END
   END;
-  P.wsl("Old complete.");
+  (*P.wsl("Old complete.");*)
 RETURN f END Old;
 
 PROCEDURE MakeTempFile(VAR name: ARRAY OF CHAR);
@@ -153,7 +153,7 @@ RETURN size END Length;
 PROCEDURE Set*(VAR r: Rider; f: File; pos: INTEGER);
 VAR res: INTEGER;
 BEGIN
-  P.ws("Files.Set, r: Rider at "); P.wh(SYSTEM.ADR(r)); P.wsl("H.");
+  (*P.ws("Files.Set, r: Rider at "); P.wh(SYSTEM.ADR(r)); P.wsl("H.");*)
   r.eof   := FALSE;
   r.res   := 0;
   r.file  := f;
@@ -170,10 +170,12 @@ PROCEDURE SyncFilePos(VAR r: Rider);
 VAR res: INTEGER;
 BEGIN
   IF r.pos # r.file.pos THEN
+    (*
     P.ws("Files.SyncFilePos: r.pos "); P.wh(r.pos);
     P.ws("H, r.file.pos ");            P.wh(r.file.pos);
     P.ws("H, r.file.handle ");         P.wh(r.file.handle);
     P.wsl("H.");
+    *)
     res := P.SetFilePointerEx(r.file.handle, r.pos, 0, 0);
     ASSERT(res # 0);
     r.file.pos := r.pos
@@ -279,7 +281,7 @@ END WriteBytes;
 PROCEDURE Write*(VAR r: Rider; ch: CHAR);
 VAR res, byteswritten: INTEGER;
 BEGIN
-  P.ws("Files.Write('"); P.wc(ch); P.wsl("'.");
+  (*P.ws("Files.Write('"); P.wc(ch); P.wsl("'.");*)
   SyncFilePos(r);
   res := P.WriteFile(r.file.handle, SYSTEM.ADR(ch), 1, SYSTEM.ADR(byteswritten), 0);
   ASSERT(byteswritten = 1);
@@ -316,7 +318,7 @@ VAR f: File;
 BEGIN
   f:= first;
   WHILE f # NIL DO
-    P.ws("File "); P.ws(f.name);  P.ws(" ");  P.wh(f.handle);
+    P.ws("File '"); P.ws(f.name);  P.ws("' ");  P.wh(f.handle);
     P.ws("H ");
     IF ~f.registered THEN
       P.ws("temp name "); P.ws(f.tempname); P.wsl(".")

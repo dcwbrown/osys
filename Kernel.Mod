@@ -93,12 +93,16 @@ PROCEDURE New*(VAR ptr: INTEGER;  tag: INTEGER);
 (* called by NEW via Shim.NewPointer;  ptr and tag are pointers*)
 VAR p, size, lim: INTEGER;
 BEGIN
+  (*
   Shim.ws("NewPtr. ptr @");  Shim.wh(SYSTEM.ADR(ptr));
   Shim.ws("H, tag ");  Shim.wh(tag);  Shim.wc("H");
   Shim.WriteModuleOffset(tag);
+  *)
   SYSTEM.GET(tag, size);  (* Size includes header *)
+  (*
   Shim.ws(", tag.size "); Shim.wh(size);
   Shim.ws("H.");
+  *)
   IF    size = 64  THEN GetBlock64(p)
   ELSIF size = 128 THEN GetBlock128(p)
   ELSIF size = 256 THEN GetBlock256(p)
@@ -113,7 +117,7 @@ BEGIN
     INC(Allocated, size);
     WHILE p < lim DO SYSTEM.PUT(p, 0);  INC(p, 8) END
   END;
-  Shim.ws(" Allocated at "); Shim.wh(ptr); Shim.wsl("H.");
+  (*Shim.ws(" Allocated at "); Shim.wh(ptr); Shim.wsl("H.");*)
 END New;
 
 
