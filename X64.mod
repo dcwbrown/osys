@@ -3,7 +3,7 @@ MODULE X64;  (* DCWB August 2023; X64 constants *)
 IMPORT SYSTEM, ORS, ORB, w := Writer;
 
 CONST
-  MaxPC* = 10000H;  (* Text generation buffer size *)
+  MaxPC* = 10000H;  (* Text generation buffer size (64KB) *)
 
   (* Named registers *)
   RAX* = 0;
@@ -50,13 +50,14 @@ CONST
   Cond*    = 20;  (* Condition          CF, CT, CO..CG      0                           *)
   Const*   = 21;  (* Constant           value               0                           *)
   Reg*     = 22;  (* Register           register (0-15)     0                           *)
-  Stkind*  = 23;  (* Stack indirect     stack offset        0                           *)
-  Eadr*    = 24;  (* Effective address  base register       relative to base            *)
-  Code*    = 25;  (* Code offset        0                   code offset                 *)
-  String*  = 26;  (* String offs & len  string length       current string block offset *)
-  Global*  = 27;  (* VAR offset         0                   VAR block offset            *)
-  Import*  = 28;  (* Import             16/modno, 16/impno  0                           *)
-  Impcode* = 29;  (* Imported code var  16/modno, 16/impno  0                           *)
+  Strucp*  = 23;  (* Stack struc ptr    stack offset        0                           *)
+  Stkind*  = 24;  (* Stack indirect     stack offset        0                           *)
+  Eadr*    = 25;  (* Effective address  base register       relative to base            *)
+  Code*    = 26;  (* Code offset        0                   code offset                 *)
+  String*  = 27;  (* String offs & len  string length       current string block offset *)
+  Global*  = 28;  (* VAR offset         0                   VAR block offset            *)
+  Import*  = 29;  (* Import             16/modno, 16/impno  0                           *)
+  Impcode* = 30;  (* Imported code var  16/modno, 16/impno  0                           *)
 
 
 TYPE

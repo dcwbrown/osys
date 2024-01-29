@@ -1,4 +1,4 @@
-MODULE Winshim;  IMPORT SYSTEM;
+MODULE Winshim;  IMPORT SYSTEM;  (*$la+*) (*$lc+*)
 
 CONST
   (* Platform independent file open kinds *)
@@ -13,6 +13,8 @@ CONST
   AssertionFailureProc   = 1;
   ArraySizeMismatchProc  = 2;
   UnterminatedStringProc = 3;
+
+  MaxPath* = 780;  (* Enough UTF-8 bytes for for 260 wide chars *)
 
 
 TYPE
@@ -42,21 +44,21 @@ TYPE
 
   Context = POINTER- TO ContextRecord;
   ContextRecord = RECORD-
-    P1Home, P2Home, P3Home, P4Home, P5Home, P6Home: INTEGER;
-    ContextFlags, MxCsr:                            SYSTEM.CARD32;
-    SegCs, SegDs, SegEs, SegFs, SegGs, SegSs:       SYSTEM.CARD16;
-    EFlags:                                         SYSTEM.CARD32;
-    Dr0, Dr1, Dr2, Dr3, Dr6, Dr7:                   INTEGER;  (* Debug registers *)
-    Rax, Rcx, Rdx, Rbx, Rsp, Rbp, Rsi, Rdi:         INTEGER;
-    R8,  R9,  R10, R11, R12, R13, R14, R15, Rip:    INTEGER;
-    FloatingPointContext:                           ARRAY 64 OF INTEGER; (* varies *)
-    VectorRegisters:                                ARRAY 52 OF INTEGER; (* 26 x M128A *)
-    VectorControl:                                  INTEGER;
-    DebugControl:                                   INTEGER;
-    LastBranchToRip:                                INTEGER;
-    LastBranchFromRip:                              INTEGER;
-    LastExceptionToRip:                             INTEGER;
-    LastExceptionFromRip:                           INTEGER;
+    P1Home, P2Home, P3Home, P4Home, P5Home, P6Home: INTEGER;             (*   0 *)
+    ContextFlags, MxCsr:                            SYSTEM.CARD32;       (* 030 *)
+    SegCs, SegDs, SegEs, SegFs, SegGs, SegSs:       SYSTEM.CARD16;       (* 038 *)
+    EFlags:                                         SYSTEM.CARD32;       (* 044 *)
+    Dr0, Dr1, Dr2, Dr3, Dr6, Dr7:                   INTEGER;             (* 048 *)
+    rax, rcx, rdx, rbx, rsp, rbp, rsi, rdi:         INTEGER;             (* 078 *)
+    r8,  r9,  r10, r11, r12, r13, r14, r15, rip:    INTEGER;             (* 0B8 *)
+    FloatingPointContext:                           ARRAY 64 OF INTEGER; (* 100 *)
+    VectorRegisters:  (* 26 x M128A *)              ARRAY 52 OF INTEGER; (* 300 *)
+    VectorControl:                                  INTEGER;             (* 4A0 *)
+    DebugControl:                                   INTEGER;             (* 4A8 *)
+    LastBranchToRip:                                INTEGER;             (* 4B0 *)
+    LastBranchFromRip:                              INTEGER;             (* 4B8 *)
+    LastExceptionToRip:                             INTEGER;             (* 4C0 *)
+    LastExceptionFromRip:                           INTEGER;             (* 4C8 *)
   END;
 
   ExceptionPointers = POINTER- TO ExceptionPointersDesc;
@@ -100,6 +102,8 @@ VAR
   GetEnvironmentVariableW*: PROCEDURE-(lpName, lpBuffer, nSize: INTEGER): INTEGER;
   GetFileAttributesExW*:    PROCEDURE-(lpName, fInfoLevelId, lpFileInformation: INTEGER): INTEGER;
                             (* fInfoLevelId Must be 0 (GetFileExInfoStandard) *)
+  GetTempPathA*:            PROCEDURE-(buflen, bufadr: INTEGER): INTEGER;
+  GetTempFileNameA*:        PROCEDURE-(pathadr, prefixadr, unique, tempfilenameadr: INTEGER): INTEGER;
   GetLastError*:            PROCEDURE-(): INTEGER;
 
   AddVectoredExceptionHandler*:    PROCEDURE-(first, filter: INTEGER);
@@ -116,7 +120,7 @@ VAR
 
   Stdout:    INTEGER;
   crlf*:     ARRAY 3 OF CHAR;
-  Log:       PROCEDURE(s: ARRAY OF BYTE);
+  Log*:      PROCEDURE(s: ARRAY OF BYTE);
   OberonAdr: INTEGER;   (* Address of first module (Winshim.mod) *)
   LoadAdr:   INTEGER;   (* Where to load next module *)
   HWnd:      INTEGER;   (* Set if a window has been created *)
@@ -153,9 +157,9 @@ VAR
   res:          INTEGER;
   hdr:          CodeHeaderPtr;
 BEGIN
-  (* Reserve 2GB memory for the Oberon machine *)
-  reserveadr := VirtualAlloc(0, 80000000H, MEMRESERVE, PAGEEXECUTEREADWRITE);
-  (*ws("Reserved 2GB mem at ");  wh(reserveadr);  wsl("H.");*)
+  (* Reserve 2GB memory for the Oberon machine + 2GB for Jcc trap targets *)
+  reserveadr := VirtualAlloc(0, 100000000H, MEMRESERVE, PAGEEXECUTEREADWRITE);
+  (*ws("Reserved 4GB mem at ");  wh(reserveadr);  wsl("H.");*)
 
   (* Determine loaded size of all modules *)
   bootsize   := Header.imports + Header.varsize;
@@ -187,11 +191,11 @@ END PrepareOberonMachine;
 (* -------------------------------------------------------------------------- *)
 
 
-PROCEDURE assert(expectation: BOOLEAN);
+PROCEDURE assert(expectation: BOOLEAN; msg: ARRAY OF CHAR);
 VAR res: INTEGER;
 BEGIN
   IF ~expectation THEN
-    Log("Assertion failure."); Log(crlf);
+    Log("Winshim assertion failure: "); Log(msg); Log(crlf);
     res := CloseHandle(Stdout);
     ExitProcess(99)
   END
@@ -202,16 +206,6 @@ BEGIN
   Log("NewPointer called.");  Log(crlf);
   ExitProcess(99)
 END NewPointerHandler;
-
-PROCEDURE AssertionFailureHandler();
-BEGIN Log("ASSERT failed.");  Log(crlf);  ExitProcess(99)  END AssertionFailureHandler;
-
-PROCEDURE ArraySizeMismatchHandler();
-BEGIN Log("Array size mismatch.");  Log(crlf);  ExitProcess(99)  END ArraySizeMismatchHandler;
-
-PROCEDURE UnterminatedStringHandler();
-BEGIN Log("Unterminated string.");  Log(crlf);  ExitProcess(99)  END UnterminatedStringHandler;
-
 
 (* -------------------------------------------------------------------------- *)
 
@@ -411,6 +405,18 @@ BEGIN
   END
 RETURN res END FileOpen;
 
+PROCEDURE MoveFile*(source, dest: ARRAY OF CHAR);
+VAR
+  sourcew: ARRAY MaxPath OF SYSTEM.CARD16;
+  destw:   ARRAY MaxPath OF SYSTEM.CARD16;
+  res:     INTEGER;
+BEGIN
+  res := Utf8ToUtf16(source, sourcew);  ASSERT(res > 0);
+  res := Utf8ToUtf16(dest,   destw);    ASSERT(res > 0);
+  res := MoveFileExW(SYSTEM.ADR(sourcew), SYSTEM.ADR(destw), 3);  (* 1 => replace existing, 2 => copy allowed *)
+  ASSERT(res # 0)
+END MoveFile;
+
 
 (* -------------------------------------------------------------------------- *)
 
@@ -433,6 +439,59 @@ PROCEDURE wsl*(s: ARRAY OF CHAR); BEGIN Log(s);  Log(crlf) END wsl;
 PROCEDURE wh*(n: INTEGER);
 VAR hex: ARRAY 32 OF CHAR;
 BEGIN IntToHex(n, hex);  Log(hex) END wh;
+
+PROCEDURE whw*(n, w: INTEGER);
+VAR hex: ARRAY 32 OF CHAR;  i: INTEGER;
+BEGIN
+  IntToHex(n, hex);  i := w - Length(hex);
+  WHILE i > 0 DO wc("0"); DEC(i) END;
+  Log(hex)
+END whw;
+
+PROCEDURE wb(n: INTEGER);
+BEGIN WHILE n > 0 DO wc(" "); DEC(n) END END wb;
+
+PROCEDURE DumpMem*(indent, adr, start, len: INTEGER);
+VAR
+  rowstart:  INTEGER;
+  dumplimit: INTEGER;
+  i:         INTEGER;
+  byte:      BYTE;
+  bytes:     ARRAY 16 OF INTEGER;
+BEGIN
+  rowstart  := (       start       DIV 16) * 16;
+  dumplimit := ((start + len + 15) DIV 16) * 16;
+  WHILE rowstart < dumplimit DO
+    wb(indent); whw(rowstart, 12); ws("  ");
+    i := 0;
+    WHILE i < 16 DO  (* Load a row of bytes *)
+      IF (rowstart+i >= start) & (rowstart+i < start+len) THEN
+        SYSTEM.GET(rowstart-start+adr+i, byte);  bytes[i] := byte
+      ELSE
+        bytes[i] := -1
+      END;
+      INC(i)
+    END;
+    i := 0;
+    WHILE i < 16 DO  (* One row of hex Dump *)
+      IF i MOD 8 = 0 THEN wc(" ") END;
+      IF bytes[i] >= 0 THEN whw(bytes[i], 2);  wc(" ") ELSE ws("   ") END;
+      INC(i)
+    END;
+    ws("  ");
+    i := 0;
+    WHILE i < 16 DO  (* One row of character Dump *)
+      IF bytes[i] >= 0 THEN
+        IF (bytes[i] < 32) OR (bytes[i] >= 127) THEN wc(".") ELSE wc(CHR(bytes[i])) END
+      ELSE
+        wc(" ")
+      END;
+      INC(i)
+    END;
+    wl;  INC(rowstart, 16);
+  END
+END DumpMem;
+
 
 (* -------------------------------------------------------------------------- *)
 
@@ -489,14 +548,92 @@ END GetString;
 
 (* ----------------------- Windows exception handling ----------------------- *)
 
-PROCEDURE- ExceptionHandler(p: ExceptionPointers);  (* Called by Windows *)
-TYPE
+PROCEDURE LocateModule(adr: INTEGER): INTEGER;
+VAR  modadr: INTEGER;  hdr: CodeHeaderPtr;
 BEGIN
-  wl;  ws("** Exception ");  wh(p.exception.ExceptionCode);
-  ws("H at address ");  wh(p.exception.ExceptionAddress);  wsl("H. **");
-  (*ws("  flags:   ");  wh(p.exception.ExceptionFlags);    wsl("H.");*)
+  modadr := OberonAdr;  hdr := SYSTEM.VAL(CodeHeaderPtr, modadr);
+  WHILE (hdr.length # 0) & (modadr + hdr.imports < adr) DO
+    modadr := (modadr + hdr.imports + hdr.varsize + 15) DIV 16 * 16;
+    hdr    := SYSTEM.VAL(CodeHeaderPtr, modadr);
+  END;
+  IF (adr < modadr) OR (adr > modadr + hdr.imports) THEN modadr := 0 END;
+RETURN modadr END LocateModule;
+
+PROCEDURE WriteModuleOffset*(adr: INTEGER);
+VAR modadr: INTEGER;
+BEGIN
+  modadr := LocateModule(adr);
+  IF modadr # 0  THEN
+    ws(" in module "); WriteModuleName(modadr);
+    ws(" at offset "); wh(adr - modadr); wc("H")
+  END
+END WriteModuleOffset;
+
+PROCEDURE- ExceptionHandler(p: ExceptionPointers);  (* Called by Windows *)
+VAR modadr, excpadr, excpcode: INTEGER;
+BEGIN
+  excpcode := p.exception.ExceptionCode;
+  excpadr  := p.exception.ExceptionAddress;
+  wl;  ws("** Exception ");  wh(excpcode);
+  ws("H at address ");  wh(excpadr); wc("H");
+  modadr := LocateModule(excpadr);
+  IF modadr # 0  THEN
+    ws(" in module "); WriteModuleName(modadr);
+    ws(" at offset "); wh(excpadr - modadr); wc("H")
+  END;
+  wsl(". **");
+  IF    excpcode = 080000003H THEN wsl("  Breakpoint (INT 3).");
+  ELSIF excpcode = 080000004H THEN wsl("  Single step (0F1H instr).");
+  ELSIF excpcode = 0C0000005H THEN wsl("  Access violation.");
+  ELSIF excpcode = 0C0000006H THEN wsl("  In-page error.");
+  ELSIF excpcode = 0C000001DH THEN wsl("  Illegal instruction.");
+  ELSIF excpcode = 0C000008EH THEN wsl("  Divide by zero.");
+  ELSIF excpcode = 0C0000094H THEN wsl("  Integer divide by zero.");
+  END;
+  ws("  rax "); whw(p.context.rax, 16);  ws("  rbx "); whw(p.context.rbx, 16);
+  ws("  rcx "); whw(p.context.rcx, 16);  ws("  rdx "); whw(p.context.rdx, 16);  wl;
+  ws("  rsp "); whw(p.context.rsp, 16);  ws("  rbp "); whw(p.context.rbp, 16);
+  ws("  rsi "); whw(p.context.rsi, 16);  ws("  rdi "); whw(p.context.rdi, 16);  wl;
+  ws("  r8  "); whw(p.context.r8,  16);  ws("  r9  "); whw(p.context.r9,  16);
+  ws("  r10 "); whw(p.context.r10, 16);  ws("  r11 "); whw(p.context.r11, 16);  wl;
+  ws("  r12 "); whw(p.context.r12, 16);  ws("  r13 "); whw(p.context.r13, 16);
+  ws("  r14 "); whw(p.context.r14, 16);  ws("  r15 "); whw(p.context.r15, 16);  wl;
+  (*
+  wsl("Context:");
+  DumpMem(2, SYSTEM.VAL(INTEGER, p.context), 0, 800H);
+  *)
   ExitProcess(99);
 END ExceptionHandler;
+
+
+(* ----------------------------- Trap handlers ------------------------------ *)
+
+PROCEDURE Trap(desc: ARRAY OF CHAR);
+VAR adr, modadr: INTEGER;
+BEGIN
+  Log(desc);  Log(crlf);
+  SYSTEM.GET(SYSTEM.ADR(LEN(desc)) + 8, adr);  (* Get caller address of trap caller *)
+  ws("At address ");  wh(adr);  ws("H");
+  modadr := LocateModule(adr);
+  IF modadr # 0  THEN
+    ws(" in module "); WriteModuleName(modadr);
+    ws(" at offset "); wh(adr - modadr); wc("H")
+  END;
+  wsl(".");
+  ExitProcess(99)
+END Trap;
+
+PROCEDURE AssertionFailureHandler();
+BEGIN Trap("** Assertion failure **") END AssertionFailureHandler;
+
+PROCEDURE ArraySizeMismatchHandler();
+BEGIN Trap("** Array size mismatch **") END ArraySizeMismatchHandler;
+
+PROCEDURE UnterminatedStringHandler();
+BEGIN Trap("** Unterminated string **") END UnterminatedStringHandler;
+
+
+
 
 (* -------------------------------------------------------------------------- *)
 
@@ -513,19 +650,19 @@ VAR
   modname: ARRAY 32 OF CHAR;
   len:     INTEGER;
 BEGIN
-  (*ws("Findmodule "); ws(name); wsl(".");*)
+  ws("Findmodule "); ws(name); wsl(".");
   modadr := OberonAdr;
   hdr := SYSTEM.VAL(CodeHeaderPtr, modadr);
   GetString(modadr + SYSTEM.SIZE(CodeHeader), modname, len);
   WHILE (hdr.length # 0) & (modname # name) DO
     modadr := (modadr + hdr.imports + hdr.varsize + 15) DIV 16 * 16;
-    (*ws(".. considering ");  WriteModuleHeader(modadr);*)
+    ws(".. considering ");  WriteModuleName(modadr); wl;
     hdr := SYSTEM.VAL(CodeHeaderPtr, modadr);
     IF hdr.length > 0 THEN
       GetString(modadr + SYSTEM.SIZE(CodeHeader), modname, len)
     END
   END;
-  assert(hdr.length # 0);
+  assert(hdr.length # 0, "FindModule hdr.length is 0.");
   (*ws("Requested key "); wh(hdr.key); ws("H, found key "); wh(hdr.key); wsl("H.");*)
 RETURN modadr END FindModule;
 
@@ -600,12 +737,12 @@ BEGIN
       ELSIF impno = AssertionFailureProc   THEN disp := SYSTEM.ADR(AssertionFailure)   + disp - LoadAdr
       ELSIF impno = ArraySizeMismatchProc  THEN disp := SYSTEM.ADR(ArraySizeMismatch)  + disp - LoadAdr
       ELSIF impno = UnterminatedStringProc THEN disp := SYSTEM.ADR(UnterminatedString) + disp - LoadAdr
-      ELSE  assert(FALSE)
+      ELSE  assert(FALSE, "LoadModule: Unexpected system function import number.")
       END;
       (*ws("disp'   -"); wh(-disp); wsl("H.");*)
       SYSTEM.PUT(LoadAdr + offset, disp)
     ELSE
-      assert(modno > 0);
+      assert(modno > 0, "LoadModule: modno is < 0.");
       impmodadr := modules[modno-1];
       expadr := ExportedAddress(SYSTEM.VAL(CodeHeaderPtr, impmodadr), impno-1);
       (*

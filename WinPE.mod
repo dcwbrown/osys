@@ -11,7 +11,7 @@ CONST
   FadrImport  = 400H;  RvaImport  = 1000H;  (* Import directory table *)
   FadrModules = 800H;  RvaModules = 2000H;  (* Oberon modules starting with Winboot *)
 
-  Kernel32ImportCount = 26;
+  Kernel32ImportCount = 28;
   User32ImportCount   =  2;
   Shell32ImportCount  =  1;
 
@@ -120,7 +120,7 @@ TYPE
 
   BootstrapBuffer = RECORD
     Header:  X64.CodeHeader;
-    Content: ARRAY 8192 OF BYTE
+    Content: ARRAY 10000H OF BYTE
   END;
 
 
@@ -135,7 +135,7 @@ VAR
 
   Bootstrap:  BootstrapBuffer;
 
-  Idt:         ImportDirectoryTable;
+  Idt:        ImportDirectoryTable;
 
 
   (* Section layout - generates 2 sections:
@@ -225,6 +225,8 @@ BEGIN
   AddImport(Idt.Kernel32Lookups, n, i, 0, importhints, "SetFilePointerEx");
   AddImport(Idt.Kernel32Lookups, n, i, 0, importhints, "GetEnvironmentVariableW");
   AddImport(Idt.Kernel32Lookups, n, i, 0, importhints, "GetFileAttributesExW");
+  AddImport(Idt.Kernel32Lookups, n, i, 0, importhints, "GetTempPathA");
+  AddImport(Idt.Kernel32Lookups, n, i, 0, importhints, "GetTempFileNameA");
   AddImport(Idt.Kernel32Lookups, n, i, 0, importhints, "GetLastError");
   AddImport(Idt.Kernel32Lookups, n, i, 0, importhints, "AddVectoredExceptionHandler");
   AddImport(Idt.Kernel32Lookups, n, i, 0, importhints, "GetSystemTimePreciseAsFileTime");

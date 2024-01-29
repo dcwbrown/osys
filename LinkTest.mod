@@ -1,4 +1,4 @@
-MODULE Linktest;
+MODULE Linktest;  (*$la-*) (*$lc-*)
 
 IMPORT SYSTEM, Winshim;
 

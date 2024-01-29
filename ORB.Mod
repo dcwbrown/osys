@@ -128,10 +128,6 @@ VAR
 
   nofmod, Ref: INTEGER;
 
-  (* Compilation options *)
-  ListCodegen*:  BOOLEAN;
-  ListAssembly*: BOOLEAN;
-
   typtab: ARRAY maxTypTab OF Type;
 
 PROCEDURE NewObj*(VAR obj: Object; id: ORS.Ident; class: INTEGER);
@@ -484,9 +480,6 @@ BEGIN NEW(obj); obj.name := name; obj.class := cl; obj.type := type; obj.val := 
 END enter;
 
 BEGIN
-  ListCodegen  := TRUE;
-  ListAssembly := TRUE;
-
   byteType   := type(Byte,   Int64,   1);
   boolType   := type(Bool,   Bool,    1);
   charType   := type(Char,   Char,    1);

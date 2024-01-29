@@ -55,7 +55,7 @@ VAR q: INTEGER;
 BEGIN
   IF List1 # 0 THEN p := List1;  SYSTEM.GET(List1+16, List1)
   ELSE
-    GetBlock(q, 256);
+    GetBlock(q, 512);
     SYSTEM.PUT(q + 256, 256);
     SYSTEM.PUT(q + 264, -1);
     SYSTEM.PUT(q + 272, List1);
@@ -93,10 +93,12 @@ PROCEDURE New*(VAR ptr: INTEGER;  tag: INTEGER);
 (* called by NEW via Shim.NewPointer;  ptr and tag are pointers*)
 VAR p, size, lim: INTEGER;
 BEGIN
-  Shim.ws("NewPtr(ptr @");  Shim.wh(SYSTEM.ADR(ptr));
-  Shim.ws("H, tag ");  Shim.wh(tag);  Shim.wsl("H)");
+  Shim.ws("NewPtr. ptr @");  Shim.wh(SYSTEM.ADR(ptr));
+  Shim.ws("H, tag ");  Shim.wh(tag);  Shim.wc("H");
+  Shim.WriteModuleOffset(tag);
   SYSTEM.GET(tag, size);  (* Size includes header *)
-  Shim.ws("  size "); Shim.wh(size);  Shim.wsl("H.");
+  Shim.ws(", tag.size "); Shim.wh(size);
+  Shim.ws("H.");
   IF    size = 64  THEN GetBlock64(p)
   ELSIF size = 128 THEN GetBlock128(p)
   ELSIF size = 256 THEN GetBlock256(p)
@@ -110,7 +112,8 @@ BEGIN
     INC(p, 8);
     INC(Allocated, size);
     WHILE p < lim DO SYSTEM.PUT(p, 0);  INC(p, 8) END
-  END
+  END;
+  Shim.ws(" Allocated at "); Shim.wh(ptr); Shim.wsl("H.");
 END New;
 
 

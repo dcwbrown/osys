@@ -53,6 +53,11 @@ VAR
   KWX:      ARRAY 10 OF INTEGER;
   keyTab:   ARRAY NKW OF RECORD sym: INTEGER; id: ARRAY 12 OF CHAR END;
 
+  (* Compilation options *)
+  ListCodegen*:  BOOLEAN;
+  ListAssembly*: BOOLEAN;
+
+
 PROCEDURE CopyId*(VAR ident: Ident);
 BEGIN ident := id
 END CopyId;
@@ -235,6 +240,15 @@ END Number;
 
 PROCEDURE comment;
 BEGIN GetCh;
+  IF ch = "$" THEN GetCh;
+    IF ch = "l" THEN GetCh;
+      IF ch = "a" THEN GetCh;
+        IF ch = "-" THEN ListAssembly := FALSE; GetCh ELSIF ch = "+" THEN ListAssembly := TRUE; GetCh END
+      ELSIF ch = "c" THEN GetCh;
+        IF ch = "-" THEN ListCodegen := FALSE; GetCh ELSIF ch = "+" THEN ListCodegen := TRUE; GetCh END
+      END
+    END;
+  END;
   REPEAT
     WHILE ~R.eot & (ch # "*") DO
       IF ch = "(" THEN GetCh;
@@ -318,8 +332,12 @@ END Get;
 
 PROCEDURE Init*(T: Texts.Text; pos: INTEGER);
 BEGIN
-  errpos  := pos;  errcnt  := 0;
-  linebeg := 0;    linenum := 1;
+  ListCodegen  := FALSE;
+  ListAssembly := FALSE;
+  errpos       := pos;
+  errcnt       := 0;
+  linebeg      := 0;
+  linenum      := 1;
   Texts.OpenReader(R, T, pos);
   ch := 0X;
   GetCh
@@ -329,45 +347,56 @@ PROCEDURE EnterKW(sym: INTEGER; name: ARRAY OF CHAR);
 BEGIN keyTab[k].id := name; keyTab[k].sym := sym; INC(k)
 END EnterKW;
 
-BEGIN Texts.OpenWriter(W); k := 0; KWX[0] := 0; KWX[1] := 0;
-EnterKW(if, "IF");
-EnterKW(do, "DO");
-EnterKW(of, "OF");
-EnterKW(or, "OR");
-EnterKW(to, "TO");
-EnterKW(in, "IN");
-EnterKW(is, "IS");
-EnterKW(by, "BY");
-KWX[2] := k;
-EnterKW(end, "END");
-EnterKW(nil, "NIL");
-EnterKW(var, "VAR");
-EnterKW(div, "DIV");
-EnterKW(mod, "MOD");
-EnterKW(for, "FOR");
-KWX[3] := k;
-EnterKW(else, "ELSE");
-EnterKW(then, "THEN");
-EnterKW(true, "TRUE");
-EnterKW(type, "TYPE");
-EnterKW(case, "CASE");
-KWX[4] := k;
-EnterKW(elsif, "ELSIF");
-EnterKW(false, "FALSE");
-EnterKW(array, "ARRAY");
-EnterKW(begin, "BEGIN");
-EnterKW(const, "CONST");
-EnterKW(until, "UNTIL");
-EnterKW(while, "WHILE");
-KWX[5] := k;
-EnterKW(record, "RECORD");
-EnterKW(repeat, "REPEAT");
-EnterKW(return, "RETURN");
-EnterKW(import, "IMPORT");
-EnterKW(module, "MODULE");
-KWX[6] := k;
-EnterKW(pointer, "POINTER");
-KWX[7] := k; KWX[8] := k;
-EnterKW(procedure, "PROCEDURE");
-KWX[9] := k
+BEGIN
+  Texts.OpenWriter(W);
+
+  k      := 0;
+  KWX[0] := 0;
+  KWX[1] := 0;
+  EnterKW(if, "IF");
+  EnterKW(do, "DO");
+  EnterKW(of, "OF");
+  EnterKW(or, "OR");
+  EnterKW(to, "TO");
+  EnterKW(in, "IN");
+  EnterKW(is, "IS");
+  EnterKW(by, "BY");
+  KWX[2] := k;
+
+  EnterKW(end, "END");
+  EnterKW(nil, "NIL");
+  EnterKW(var, "VAR");
+  EnterKW(div, "DIV");
+  EnterKW(mod, "MOD");
+  EnterKW(for, "FOR");
+  KWX[3] := k;
+
+  EnterKW(else, "ELSE");
+  EnterKW(then, "THEN");
+  EnterKW(true, "TRUE");
+  EnterKW(type, "TYPE");
+  EnterKW(case, "CASE");
+  KWX[4] := k;
+
+  EnterKW(elsif, "ELSIF");
+  EnterKW(false, "FALSE");
+  EnterKW(array, "ARRAY");
+  EnterKW(begin, "BEGIN");
+  EnterKW(const, "CONST");
+  EnterKW(until, "UNTIL");
+  EnterKW(while, "WHILE");
+  KWX[5] := k;
+
+  EnterKW(record, "RECORD");
+  EnterKW(repeat, "REPEAT");
+  EnterKW(return, "RETURN");
+  EnterKW(import, "IMPORT");
+  EnterKW(module, "MODULE");
+  KWX[6] := k;
+
+  EnterKW(pointer, "POINTER");
+  KWX[7] := k; KWX[8] := k;
+
+  EnterKW(procedure, "PROCEDURE");
+  KWX[9] := k
 END ORS.
