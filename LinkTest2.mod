@@ -1,6 +1,6 @@
 MODULE Linktest2;
 
-IMPORT SYSTEM, Linktest, P := Winshim, Files, Texts, Oberon;
+IMPORT SYSTEM, Linktest, P := Winshim, Files, Texts, Oberon, ORP;
 
 TYPE r = RECORD i: INTEGER END;
 
@@ -74,6 +74,12 @@ BEGIN
   Texts.Append(Oberon.Log, W.buf);
 END TestTexts;
 
+PROCEDURE TestCompilation();
+BEGIN
+  P.wsl("Testing compilation of LinkTest.mod.");
+  ORP.CompileFile("LinkTest.mod");
+END TestCompilation;
+
 BEGIN
   Linktest.ltw("Linktest2 using Linktest.ltw.");
   P.wsl("LinkTest2 using P.wsl.");
@@ -92,4 +98,5 @@ BEGIN
   (*TestBadPointer;*)
   (*TestInterrupt;*)
   (*TestDivideByZero;*)
+  TestCompilation;
 END Linktest2.

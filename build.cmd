@@ -6,7 +6,7 @@
 @if errorlevel 1 goto end
 @cd ..
 ::
-:: use bootstrap compiler to build linktest2
+:: use bootstrap compiler to build final compiler
 ::
 @del *.smb >NUL
 @del *.code >NUL
@@ -14,10 +14,19 @@
 @echo ------------------------------------------------------------------------
 @bootstrap\build\bootbuild
 @if errorlevel 1 goto end
-::
-:: run linktest2
-::
 @echo ------------------------------------------------------------------------
-@linktest2
+:: ::
+:: :: run linktest2
+:: ::
+:: @echo ------------------------------------------------------------------------
+:: @linktest2
 ::
+::  use final compiler to rebuild compiler
+::
+@mkdir bootstrap\build2 >NUL 2>NUL
+@cd bootstrap\build2
+@del /q *.* >NUL
+@copy ..\..\*.mod
+@..\..\obuild obuild.mod
+@cd ..\..
 :end

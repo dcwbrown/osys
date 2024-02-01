@@ -1,5 +1,7 @@
 MODULE Texts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 20.3.2017*)
 
+(*$la+*) (*$lc+*)
+
 IMPORT SYSTEM, Files, Fonts, P := Winshim;
 
 CONST (*scanner symbol classes*)
