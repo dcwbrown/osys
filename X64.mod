@@ -71,7 +71,7 @@ TYPE
     scale*:    INTEGER
   END;
 
-  CodeHeaderPtr = POINTER TO CodeHeader;
+  (*CodeHeaderPtr* = POINTER TO CodeHeader;*)
   CodeHeader* = RECORD
     length*:   SYSTEM.CARD32;  (* File length *)
     initcode*: SYSTEM.CARD32;
@@ -88,7 +88,7 @@ VAR
   PC*:     INTEGER;
   SPO*:    INTEGER;
   Text*:   ARRAY MaxPC OF BYTE;
-  Header*: CodeHeaderPtr;
+(*Header*: CodeHeaderPtr;*)
 
 
 (* -------------------------------- Assembly -------------------------------- *)
@@ -115,6 +115,8 @@ BEGIN
     ORS.Mark("Program too long")
   END
 END Emit;
+
+PROCEDURE SetPC(pc: INTEGER); BEGIN PC := pc END SetPC;
 
 PROCEDURE Align*(size: INTEGER);
 BEGIN PC := (PC + size - 1) DIV size * size END Align;
@@ -159,7 +161,10 @@ END Patch;
 
 
 PROCEDURE Init*;
-BEGIN PC := 0;  SPO := 0;  Header := SYSTEM.VAL(CodeHeaderPtr, SYSTEM.ADR(Text)) END Init;
+BEGIN
+  PC := 0;  SPO := 0;
+(*Header := SYSTEM.VAL(CodeHeaderPtr, SYSTEM.ADR(Text))*)
+END Init;
 
 BEGIN  Init
 END X64.

@@ -1,6 +1,6 @@
 MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
 
-IMPORT SYSTEM, Shim := Winshim;
+IMPORT SYSTEM, P := Winshim;
 
 VAR
   HeapOrg*:   INTEGER;
@@ -90,18 +90,18 @@ BEGIN
 END GetBlock64;
 
 PROCEDURE New*(VAR ptr: INTEGER;  tag: INTEGER);
-(* called by NEW via Shim.NewPointer;  ptr and tag are pointers*)
+(* called by NEW via P.NewPointer;  ptr and tag are pointers*)
 VAR p, size, lim: INTEGER;
 BEGIN
   (*
-  Shim.ws("NewPtr. ptr @");  Shim.wh(SYSTEM.ADR(ptr));
-  Shim.ws("H, tag ");  Shim.wh(tag);  Shim.wc("H");
-  Shim.WriteModuleOffset(tag);
+  P.ws("NewPtr. ptr @");  P.wh(SYSTEM.ADR(ptr));
+  P.ws("H, tag ");  P.wh(tag);  P.wc("H");
+  P.WriteModuleOffset(tag);
   *)
   SYSTEM.GET(tag, size);  (* Size includes header *)
   (*
-  Shim.ws(", tag.size "); Shim.wh(size);
-  Shim.ws("H.");
+  P.ws(", tag.size "); P.wh(size);
+  P.ws("H.");
   *)
   IF    size = 64  THEN GetBlock64(p)
   ELSIF size = 128 THEN GetBlock128(p)
@@ -117,7 +117,7 @@ BEGIN
     INC(Allocated, size);
     WHILE p < lim DO SYSTEM.PUT(p, 0);  INC(p, 8) END
   END;
-  (*Shim.ws(" Allocated at "); Shim.wh(ptr); Shim.wsl("H.");*)
+  (*P.ws(" Allocated at "); P.wh(ptr); P.wsl("H.");*)
 END New;
 
 
@@ -187,12 +187,16 @@ END Scan;
 
 PROCEDURE Ticks*(): INTEGER;  (* In 100ns ticks *)
 VAR res, tick: INTEGER;
-BEGIN res := Shim.GetSystemTimePreciseAsFileTime(SYSTEM.ADR(tick));
+BEGIN res := P.GetSystemTimePreciseAsFileTime(SYSTEM.ADR(tick));
 RETURN tick END Ticks;
 
 PROCEDURE Time*(): INTEGER;   (* In milliseconds *)
 RETURN Ticks() DIV 10000 END Time;
 
+(* ----- Temporarily expose functions that belong in the platform shim ------ *)
+
+PROCEDURE Append*(s: ARRAY OF CHAR; VAR d: ARRAY OF CHAR);
+BEGIN P.Append(s, d) END Append;
 
 (*
 PROCEDURE Clock*(): INTEGER;  (* Packed date and time *)
@@ -205,22 +209,24 @@ END SetClock;
 *)
 
 
+(* -------------------------------------------------------------------------- *)
+
 PROCEDURE Init*;
 CONST
   MEMRESERVE = 2000H;  MEMCOMMIT = 1000H;  PAGEREADWRITE = 4;
   reserve = 80000000H;  (* Reserve 2GB contiguous *)
   commit  = 2000000H;   (* Initially commit 32MB  *)
 BEGIN
-  Shim.wsl("Kernel initialising.");
+  P.wsl("Kernel initialising.");
 
-  Shim.ws("Shim.VirtualAlloc at ");  Shim.wh(SYSTEM.VAL(INTEGER, Shim.VirtualAlloc));  Shim.wsl("H.");
+  P.ws("P.VirtualAlloc at ");  P.wh(SYSTEM.VAL(INTEGER, P.VirtualAlloc));  P.wsl("H.");
 
   (* Initialize heap *)
-  HeapOrg := Shim.VirtualAlloc(0, reserve, MEMRESERVE, PAGEREADWRITE);
-  Shim.ws("Virtual alloc reservation returned ");  Shim.wh(HeapOrg);  Shim.wsl("H.");
+  HeapOrg := P.VirtualAlloc(0, reserve, MEMRESERVE, PAGEREADWRITE);
+  P.ws("Virtual alloc reservation returned ");  P.wh(HeapOrg);  P.wsl("H.");
   ASSERT(HeapOrg # 0);
-  HeapOrg := Shim.VirtualAlloc(HeapOrg, commit, MEMCOMMIT, PAGEREADWRITE);
-  Shim.ws("Virtual alloc commit returned ");  Shim.wh(HeapOrg);  Shim.wsl("H.");
+  HeapOrg := P.VirtualAlloc(HeapOrg, commit, MEMCOMMIT, PAGEREADWRITE);
+  P.ws("Virtual alloc commit returned ");  P.wh(HeapOrg);  P.wsl("H.");
   ASSERT(HeapOrg # 0);
 
   HeapLimit := HeapOrg + commit;
@@ -233,10 +239,10 @@ BEGIN
   SYSTEM.PUT(List0 + 16, 0);
   Allocated := 0;
 
-  SYSTEM.PUT(SYSTEM.ADR(Shim.NewPointer), SYSTEM.ADR(New));
+  SYSTEM.PUT(SYSTEM.ADR(P.NewPointer), SYSTEM.ADR(New));
 
-  Shim.ws("Kernel initialisation complete. HeapOrg "); Shim.wh(HeapOrg);
-  Shim.ws("H, HeapLimit "); Shim.wh(HeapLimit); Shim.wsl("H.");
+  P.ws("Kernel initialisation complete. HeapOrg "); P.wh(HeapOrg);
+  P.ws("H, HeapLimit "); P.wh(HeapLimit); P.wsl("H.");
 END Init;
 
 BEGIN Init END Kernel.

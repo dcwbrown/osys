@@ -19,7 +19,7 @@ BEGIN
   f2 := Files.New("TestFile.Txt");   Files.Set(r2, f2, 0);
   REPEAT
     Files.ReadBytes(r1, buf, LEN(buf));
-    Files.WriteBytes(r2, buf, LEN(buf) - r1.res)
+    Files.WriteBytes(r2, buf, 0, LEN(buf) - r1.res)
   UNTIL r1.eof;
   Files.Register(f2);
 

@@ -267,14 +267,15 @@ BEGIN
   INC(r.pos);  r.file.pos := r.pos
 END WriteByte;
 
-PROCEDURE WriteBytes*(VAR r: Rider; x: ARRAY OF BYTE; n: INTEGER);
+PROCEDURE WriteBytes*(VAR r: Rider; x: ARRAY OF BYTE;  offset, length: INTEGER);
 VAR res, byteswritten: INTEGER;
 BEGIN
-  IF n > 0 THEN
+  IF length > 0 THEN
+    ASSERT(offset + length <= LEN(x));
     SyncFilePos(r);
-    res := P.WriteFile(r.file.handle, SYSTEM.ADR(x), n, SYSTEM.ADR(byteswritten), 0);
-    ASSERT(byteswritten = n);
-    INC(r.pos, n);  r.file.pos := r.pos
+    res := P.WriteFile(r.file.handle, SYSTEM.ADR(x) + offset, length, SYSTEM.ADR(byteswritten), 0);
+    ASSERT(byteswritten = offset + length);
+    INC(r.pos, length);  r.file.pos := r.pos
   END
 END WriteBytes;
 
@@ -289,7 +290,7 @@ BEGIN
 END Write;
 
 PROCEDURE WriteInt*(VAR r: Rider; x: INTEGER);
-BEGIN WriteBytes(r, x, 8) END WriteInt;
+BEGIN WriteBytes(r, x, 0, 8) END WriteInt;
 
 PROCEDURE WriteSet*(VAR r: Rider; s: SET);
 BEGIN WriteInt(r, ORD(s)) END WriteSet;
@@ -301,7 +302,7 @@ PROCEDURE WriteString*(VAR r: Rider; x: ARRAY OF CHAR);
 VAR l: INTEGER;
 BEGIN (*l := P.Length(x);*)
   l := 0;  WHILE (l < LEN(x)) & (x[l] # 0X) DO INC(l) END;
-  IF l > 0 THEN WriteBytes(r, x, l) END;
+  IF l > 0 THEN WriteBytes(r, x, 0, l) END;
   Write(r, 0X)
 END WriteString;
 

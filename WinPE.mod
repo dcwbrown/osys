@@ -251,8 +251,8 @@ BEGIN
 
   spos(FadrImport);
 
-  Files.WriteBytes(Exe, Idt, SYSTEM.SIZE(ImportDirectoryTable));
-  Files.WriteBytes(Exe, importhints, hintsize);
+  Files.WriteBytes(Exe, Idt, 0, SYSTEM.SIZE(ImportDirectoryTable));
+  Files.WriteBytes(Exe, importhints, 0, hintsize);
 
   ImportSize := Align(Files.Pos(Exe), 16) - FadrImport;
   w.s("IDT size "); w.h(ImportSize); w.sl("H.");
@@ -275,7 +275,7 @@ BEGIN
   Files.Set(r, f, 0);
   WHILE ~r.eof DO
     Files.ReadBytes(r, buf, LEN(buf));
-    Files.WriteBytes(Exe, buf, LEN(buf) - r.res);
+    Files.WriteBytes(Exe, buf, 0, LEN(buf) - r.res);
   END;
   FileAlign(Exe, 16);
 END CopyFile;
@@ -332,7 +332,7 @@ BEGIN
   shdr.SizeOfRawData    := fsize;
   shdr.PointerToRawData := fadr;
   shdr.Characteristics  := flags;
-  Files.WriteBytes(Exe, shdr, SYSTEM.SIZE(SectionHeader));
+  Files.WriteBytes(Exe, shdr, 0, SYSTEM.SIZE(SectionHeader));
 END WriteSectionHeader;
 
 
@@ -405,7 +405,7 @@ BEGIN
   hdr.importTableSize         := ImportSize;
 
   spos(0);
-  Files.WriteBytes(Exe, hdr, SYSTEM.SIZE(PEheader));
+  Files.WriteBytes(Exe, hdr, 0, SYSTEM.SIZE(PEheader));
 
   (* Write section headers *)
   WriteSectionHeader(".idata",
@@ -455,11 +455,11 @@ BEGIN FOR i := 1 TO n DO Files.WriteByte(Exe, 0) END END WriteZeroes;
 PROCEDURE WriteBootstrap;
 BEGIN
   spos(FadrModules);
-  Files.WriteBytes(Exe, Bootstrap, Bootstrap.Header.imports);  (* Code and tables   *)
+  Files.WriteBytes(Exe, Bootstrap, 0, Bootstrap.Header.imports);  (* Code and tables   *)
   Files.WriteInt(Exe, ImageBase + RvaModules);                 (* Header address    *)
-  Files.WriteBytes(Exe, Idt.Kernel32Lookups, Kernel32ImportCount * 8);
-  Files.WriteBytes(Exe, Idt.User32Lookups,   User32ImportCount   * 8);
-  Files.WriteBytes(Exe, Idt.Shell32Lookups,  Shell32ImportCount  * 8);
+  Files.WriteBytes(Exe, Idt.Kernel32Lookups, 0, Kernel32ImportCount * 8);
+  Files.WriteBytes(Exe, Idt.User32Lookups,   0, User32ImportCount   * 8);
+  Files.WriteBytes(Exe, Idt.Shell32Lookups,  0, Shell32ImportCount  * 8);
 
   WriteZeroes(Bootstrap.Header.varsize
             - ((Kernel32ImportCount + User32ImportCount + Shell32ImportCount) * 8 + 8));
