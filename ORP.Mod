@@ -252,7 +252,13 @@ BEGIN
     ELSIF (par.type.form = ORB.Array) & (par.type.base = ORB.byteType)
      (* & (par.type.len >= 0) & (par.type.size = x.type.size) *) THEN
       ORG.VarParam(x, par.type, stkoff)
-    ELSE ORS.Mark("incompatible parameters")
+    ELSE ORS.Mark("incompatible parameters");
+      l.l(Tr);
+      l.s("par.type ", Tr);         l.Type(par.type, Tr);
+      l.s(", par.type.base ", Tr);  l.Type(par.type.base, Tr);
+      l.s(", x.type ", Tr);         l.Type(x.type, Tr);
+      l.s(", x.type.base ", Tr);    l.Type(x.type.base, Tr);
+      l.l(Tr);
     END
   END
 END Parameter;
@@ -261,11 +267,14 @@ PROCEDURE ParamList(VAR x: X64.Item);
 VAR n: INTEGER;  par: ORB.Object;
 BEGIN par := x.type.dsc;  n := 0;
   IF sym # ORS.rparen THEN
+    ASSERT(par.type # NIL);
     Parameter(par, x.type.native);  n := 1;
     WHILE sym <= ORS.comma DO
       Check(sym, "comma?");
       IF par # NIL THEN par := par.next END;
-      INC(n);  Parameter(par, x.type.native)
+      INC(n);
+      IF par # NIL THEN ASSERT(par.type # NIL) END;
+      Parameter(par, x.type.native)
     END;
     Check(ORS.rparen, ") missing")
   ELSE ORS.Get(sym);

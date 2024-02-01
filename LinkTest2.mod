@@ -1,4 +1,4 @@
-MODULE Linktest2;  (*$la+*) (*$lc+*)
+MODULE Linktest2;
 
 IMPORT SYSTEM, Linktest, P := Winshim, Files, Texts, Oberon;
 

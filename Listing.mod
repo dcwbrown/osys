@@ -426,8 +426,8 @@ BEGIN
   IF mode = 0 THEN
     IF rm = 4 THEN (* sib *)
       DisSIB(pc, base, index, scale, buf);
-      IF base = X64.RBP THEN base := -1; GetSigned(4, pc, disp) END;
-    ELSIF rm = 5 THEN (* disp32 *)
+      IF base = 5 THEN base := -1; GetSigned(4, pc, disp) END;
+    ELSIF rm = 5 THEN (* RIP+disp32 *)
       GetSigned(4, pc, disp); INC(disp, pc); (* Code relative *)
     ELSE base := rm
     END
@@ -440,7 +440,6 @@ BEGIN
   ELSIF mode = 2 THEN
     IF rm = 4 THEN (* sib + disp32 *)
       DisSIB(pc, base, index, scale, buf);
-      IF base < 0 THEN INC(disp, pc) END; (* Code relative *)
     ELSE base := rm
     END;
     GetSigned(4, pc, disp)

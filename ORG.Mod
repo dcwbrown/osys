@@ -72,9 +72,9 @@ TYPE
   Item = X64.Item;
 
 VAR
-  Str:     ARRAY 4096 OF CHAR;  (* Max strings per procedure/module body *)
+  Str:     ARRAY 8192 OF CHAR;  (* Max bytes of string per module body *)
   Strx:    INTEGER;
-  StrFix:  ARRAY 128 OF SYSTEM.CARD32;  (* Code offsets needing fixup *)
+  StrFix:  ARRAY 512 OF SYSTEM.CARD32;  (* Code offsets needing fixup *)
   StrFInx: INTEGER;
 
   Varsize: INTEGER;      (* Module global VAR size *)
@@ -125,155 +125,7 @@ PROCEDURE Max(a, b: INTEGER): INTEGER;
 BEGIN IF a > b THEN b := a END;  RETURN b END Max;
 
 
-(* ------------------------- Instruction generation ------------------------- *)
-
-PROCEDURE Prefices*(mode, reg, size, n, index: INTEGER);
-VAR rex: INTEGER;
-BEGIN  rex := 0;
-  IF ~(mode IN {Reg, Eadr}) THEN n := -1 END;  (* Cases where n is not a register *)
-  (* Emit prefices *)
-  IF size  =  2 THEN X64.Emit(66H) END;
-  IF size  >  4 THEN INC(rex, 8)   END;
-  IF reg   >= 8 THEN INC(rex, 4)   END;
-  IF index >= 8 THEN INC(rex, 2)   END;
-  IF n     >= 8 THEN INC(rex, 1)   END;
-
-  IF (rex # 0) OR (size = 1) & (reg IN {4,5,6,7}) THEN X64.Emit(40H + rex) END;
-END Prefices;
-
-
-(*----  mod/reg/rm for effective addresses
-
-  base  index  offset  mod  rm    s      i      b     disp
-  ----  -----  ------  ---  ----  -----  -----  ----  -------
-    N     N       N    0    5                         32/0
-    N     N       Y    0    5                         32/offset
-    N     Y       N    0    4     scale  index  5                  *1
-    N     Y       Y    2    4     scale  index  base  32/offset    *1
-    RSP   N       N    0    4     scale  4      4
-    RBP   N       N    1    5                         8/0
-    Y     N       N    0    base
-    RSP   N      8/    1    4     0      4      4     8/offset
-    RSP   N     32/    2    4     0      4      4     32/offset
-    Y     N      8/    1    base                      8/offset
-    Y     N     32/    2    base                      32/offset
-    Y     Y       N    0    4     scale  index  base               *1
-    Y     Y       Y    2    4     scale  index  base  32/offset    *1
-
-*1 - there is no encoding for index = RSP.
-
-*)
-
-PROCEDURE ModRegRm*(mode, reg, n, index, scale, offset, immsize: INTEGER);
-VAR
-  needsib:  BOOLEAN;
-  dispsize: INTEGER;
-  base:     INTEGER;
-  mod:      INTEGER;
-  rm:       INTEGER;
-  modno:    INTEGER;
-BEGIN
-  reg := reg MOD 8;
-
-  IF mode = Reg THEN
-
-    (* reg to reg *)
-    ASSERT(n >= 0);  ASSERT(index < 0);  ASSERT(offset = 0);
-    X64.Emit(0C0H + reg*8 + n MOD 8)
-
-  ELSE
-
-    (* reg from/to mem *)
-
-    ASSERT(mode IN {Eadr, Code, String, Global, Import, Impcode});
-    ASSERT(index # RSP);  (* Not supported by X64 *)
-
-    IF mode IN {Import, Impcode} THEN
-      ASSERT(n MOD 1000H > 0)  (* Import numbers start at 1 *)
-    END;
-
-    IF mode = Eadr THEN base := n MOD 8 ELSE base := -1 END;
-    IF index >= 0 THEN index := index MOD 8 END;
-
-    (* Determine presence and size of disp, ignoring special cases *)
-    dispsize := 4;  (* Most cases including all fixup cases are 32 bit *)
-    IF mode = Eadr THEN
-      IF    offset = 0                        THEN dispsize := 0
-      ELSIF (offset >= -80H) & (offset < 80H) THEN dispsize := 1
-      END
-    END;
-
-    (* Determine mod based on disp size, ignoring special cases *)
-    IF    dispsize = 0 THEN mod := 0
-    ELSIF dispsize = 1 THEN mod := 1
-    ELSE                    mod := 2
-    END;
-
-    (* Adjust for sib and special cases *)
-    needsib := FALSE;
-    rm := base;
-    IF index < 0 THEN
-      IF    base < 0                    THEN rm := 5;  dispsize := 4;  mod := 0
-      ELSIF (base = RBP) & (offset = 0) THEN rm := 5;  dispsize := 1;  mod := 1
-      ELSIF base = RSP                  THEN rm := 4;  needsib  := TRUE; index := 4;
-      END;
-    ELSE
-      rm := 4;  needsib := TRUE;
-      IF base < 0 THEN dispsize := 4;  mod := 0;  base := 5 END;
-    END;
-
-    X64.Emit(mod*64 + reg*8 + rm);          (* modregrm *)
-    IF needsib THEN
-      X64.Emit(scale*64 + index*8 + base);  (* sib *)
-    END;
-
-    (* Fixup Code/String/Global/Import offsets *)
-    IF mode IN {Code, String, Global, Import, Impcode} THEN
-      ASSERT(dispsize = 4);
-      DEC(offset, X64.PC + 4 + immsize)  (* Make offset relative to next instruction *)
-    END;
-    IF     mode = String   THEN StrFix[StrFInx] := X64.PC;  INC(StrFInx)
-    ELSIF  mode = Global   THEN VarFix[VarFInx] := X64.PC;  INC(VarFInx)
-    ELSIF (mode = Import)
-       OR (mode = Impcode) THEN ImpFix[ImpFInx].offset := X64.PC;
-                                ImpFix[ImpFInx].fix := n; INC(ImpFInx)
-    END;
-
-    IF dispsize = 1 THEN
-      ASSERT((offset >= -80H) & (offset < 80H));
-      X64.Emit(offset)
-    ELSIF dispsize = 4 THEN
-      ASSERT((offset >= -80000000H) & (offset < 80000000H));
-      X64.EmitBytes(4, offset)
-    ELSE
-      ASSERT(dispsize = 0)
-    END
-  END
-END ModRegRm;
-
-PROCEDURE OpModRegRm(op, mode, reg, size, n, index, scale, offset, immsize: INTEGER);
-BEGIN
-  IF ~(mode IN {Reg, Eadr, Code, String, Global, Import, Impcode}) THEN
-    Trace(TraceAny, "** mode "); l.i(mode, Trc); l.sl(" **", Trc);
-  END;
-  ASSERT(mode IN {Reg, Eadr, Code, String, Global, Import, Impcode});
-  Prefices(mode, reg, size, n, index);
-  IF op >= 100H THEN X64.Emit(op DIV 100H) END;
-  X64.Emit(op MOD 100H);
-  ModRegRm(mode, reg, n, index, scale, offset, immsize)
-END OpModRegRm;
-
-PROCEDURE OpItem*(op, reg, size, immsize: INTEGER; x: Item);
-VAR offset: INTEGER;
-BEGIN
-  offset := x.offset;
-  IF (x.mode = Eadr) & (x.n = RSP) THEN INC(offset, X64.SPO * 8) END;
-  OpModRegRm(op, x.mode, reg, size, x.n, x.index, x.scale, offset, immsize)
-END OpItem;
-
-
 (* --------------------------- Register tracking ---------------------------- *)
-
 
 PROCEDURE FirstReg*(s: SET): INTEGER;  (* Returns first reg in SET, or -1 if none *)
 VAR f: INTEGER;
@@ -347,8 +199,167 @@ BEGIN
   X64.ClearMode(x)
 END FreeRegs;
 
-(* ---------------------------- Code generation ----------------------------- *)
 
+(* ---------------------- Instruction prefix encoding ----------------------- *)
+
+PROCEDURE Prefices*(mode, reg, size, n, index: INTEGER);
+VAR rex: INTEGER;
+BEGIN  rex := 0;
+  IF ~(mode IN {Reg, Eadr}) THEN n := -1 END;  (* Cases where n is not a register *)
+  (* Emit prefices *)
+  IF size  =  2 THEN X64.Emit(66H) END;
+  IF size  >  4 THEN INC(rex, 8)   END;
+  IF reg   >= 8 THEN INC(rex, 4)   END;
+  IF index >= 8 THEN INC(rex, 2)   END;
+  IF n     >= 8 THEN INC(rex, 1)   END;
+
+  IF (rex # 0) OR (size = 1) & (reg IN {4,5,6,7}) THEN X64.Emit(40H + rex) END;
+END Prefices;
+
+
+(* ----------------------- Effective address encoding ----------------------- *)
+
+(*----  mod/reg/rm for effective addresses
+
+  base  index  offset  mod  rm    s      i      b     disp
+  ----  -----  ------  ---  ----  -----  -----  ----  -------
+    N     N       N    0    5                         32/0
+    N     N       Y    0    5                         32/offset
+    N     Y       N    0    4     scale  index  5                  *1
+    N     Y       Y    2    4     scale  index  base  32/offset    *1
+    RSP   N       N    0    4     scale  4      4
+    RBP   N       N    1    5                         8/0
+    Y     N       N    0    base
+    RSP   N      8/    1    4     0      4      4     8/offset
+    RSP   N     32/    2    4     0      4      4     32/offset
+    Y     N      8/    1    base                      8/offset
+    Y     N     32/    2    base                      32/offset
+    Y     Y       N    0    4     scale  index  base               *1
+    Y     Y       Y    2    4     scale  index  base  32/offset    *1
+
+*1 - there is no encoding for index = RSP.
+*)
+
+PROCEDURE ModRegRm*(mode, reg, n, index, scale, offset, immsize: INTEGER);
+VAR
+  needsib:  BOOLEAN;
+  dispsize: INTEGER;
+  base:     INTEGER;
+  mod:      INTEGER;
+  rm:       INTEGER;
+  modno:    INTEGER;
+BEGIN
+  reg := reg MOD 8;
+
+  IF mode = Reg THEN
+
+    (* reg to reg *)
+    ASSERT(n >= 0);  ASSERT(index < 0);  ASSERT(offset = 0);
+    X64.Emit(0C0H + reg*8 + n MOD 8)
+
+  ELSE
+
+    (* reg from/to mem *)
+
+    ASSERT(mode IN {Eadr, Code, String, Global, Import, Impcode});
+    ASSERT(index # RSP);  (* Not supported by X64 *)
+
+    IF mode IN {Import, Impcode} THEN
+      ASSERT(n MOD 1000H > 0)  (* Import numbers start at 1 *)
+    END;
+
+    IF mode = Eadr THEN base := n MOD 8 ELSE base := -1 END;
+    IF index >= 0 THEN index := index MOD 8 END;
+
+    (* Determine presence and size of disp, ignoring special cases *)
+    dispsize := 4;  (* Most cases including all fixup cases are 32 bit *)
+    IF mode = Eadr THEN
+      IF    offset = 0                        THEN dispsize := 0
+      ELSIF (offset >= -80H) & (offset < 80H) THEN dispsize := 1
+      END
+    END;
+
+    (* Determine mod based on disp size, ignoring special cases *)
+    IF    dispsize = 0 THEN mod := 0
+    ELSIF dispsize = 1 THEN mod := 1
+    ELSE                    mod := 2
+    END;
+
+    (* Adjust for sib and special cases *)
+    needsib := FALSE;
+    rm := base;
+    IF index < 0 THEN
+      IF    base < 0                    THEN rm := 5;  dispsize := 4;  mod := 0
+      ELSIF (base = RBP) & (offset = 0) THEN rm := 5;  dispsize := 1;  mod := 1
+      ELSIF base = RSP                  THEN rm := 4;  needsib  := TRUE; index := 4;
+      END;
+    ELSE
+      rm := 4;  needsib := TRUE;
+      IF base < 0 THEN dispsize := 4;  mod := 0;  base := 5 END;
+    END;
+
+    X64.Emit(mod*64 + reg*8 + rm);          (* modregrm *)
+    IF needsib THEN
+      X64.Emit(scale*64 + index*8 + base);  (* sib *)
+    END;
+
+    (* Fixup Code/String/Global/Import offsets *)
+    IF mode IN {Code, String, Global, Import, Impcode} THEN
+      ASSERT(dispsize = 4);
+      ASSERT(~needsib);  (* SIB addressing does not support rip relative disps *)
+      DEC(offset, X64.PC + 4 + immsize)  (* Make offset relative to next instruction *)
+    END;
+    IF     mode = String   THEN StrFix[StrFInx] := X64.PC;  INC(StrFInx)
+    ELSIF  mode = Global   THEN VarFix[VarFInx] := X64.PC;  INC(VarFInx)
+    ELSIF (mode = Import)
+       OR (mode = Impcode) THEN ImpFix[ImpFInx].offset := X64.PC;
+                                ImpFix[ImpFInx].fix := n; INC(ImpFInx)
+    END;
+
+    IF dispsize = 1 THEN
+      ASSERT((offset >= -80H) & (offset < 80H));
+      X64.Emit(offset)
+    ELSIF dispsize = 4 THEN
+      ASSERT((offset >= -80000000H) & (offset < 80000000H));
+      X64.EmitBytes(4, offset)
+    ELSE
+      ASSERT(dispsize = 0)
+    END
+  END
+END ModRegRm;
+
+PROCEDURE OpModRegRm(op, mode, reg, size, n, index, scale, offset, immsize: INTEGER);
+VAR iprelreg: INTEGER;
+BEGIN
+  IF ~(mode IN {Reg, Eadr, Code, String, Global, Import, Impcode}) THEN
+    Trace(TraceAny, "** mode "); l.i(mode, Trc); l.sl(" **", Trc);
+  END;
+  ASSERT(mode IN {Reg, Eadr, Code, String, Global, Import, Impcode});
+  IF (mode IN {Code, String, Global, Import, Impcode}) & (index >= 0) THEN
+    (* Preload code (rip) relative address because SIB doesn't support rip relative *)
+    iprelreg := FirstFreeReg();
+    OpModRegRm(8DH, mode, iprelreg, 8, n, -1, 0, offset, immsize); (* lea *)
+    mode    := Eadr;
+    n       := iprelreg;
+    offset  := 0;
+    immsize := 0;
+  END;
+  Prefices(mode, reg, size, n, index);
+  IF op >= 100H THEN X64.Emit(op DIV 100H) END;
+  X64.Emit(op MOD 100H);
+  ModRegRm(mode, reg, n, index, scale, offset, immsize)
+END OpModRegRm;
+
+PROCEDURE OpItem*(op, reg, size, immsize: INTEGER; x: Item);
+VAR offset: INTEGER;
+BEGIN
+  offset := x.offset;
+  IF (x.mode = Eadr) & (x.n = RSP) THEN INC(offset, X64.SPO * 8) END;
+  OpModRegRm(op, x.mode, reg, size, x.n, x.index, x.scale, offset, immsize)
+END OpItem;
+
+
+(* ---------------------------- Code generation ----------------------------- *)
 
 PROCEDURE SetCondition(VAR x: Item; cond: INTEGER);
 BEGIN
@@ -586,7 +597,8 @@ BEGIN
   Trace(TraceAny, "StoreReg(reg: "); l.Reg(8, reg, Trc);
   l.s(", x: ", Trc);                 l.Item(x, Trc); l.sl(")", Trc);
   *)
-  StoreRegToMem(reg, x.mode, x.type.size, x.n, x.index, x.scale, x.offset)
+  StoreRegToMem(reg, x.mode, x.type.size, x.n, x.index, x.scale, x.offset);
+  Disassemble(x.mode, "StoreReg")
 END StoreReg;
 
 PROCEDURE StoreImmediateToMem(imm, mode, size, n, index, scale, offset: INTEGER);
@@ -2106,6 +2118,8 @@ BEGIN
   l.s(", x: ", Trc);         l.Item(x, Trc);
   l.s(", y: ", Trc);         l.Item(y, Trc);  l.sl(")", Trc);
   ASSERT(x.mode >= Const);  ASSERT(y.mode >= Const);
+  saveRAX := FALSE;  saveRDX := FALSE;
+
   IF (x.mode = Const) & (y.mode = Const) THEN
     IF op = ORS.div THEN x.n := x.n DIV y.n ELSE x.n := x.n MOD y.n END
   ELSE
@@ -2121,8 +2135,6 @@ BEGIN
       Disassemble(0, "DivOp DIV/MOD by power of 2")
 
     ELSE (* DIV or MOD non-power of 2 *)
-
-      saveRAX := FALSE;  saveRDX := FALSE;
 
       IF (x.mode = Reg) & (x.n = RAX) THEN
         (* numerator is already in rax *)
@@ -2163,14 +2175,14 @@ BEGIN
 
         IF saveRDX THEN
           PopReg(RDX);  X64.AdjustStack(-1);  ReserveReg(RDX);
-          Disassemble(0, "Divop restore rdx")
+          Disassemble(0, "Divop DIV restore rdx")
         END;
 
         IF saveRAX THEN
           reg := FirstFreeReg();  MoveReg(reg, RAX);
           Disassemble(0, "Move result out of rax");
           PopReg(RAX);  X64.AdjustStack(-1);  ReserveReg(RAX);
-          Disassemble(0, "Divop restore rax")
+          Disassemble(0, "Divop DIV restore rax")
         ELSE
           reg := RAX
         END;
@@ -2180,15 +2192,15 @@ BEGIN
         IF saveRDX THEN
           reg := FirstFreeReg();  MoveReg(reg, RDX);
           Disassemble(0, "Move result out of rdx");
-          PopReg(RDX);  X64.AdjustStack(-1);  ReserveReg(RDX);
-          Disassemble(0, "Divop restore rdx")
+          PopReg(RDX);  X64.AdjustStack(-1);
+          Disassemble(0, "Divop MOD restore rdx")
         ELSE
           reg := RDX
         END;
 
         IF saveRAX THEN
-          PopReg(RAX);  X64.AdjustStack(-1);  ReserveReg(RAX);
-          Disassemble(0, "Divop restore rax")
+          PopReg(RAX);  X64.AdjustStack(-1);
+          Disassemble(0, "Divop MOD restore rax")
         END
 
       END;
@@ -2202,6 +2214,8 @@ BEGIN
     x.mode := Reg;
     x.n    := reg;
     ReserveReg(reg);
+    IF saveRAX THEN ReserveReg(RAX) END;
+    IF saveRDX THEN ReserveReg(RDX) END;
     Disassemble(0, name)
   END;
 END DivOp;
@@ -2611,7 +2625,9 @@ BEGIN
   X64.Header.imports := reslen; (* Set resident size / var offset *)
 
   (* Relocate code references to module global VARs *)
-  FOR i:= 0 TO VarFInx-1 DO
+  l.l(Trc); l.i(VarFInx, Trc); l.sl(" VAR relocations.", Trc);
+  FOR i := 0 TO VarFInx-1 DO
+    l.s("  at ", Trc);  l.h(VarFix[i], Trc);  l.sl("H.", Trc);
     X64.Patch(VarFix[i], 4, X64.Peek(VarFix[i], 4, FALSE) + reslen)
   END;
 

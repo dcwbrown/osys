@@ -134,12 +134,91 @@ VAR
 
 PROCEDURE NoLog(s: ARRAY OF BYTE); BEGIN END NoLog;
 
+
 (* -------------------------------------------------------------------------- *)
-(* This code runs in-place before the Oberon 2GB memory is reserved           *)
+(* ---------------------- Very basic string functions ----------------------- *)
+(* -------------------------------------------------------------------------- *)
+
+PROCEDURE Length*(s: ARRAY OF BYTE): INTEGER;
+VAR l: INTEGER;
+BEGIN  l := 0;  WHILE (l < LEN(s)) & (s[l] # 0) DO INC(l) END
+RETURN l END Length;
+
+PROCEDURE Append*(s: ARRAY OF CHAR; VAR d: ARRAY OF CHAR);
+VAR i, j: INTEGER;
+BEGIN
+  j := Length(d);
+  i := 0; WHILE (i < LEN(s)) & (j < LEN(d)) & (s[i] # 0X) DO
+    d[j] := s[i];  INC(i);  INC(j)
+  END;
+  IF j >= LEN( d) THEN DEC(j) END;  d[j] := 0X
+END Append;
+
+PROCEDURE IntToHex*(n: INTEGER; VAR s: ARRAY OF CHAR);
+VAR d, i, j: INTEGER;  ch: CHAR;
+BEGIN
+  i := 0;  j := 0;
+  REPEAT
+    d := n MOD 16;  n := n DIV 16 MOD 1000000000000000H;
+    IF d <= 9 THEN s[j] := CHR(d + 48) ELSE s[j] := CHR(d + 55) END;
+    INC(j)
+  UNTIL n = 0;
+  s[j] := 0X;  DEC(j);
+  WHILE i < j DO ch:=s[i]; s[i]:=s[j]; s[j]:=ch; INC(i); DEC(j) END;
+END IntToHex;
+
+PROCEDURE IntToDecimal*(n: INTEGER; VAR s: ARRAY OF CHAR);
+VAR i, j: INTEGER;  ch: CHAR;
+BEGIN
+  IF n = 8000000000000000H THEN s := "-9223372036854775808"
+  ELSE i := 0;
+    IF n < 0 THEN s[0] := "-";  i := 1;  n := -n END;
+    j := i;
+    REPEAT s[j] := CHR(n MOD 10 + 48);  INC(j);  n := n DIV 10 UNTIL n = 0;
+    s[j] := 0X;  DEC(j);
+    WHILE i < j DO ch:=s[i]; s[i]:=s[j]; s[j]:=ch; INC(i); DEC(j) END
+  END
+END IntToDecimal;
+
+
+(* -------------------------------------------------------------------------- *)
+(* ---------------- Simple logging/debugging console output ----------------- *)
+(* -------------------------------------------------------------------------- *)
+
+PROCEDURE ws*(s: ARRAY OF CHAR); BEGIN Log(s) END ws;
+
+PROCEDURE wc*(c: CHAR); BEGIN Log(c) END wc;
+
+PROCEDURE wl*; BEGIN Log(crlf) END wl;
+
+PROCEDURE wsl*(s: ARRAY OF CHAR); BEGIN Log(s);  Log(crlf) END wsl;
+
+PROCEDURE wh*(n: INTEGER);
+VAR hex: ARRAY 32 OF CHAR;
+BEGIN IntToHex(n, hex);  Log(hex) END wh;
+
+PROCEDURE whw*(n, w: INTEGER);
+VAR hex: ARRAY 32 OF CHAR;  i: INTEGER;
+BEGIN
+  IntToHex(n, hex);  i := w - Length(hex);
+  WHILE i > 0 DO wc("0"); DEC(i) END;
+  Log(hex)
+END whw;
+
+PROCEDURE wb(n: INTEGER);
+BEGIN WHILE n > 0 DO wc(" "); DEC(n) END END wb;
+
+
+(* -------------------------------------------------------------------------- *)
+(* ------------------------ Bootstrap initialisation ------------------------ *)
+(* -------------------------------------------------------------------------- *)
+
+(* -------------------------------------------------------------------------- *)
+(* This code runs in-place before the Oberon 4GB memory is reserved           *)
 (* System functions have not been set up, meaning                             *)
 (*   The code may not use system functions such as NEW, ASSERT etc.           *)
 (*   Faults like Array size mismatch or unterminated string will crash        *)
-(* Any global variables set to code addresses must be rest after Winshim is   *)
+(* Any global variables set to code addresses must be reset after Winshim is   *)
 (*   moved to Oberon memory.                                                  *)
 (* -------------------------------------------------------------------------- *)
 
@@ -158,8 +237,12 @@ VAR
   hdr:          CodeHeaderPtr;
 BEGIN
   (* Reserve 2GB memory for the Oberon machine + 2GB for Jcc trap targets *)
-  reserveadr := VirtualAlloc(0, 100000000H, MEMRESERVE, PAGEEXECUTEREADWRITE);
-  (*ws("Reserved 4GB mem at ");  wh(reserveadr);  wsl("H.");*)
+  reserveadr := VirtualAlloc(100000000H, 100000000H, MEMRESERVE, PAGEEXECUTEREADWRITE);
+  IF reserveadr = 0 THEN
+    wsl("Could not reserve Oberon machine memory.");  ExitProcess(9);
+  ELSE
+    ws("Reserved 4GB Oberon machine memory at ");  wh(reserveadr);  wsl("H.")
+  END;
 
   (* Determine loaded size of all modules *)
   bootsize   := Header.imports + Header.varsize;
@@ -178,14 +261,15 @@ BEGIN
     ws("Module at "); wh(moduleadr); ws("H, length "); wh(hdr.length); wsl("H.");
     WriteModuleHeader(moduleadr);
     *)
-    INC(modulesize, hdr.imports + hdr.varsize);
+    INC(modulesize, (hdr.imports + hdr.varsize + 15) DIV 16 * 16);
     INC(moduleadr, hdr.length);
     hdr := SYSTEM.VAL(CodeHeaderPtr, moduleadr);
   END;
 
-  (* Commit enough for the modules being loaded. *)
+  (* Commit enough for the modules being loaded plus a sentinel. *)
+  INC(modulesize, 16);  (* Allow 16 bytes ofr a sentinel *)
   OberonAdr := VirtualAlloc(reserveadr, modulesize, MEMCOMMIT, PAGEEXECUTEREADWRITE);
-  (*ws("Committed ");  wh(modulesize);  ws("H bytes at ");  wh(OberonAdr);  wsl("H.");*)
+  ws("Committed ");  wh(modulesize);  ws("H bytes at ");  wh(OberonAdr);  wsl("H.");
 END PrepareOberonMachine;
 
 (* -------------------------------------------------------------------------- *)
@@ -329,42 +413,6 @@ END MessageBox;
 
 
 (* -------------------------------------------------------------------------- *)
-
-PROCEDURE IntToHex*(n: INTEGER; VAR s: ARRAY OF CHAR);
-VAR d, i, j: INTEGER;  ch: CHAR;
-BEGIN
-  i := 0;  j := 0;
-  REPEAT
-    d := n MOD 16;  n := n DIV 16 MOD 1000000000000000H;
-    IF d <= 9 THEN s[j] := CHR(d + 48) ELSE s[j] := CHR(d + 55) END;
-    INC(j)
-  UNTIL n = 0;
-  s[j] := 0X;  DEC(j);
-  WHILE i < j DO ch:=s[i]; s[i]:=s[j]; s[j]:=ch; INC(i); DEC(j) END;
-END IntToHex;
-
-
-(* -------------------------------------------------------------------------- *)
-(* ---------------------- Very basic string functions ----------------------- *)
-(* -------------------------------------------------------------------------- *)
-
-PROCEDURE Length*(s: ARRAY OF BYTE): INTEGER;
-VAR l: INTEGER;
-BEGIN  l := 0;  WHILE (l < LEN(s)) & (s[l] # 0) DO INC(l) END
-RETURN l END Length;
-
-PROCEDURE Append*(s: ARRAY OF CHAR; VAR d: ARRAY OF CHAR);
-VAR i, j: INTEGER;
-BEGIN
-  j := Length(d);
-  i := 0; WHILE (i < LEN(s)) & (j < LEN(d)) & (s[i] # 0X) DO
-    d[j] := s[i];  INC(i);  INC(j)
-  END;
-  IF j >= LEN( d) THEN DEC(j) END;  d[j] := 0X
-END Append;
-
-
-(* -------------------------------------------------------------------------- *)
 (* -------------- Platform independent low level file operations -------------- *)
 (* -------------------------------------------------------------------------- *)
 
@@ -417,8 +465,8 @@ BEGIN
   ASSERT(res # 0)
 END MoveFile;
 
-
 (* -------------------------------------------------------------------------- *)
+
 
 PROCEDURE WriteStdout(s: ARRAY OF BYTE);
 VAR written, result: INTEGER;
@@ -427,29 +475,6 @@ BEGIN
 END WriteStdout;
 
 (* -------------------------------------------------------------------------- *)
-
-PROCEDURE ws*(s: ARRAY OF CHAR); BEGIN Log(s) END ws;
-
-PROCEDURE wc*(c: CHAR); BEGIN Log(c) END wc;
-
-PROCEDURE wl*; BEGIN Log(crlf) END wl;
-
-PROCEDURE wsl*(s: ARRAY OF CHAR); BEGIN Log(s);  Log(crlf) END wsl;
-
-PROCEDURE wh*(n: INTEGER);
-VAR hex: ARRAY 32 OF CHAR;
-BEGIN IntToHex(n, hex);  Log(hex) END wh;
-
-PROCEDURE whw*(n, w: INTEGER);
-VAR hex: ARRAY 32 OF CHAR;  i: INTEGER;
-BEGIN
-  IntToHex(n, hex);  i := w - Length(hex);
-  WHILE i > 0 DO wc("0"); DEC(i) END;
-  Log(hex)
-END whw;
-
-PROCEDURE wb(n: INTEGER);
-BEGIN WHILE n > 0 DO wc(" "); DEC(n) END END wb;
 
 PROCEDURE DumpMem*(indent, adr, start, len: INTEGER);
 VAR
@@ -650,13 +675,13 @@ VAR
   modname: ARRAY 32 OF CHAR;
   len:     INTEGER;
 BEGIN
-  ws("Findmodule "); ws(name); wsl(".");
+  (*ws("Findmodule "); ws(name); wsl(".");*)
   modadr := OberonAdr;
   hdr := SYSTEM.VAL(CodeHeaderPtr, modadr);
   GetString(modadr + SYSTEM.SIZE(CodeHeader), modname, len);
   WHILE (hdr.length # 0) & (modname # name) DO
     modadr := (modadr + hdr.imports + hdr.varsize + 15) DIV 16 * 16;
-    ws(".. considering ");  WriteModuleName(modadr); wl;
+    (*ws(".. considering ");  WriteModuleName(modadr); wl;*)
     hdr := SYSTEM.VAL(CodeHeaderPtr, modadr);
     IF hdr.length > 0 THEN
       GetString(modadr + SYSTEM.SIZE(CodeHeader), modname, len)
@@ -685,14 +710,9 @@ VAR
   expadr:      INTEGER;  (* Address relative to imported module of an export *)
   modulebody:  PROCEDURE;
 BEGIN
-  (*
-  ws("Loading module image from address "); wh(modadr); wsl("H.");
-  WriteModuleHeader(modadr);
-  ws("Loading to "); wh(LoadAdr); wsl("H.");
-  *)
   ws("Loading ");  WriteModuleName(modadr);
-  ws(" at ");      wh(LoadAdr);
-  ws("H, from ");  wh(modadr);  wsl("H.");
+  ws(" from ");    wh(modadr);
+  ws("H to ");     wh(LoadAdr);  wsl("H.");
   WriteModuleHeader(modadr);
 
   hdr := SYSTEM.VAL(CodeHeaderPtr, modadr);
@@ -701,6 +721,7 @@ BEGIN
   loadedsize := (hdr.imports + hdr.varsize + 15) DIV 16 * 16;
   (*ws("Loaded size "); wh(loadedsize); wsl("H.");*)
   SYSTEM.PUT(LoadAdr, loadedsize);      (* Update length in header to loaded size *)
+  ws("Writing sentinel at "); wh(LoadAdr + loadedsize); wsl("H.");
   SYSTEM.PUT(LoadAdr + loadedsize, 0);  (* Add sentinel zero length module *)
 
   (* Build list of imported module header addresses *)
@@ -719,17 +740,17 @@ BEGIN
 
   adr := (adr + 15) DIV 16 * 16;
   SYSTEM.GET(adr, importcount);  INC(adr, 4);
-  ws("Import count "); wh(importcount); wsl("H.");
+  (*ws("Import count "); wh(importcount); wsl("H.");*)
   i := 0;
   WHILE i < importcount DO
     SYSTEM.GET(adr, offset); INC(adr, 4);
     SYSTEM.GET(adr, impno);  INC(adr, 2);
     SYSTEM.GET(adr, modno);  INC(adr, 2);
-
+    (*
     ws("  import from module "); wh(modno);
     ws("H, impno "); wh(impno);
     ws("H, to offset "); wh(offset); wsl("H.");
-
+    *)
     IF modno = 0 THEN  (* system function *)
       SYSTEM.GET(LoadAdr + offset, disp);
       (*ws("disp    -"); wh(-disp); wsl("H.");*)

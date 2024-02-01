@@ -11,6 +11,12 @@ BEGIN
   IF ORS.errcnt = 0 THEN ORP.CompileFile("Fonts.mod")     END;
   IF ORS.errcnt = 0 THEN ORP.CompileFile("Texts.mod")     END;
   IF ORS.errcnt = 0 THEN ORP.CompileFile("Oberon.mod")    END;
+  IF ORS.errcnt = 0 THEN ORP.CompileFile("Writer.mod")    END;
+  IF ORS.errcnt = 0 THEN ORP.CompileFile("ORS.mod")       END;
+  IF ORS.errcnt = 0 THEN ORP.CompileFile("ORB.mod")       END;
+  IF ORS.errcnt = 0 THEN ORP.CompileFile("X64.mod")       END;
+  IF ORS.errcnt = 0 THEN ORP.CompileFile("Listing.mod")   END;
+  IF ORS.errcnt = 0 THEN ORP.CompileFile("ORG.mod")       END;
   IF ORS.errcnt = 0 THEN ORP.CompileFile("Linktest.mod")  END;
   IF ORS.errcnt = 0 THEN ORP.CompileFile("Linktest2.mod") END;
   IF BuildCompiler THEN
@@ -35,7 +41,13 @@ BEGIN
     WinPE.AddModule("Files.code");
     WinPE.AddModule("Fonts.code");
     WinPE.AddModule("Texts.code");
+    WinPE.AddModule("Writer.code");
     WinPE.AddModule("Oberon.code");
+    WinPE.AddModule("ORS.code");
+    WinPE.AddModule("ORB.code");
+    WinPE.AddModule("X64.code");
+    WinPE.AddModule("Listing.code");
+    WinPE.AddModule("ORG.code");
     WinPE.AddModule("Linktest.code");
     WinPE.AddModule("Linktest2.code");
     WinPE.Generate("Linktest2.exe")

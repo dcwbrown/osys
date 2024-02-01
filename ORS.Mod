@@ -1,5 +1,7 @@
 MODULE ORS; (* NW 19.9.93 / 15.3.2017  Scanner in Oberon-07*)
 
+(*$la+*) (*$lc+*)
+
 IMPORT SYSTEM, Texts, Oberon, w := Writer;
 
 (* Oberon Scanner does lexical analysis. Input is Oberon-Text, output is
@@ -166,11 +168,11 @@ END Ten;
 PROCEDURE Number(VAR sym: INTEGER);
   CONST max = 2147483647 (*2^31 - 1*);
   VAR i, k, e, n, s, h: INTEGER; (*--- x: REAL; ---*)
-    d: ARRAY 16 OF INTEGER;
+    d: ARRAY 32 OF INTEGER;
     negE: BOOLEAN;
 BEGIN ival := 0; i := 0; n := 0; k := 0;
   REPEAT
-    IF n < 16 THEN d[n] := ORD(ch)-30H; INC(n) ELSE Mark("too many digits"); n := 0 END ;
+    IF n < LEN(d) THEN d[n] := ORD(ch)-30H; INC(n) ELSE Mark("too many digits"); n := 0 END ;
     GetCh
   UNTIL (ch < "0") OR (ch > "9") & (ch < "A") OR (ch > "F");
   IF (ch = "H") OR (ch = "R") OR (ch = "X") THEN  (*hex*)

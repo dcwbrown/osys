@@ -1,19 +1,23 @@
 MODULE ORB;   (*NW 25.6.2014  / 17.9.2018  in Oberon-07*)
 
-IMPORT Files, ORS, w := Writer;
+(*$la+*) (*$lc+*)
 
-  (* Definition of data types Object and Type, which together form the data
-     structure called "symbol table".
+IMPORT SYSTEM, Files, ORS, w := Writer;
 
-     Contains procedures for creation of Objects, and for search:
-       NewObj, this, thisimport, thisfield (and OpenScope, CloseScope).
+(*  Definition of data types Object and Type, which together form the data
+    structure called "symbol table".
 
-     Handling of import and export, i.e. reading and writing of "symbol
-     files"  is done by procedures Import and Export.
+    Contains procedures for creation of Objects, and for search:
+      NewObj, this, thisimport, thisfield (and OpenScope, CloseScope).
 
-     This module contains the list of standard identifiers, with which the
-     symbol table (universe), and that of the pseudo-module SYSTEM are
-     initialized.                                                             *)
+    Handling of import and export, i.e. reading and writing of "symbol
+    files"  is done by procedures Import and Export.
+
+    This module contains the list of standard identifiers, with which the
+    symbol table (universe), and that of the pseudo-module SYSTEM are
+    initialized.
+*)
+
 
 CONST
   WordSize*   = 8;
@@ -130,6 +134,8 @@ VAR
 
   typtab: ARRAY maxTypTab OF Type;
 
+  (*DisassembleType: PROCEDURE;*)
+
 PROCEDURE NewObj*(VAR obj: Object; id: ORS.Ident; class: INTEGER);
 (*insert new Object with name id*)
 VAR new, x: Object;
@@ -231,7 +237,7 @@ BEGIN obj1 := topScope; obj := obj1.next;  (*search for module*)
   RETURN obj
 END ThisModule;
 
-PROCEDURE Read(VAR R: Files.Rider; VAR x: INTEGER);
+PROCEDURE Read(VAR R: Files.Rider; VAR x: INTEGER);  (* Read signed byte *)
 VAR b: BYTE;
 BEGIN Files.ReadByte(R, b);
   IF b < 80H THEN x := b ELSE x := b - 100H END
@@ -245,7 +251,10 @@ VAR key: INTEGER;
     name, modname: ORS.Ident;
     b: BYTE;
 BEGIN Read(R, ref);
-  IF ref < 0 THEN T := typtab[-ref]  (*already read*)
+  w.s("InType: ref read "); w.i(ref); w.sl(".");
+  IF ref < 0 THEN
+    T := typtab[-ref];  (*already read*)
+    ASSERT(T # NIL)
   ELSE NEW(t); T := t; typtab[ref] := t; t.mno := thismod.lev;
     Read(R, form); t.form := form;
     IF form = Pointer THEN InType(R, thismod, t.base); t.size := WordSize
@@ -303,6 +312,7 @@ BEGIN
     thismod.lev := 0; thismod.dsc := system; thismod.rdo := TRUE
   ELSE MakeFileName(fname, modid1, ".smb"); F := Files.Old(fname);
     IF F # NIL THEN
+      w.l; w.s("Importing module "); w.s(modid); w.sl(".");
       Files.Set(R, F, 0); Files.ReadInt(R, key); Files.ReadInt(R, key); Files.ReadString(R, modname);
       thismod := ThisModule(modid, modid1, TRUE, key); thismod.rdo := TRUE;
       Read(R, class); (*version key*)
@@ -332,7 +342,7 @@ END Import;
 
 (*-------------------------------- Export ---------------------------------*)
 
-PROCEDURE Write(VAR R: Files.Rider; x: INTEGER);
+PROCEDURE Write(VAR R: Files.Rider; x: INTEGER);  (* Write (signed) byte *)
 BEGIN Files.WriteByte(R, x)
 END Write;
 
@@ -368,7 +378,11 @@ VAR obj, mod, fld: Object;
 BEGIN
   IF t.ref > 0 THEN (*type was already output*) Write(R, -t.ref)
   ELSE obj := t.typobj;
-    IF obj # NIL THEN Write(R, Ref); t.ref := Ref; INC(Ref) ELSE (*anonymous*) Write(R, 0) END;
+    IF obj # NIL THEN
+      Write(R, Ref); t.ref := Ref; INC(Ref); w.s("OutType: t.ref "); w.i(t.ref); w.sl(".");
+    ELSE (*anonymous*)
+      Write(R, 0); w.sl("OutType: t.ref 0 (anonymous, was).");
+    END;
     Write(R, t.form);
     IF t.form = Pointer THEN OutType(R, t.base)
     ELSIF t.form = Array THEN OutType(R, t.base); Files.WriteNum(R, t.len); Files.WriteNum(R, t.size)
@@ -466,8 +480,14 @@ END Init;
 
 
 PROCEDURE type(ref, form: INTEGER; size: INTEGER): Type;
-VAR tp: Type;
-BEGIN NEW(tp); tp.form := form; tp.size := size; tp.ref := ref; tp.base := NIL;
+VAR tp, tp2: Type;
+BEGIN
+  NEW(tp); tp.form := form; tp.size := size; tp.ref := ref; tp.base := NIL;
+  w.s("Create type, ref ");  w.i(ref);
+  w.s(", typtab at ");       w.h(SYSTEM.ADR(typtab));
+  w.s("H, typtab[ref] at "); w.h(SYSTEM.ADR(typtab[ref]));
+  w.sl("H.");
+  tp2 := typtab[ref];
   typtab[ref] := tp; RETURN tp
 END type;
 
@@ -479,7 +499,26 @@ BEGIN NEW(obj); obj.name := name; obj.class := cl; obj.type := type; obj.val := 
   obj.next := system; system := obj
 END enter;
 
+(*
+PROCEDURE DisassembleType0;
+VAR
+  typeproc:  PROCEDURE(ref, form: INTEGER; size: INTEGER): Type;
+  enterproc: PROCEDURE(name: ARRAY OF CHAR; cl: INTEGER; type: Type; n: INTEGER);
 BEGIN
+  w.sl("PROCEDURE type memory dump:");
+  typeproc  := type;
+  enterproc := enter;
+  w.DumpMem(2,
+    SYSTEM.VAL(INTEGER, typeproc),
+    SYSTEM.VAL(INTEGER, typeproc) - 100000000H,
+    SYSTEM.VAL(INTEGER, enterproc) - SYSTEM.VAL(INTEGER, typeproc)
+  );
+END DisassembleType0;
+*)
+
+BEGIN
+  (*DisassembleType := DisassembleType0;*)
+
   byteType   := type(Byte,   Int64,   1);
   boolType   := type(Bool,   Bool,    1);
   charType   := type(Char,   Char,    1);

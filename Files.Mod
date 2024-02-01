@@ -1,4 +1,4 @@
-MODULE Files;  (*$la+*) (*$lc+*)
+MODULE Files;
 IMPORT SYSTEM, Kernel, P := Winshim;
 
 (* Adapted Oberon 07 by NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013 *)
@@ -299,7 +299,8 @@ BEGIN WriteInt(r, ORD(x)) END WriteReal;
 
 PROCEDURE WriteString*(VAR r: Rider; x: ARRAY OF CHAR);
 VAR l: INTEGER;
-BEGIN l := P.Length(x);
+BEGIN (*l := P.Length(x);*)
+  l := 0;  WHILE (l < LEN(x)) & (x[l] # 0X) DO INC(l) END;
   IF l > 0 THEN WriteBytes(r, x, l) END;
   Write(r, 0X)
 END WriteString;

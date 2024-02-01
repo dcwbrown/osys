@@ -1,7 +1,5 @@
 MODULE Texts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 20.3.2017*)
 
-(*$la+*) (*$lc+*)
-
 IMPORT SYSTEM, Files, Fonts, P := Winshim;
 
 CONST (*scanner symbol classes*)
@@ -499,8 +497,8 @@ BEGIN
     p.fnt := W.fnt;
     p.col := W.col;
     p.voff:= W.voff;
-    p.next := NIL; W.buf.last.next := p;
-    p.prev := W.buf.last; W.buf.last := p
+    p.next := NIL;         W.buf.last.next := p;
+    p.prev := W.buf.last;  W.buf.last      := p
   END;
   Files.Write(W.rider, ch);
   INC(W.buf.last.len); INC(W.buf.len)
