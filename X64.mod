@@ -71,7 +71,6 @@ TYPE
     scale*:    INTEGER
   END;
 
-  (*CodeHeaderPtr* = POINTER TO CodeHeader;*)
   CodeHeader* = RECORD
     length*:   SYSTEM.CARD32;  (* File length *)
     initcode*: SYSTEM.CARD32;
@@ -88,7 +87,6 @@ VAR
   PC*:     INTEGER;
   SPO*:    INTEGER;
   Text*:   ARRAY MaxPC OF BYTE;
-(*Header*: CodeHeaderPtr;*)
 
 
 (* -------------------------------- Assembly -------------------------------- *)
@@ -116,7 +114,7 @@ BEGIN
   END
 END Emit;
 
-PROCEDURE SetPC(pc: INTEGER); BEGIN PC := pc END SetPC;
+PROCEDURE SetPC*(pc: INTEGER); BEGIN PC := pc END SetPC;
 
 PROCEDURE Align*(size: INTEGER);
 BEGIN PC := (PC + size - 1) DIV size * size END Align;

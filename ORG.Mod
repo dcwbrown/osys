@@ -2474,7 +2474,7 @@ BEGIN
   VarFInx  := 0;
   ImpFInx  := 0;
   Disasmpc := 0;
-  FOR i := 1 TO SYSTEM.SIZE(X64.CodeHeader) DO X64.Emit(0) END;
+  X64.SetPC(SYSTEM.SIZE(X64.CodeHeader));
   X64.Align(8); (* Increase alignment to match PO2013 where records are aligned on 8 bytes. *)
   X64.EmitString(modid);
   X64.Align(16);

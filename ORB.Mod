@@ -1,7 +1,5 @@
 MODULE ORB;   (*NW 25.6.2014  / 17.9.2018  in Oberon-07*)
 
-(*$la+*) (*$lc+*)
-
 IMPORT SYSTEM, Files, ORS, w := Writer;
 
 (*  Definition of data types Object and Type, which together form the data

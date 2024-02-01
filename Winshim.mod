@@ -1,4 +1,4 @@
-MODULE Winshim;  IMPORT SYSTEM;  (*$la+*) (*$lc+*)
+MODULE Winshim;  IMPORT SYSTEM;
 
 CONST
   (* Platform independent file open kinds *)

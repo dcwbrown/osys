@@ -1,4 +1,4 @@
-MODULE Oberon;  (*$la-*) (*$lc-*)
+MODULE Oberon;
 
 IMPORT SYSTEM, Shim := Winshim, Texts;
 
