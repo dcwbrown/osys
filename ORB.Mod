@@ -305,6 +305,7 @@ VAR key: INTEGER; class, k: INTEGER;
     modname, fname: ORS.Ident;
     F: Files.File; R: Files.Rider;
 BEGIN
+  w.s("ORB.Import("); w.s(modid); w.s(", "); w.s(modid1); w.sl(").");
   IF modid1 = "SYSTEM" THEN
     thismod := ThisModule(modid, modid1, TRUE, key); DEC(nofmod);
     thismod.lev := 0; thismod.dsc := system; thismod.rdo := TRUE
@@ -334,7 +335,8 @@ BEGIN
       w.Noskip; w.s("Import("); w.s(modid); w.s(", "); w.s(modid1); w.sl("):");
       ORS.Mark("import not available")
     END
-  END
+  END;
+  w.sl("ORB.Import complete.")
 END Import;
 
 

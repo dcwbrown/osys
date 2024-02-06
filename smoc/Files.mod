@@ -1,4 +1,4 @@
-MODULE Files; (*$la+*) (*$lc+*)
+MODULE Files;
 IMPORT SYSTEM, K := Kernel, Heap, w := Writer;
 
 CONST

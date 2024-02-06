@@ -134,6 +134,12 @@ VAR
 
 PROCEDURE NoLog(s: ARRAY OF BYTE); BEGIN END NoLog;
 
+PROCEDURE ForLoopTest();
+VAR i, j: INTEGER;
+BEGIN
+  FOR i := 0 TO 10 DO INC(j,i) END;
+END ForLoopTest;
+
 
 (* -------------------------------------------------------------------------- *)
 (* ---------------------- Very basic string functions ----------------------- *)
@@ -623,6 +629,9 @@ BEGIN
   ws("  r10 "); whw(p.context.r10, 16);  ws("  r11 "); whw(p.context.r11, 16);  wl;
   ws("  r12 "); whw(p.context.r12, 16);  ws("  r13 "); whw(p.context.r13, 16);
   ws("  r14 "); whw(p.context.r14, 16);  ws("  r15 "); whw(p.context.r15, 16);  wl;
+
+  (* Dump top of stack (i.e. lowest addresses) *)
+  DumpMem(2, p.context.rsp, p.context.rsp, 128);
   (*
   wsl("Context:");
   DumpMem(2, SYSTEM.VAL(INTEGER, p.context), 0, 800H);

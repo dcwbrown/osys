@@ -2,7 +2,7 @@
 ::
 @cd bootstrap
 @mkdir build >NUL 2>NUL
-@..\smoc\Build /v /b build /s ./;../smoc;.. bootbuild
+@..\smoc\Build /v /b build /s ./;../smoc;.. obuild
 @if errorlevel 1 goto end
 @cd ..
 ::
@@ -12,7 +12,7 @@
 @del *.code >NUL
 ::
 @echo ------------------------------------------------------------------------
-@bootstrap\build\bootbuild
+bootstrap\build\obuild
 @if errorlevel 1 goto end
 @echo ------------------------------------------------------------------------
 :: ::

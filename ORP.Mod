@@ -1,6 +1,8 @@
 MODULE ORP;  (*N. Wirth 1.7.97 / 17.9.2018  Oberon compiler for RISC in Oberon-07*)
 
-IMPORT Texts, Oberon, ORS, ORB, X64, ORG, l := Listing;
+(*$la+*)(*$lc+*)
+
+IMPORT Texts, Oberon, ORS, ORB, X64, ORG, l := Listing, w := Writer;
 
   (*Author: Niklaus Wirth, 2014.
     Parser of Oberon-RISC compiler. Uses Scanner ORS to obtain symbols (tokens),
@@ -1123,7 +1125,9 @@ VAR key:    INTEGER;
     exno:   INTEGER;
     obj:    ORB.Object;
 BEGIN Texts.WriteString(W, "  compiling ");  ORS.Get(sym);
-  IF sym # ORS.module THEN ORS.Mark("must start with MODULE")
+  IF sym # ORS.module THEN
+    ORS.Mark("must start with MODULE");
+    w.l; w.s("Sym: "); w.i(sym); w.s(", '"); w.s(ORS.id); w.sl("'.");
   ELSE
     ORS.Get(sym);
     ORB.Init;  ORB.OpenScope;
@@ -1138,6 +1142,7 @@ BEGIN Texts.WriteString(W, "  compiling ");  ORS.Get(sym);
     IF sym = ORS.import THEN
       ORS.Get(sym);
       WHILE sym = ORS.ident DO
+        w.s("Importing "); w.s(ORS.id); w.sl(".");
         ORS.CopyId(impid);  ORS.Get(sym);
         IF sym = ORS.becomes THEN
           ORS.Get(sym);
@@ -1155,6 +1160,7 @@ BEGIN Texts.WriteString(W, "  compiling ");  ORS.Get(sym);
     END;
 
     ORG.Open(sourcefn, modid);
+    w.sl("Parse declarations.");
     Declarations(dc);
     ORG.SetDataSize((dc + 7) DIV 8 * 8);
 
@@ -1260,8 +1266,9 @@ END Compile;
 PROCEDURE CompileFile*(fn: ARRAY OF CHAR);
 VAR T: Texts.Text;
 BEGIN
-  NEW(T);  Texts.Open(T, fn);
-  IF T.len > 0 THEN ORS.Init(T, 0);  Module(fn) END;
+  w.s("CompileFile('"); w.s(fn); w.sl("').");
+  NEW(T);  Texts.Open(T, fn);  IF T.len > 0 THEN ORS.Init(T, 0);
+  Module(fn) END;
 END CompileFile;
 
 BEGIN

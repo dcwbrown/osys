@@ -1,5 +1,5 @@
 MODULE WinPE;  (* Create exe from a list of compiled Oberon modules *)
-IMPORT SYSTEM, K := Kernel, X64, Files, B := Base, w := Writer;
+IMPORT SYSTEM, K := Kernel, X64, Files, w := Writer;
 
 
 CONST
@@ -456,7 +456,7 @@ PROCEDURE WriteBootstrap;
 BEGIN
   spos(FadrModules);
   Files.WriteBytes(Exe, Bootstrap, 0, Bootstrap.Header.imports);  (* Code and tables   *)
-  Files.WriteInt(Exe, ImageBase + RvaModules);                 (* Header address    *)
+  Files.WriteInt(Exe, ImageBase + RvaModules);                    (* Header address    *)
   Files.WriteBytes(Exe, Idt.Kernel32Lookups, 0, Kernel32ImportCount * 8);
   Files.WriteBytes(Exe, Idt.User32Lookups,   0, User32ImportCount   * 8);
   Files.WriteBytes(Exe, Idt.Shell32Lookups,  0, Shell32ImportCount  * 8);

@@ -1,6 +1,6 @@
 MODULE Texts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 20.3.2017*)
 
-(*$la+*) (*$lc+*)
+(*$la+*)(*$lc+*)
 
 IMPORT SYSTEM, Files, Fonts, P := Winshim;
 
@@ -149,11 +149,18 @@ VAR
   Q, q: Piece;
   tag:  CHAR;
   len:  INTEGER;
-BEGIN f := Files.Old(name);
+BEGIN
+  P.ws("Texts.Open('"); P.ws(name); P.wsl("').");
+  f := Files.Old(name);
+  P.ws("  opened, f = "); P.wh(SYSTEM.VAL(INTEGER, f)); P.wsl("H.");
   IF f # NIL THEN
     Files.Set(R, f, 0); Files.Read(R, tag);
-    IF tag = TextTag THEN Load(R, T)
+    P.ws("  read tag: "); P.wh(ORD(tag)); P.wsl("H.");
+    IF tag = TextTag THEN
+      P.wsl("  Tag matches - this is an Oberon formatted text file.");
+      Load(R, T)
     ELSE (*Ascii file*)
+      P.wsl("  Ascii text file.");
       len := Files.Length(f); Q := Trailer();
       NEW(q); q.fnt := Fonts.Default; q.col := 1; q.voff := 0; q.f := f; q.off := 0; q.len := len;
       Q.next := q; q.prev := Q; q.next := Q; Q.prev := q; T.trailer := Q; T.len := len

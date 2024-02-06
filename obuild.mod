@@ -1,6 +1,6 @@
 MODULE obuild;  (* Command line driver for ORP *)  (*$CONSOLE*)
 
-IMPORT Boot, ORP, ORS, WinPE;
+IMPORT ORP, ORS, WinPE;
 
 BEGIN
   ORP.CompileFile("Winshim.mod");
@@ -16,7 +16,7 @@ BEGIN
   IF ORS.errcnt = 0 THEN ORP.CompileFile("Listing.mod")   END;
   IF ORS.errcnt = 0 THEN ORP.CompileFile("ORG.mod")       END;
   IF ORS.errcnt = 0 THEN ORP.CompileFile("ORP.mod")       END;
-  IF ORS.errcnt = 0 THEN ORP.CompileFile("WinPE.mod")       END;
+  IF ORS.errcnt = 0 THEN ORP.CompileFile("WinPE.mod")     END;
   IF ORS.errcnt = 0 THEN ORP.CompileFile("obuild.mod")    END;
   IF ORS.errcnt = 0 THEN
     WinPE.AddModule("Kernel.code");
@@ -34,7 +34,5 @@ BEGIN
     WinPE.AddModule("WinPE.code");
     WinPE.AddModule("obuild.code");
     WinPE.Generate("obuild.exe");
-  ELSE
-    Boot.ExitProcess(99)
   END
 END obuild.

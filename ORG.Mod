@@ -1,5 +1,7 @@
 MODULE ORG;  (* DCWB June 2023; Code generator for X64 *)
 
+(*$la+*)(*$lc+*)
+
 (* Originally: N.Wirth, 16.4.2016 / 4.4.2017 / 17.9.2018  Oberon compiler; code generator for RISC*)
 
 (*
@@ -13,7 +15,7 @@ MODULE ORG;  (* DCWB June 2023; Code generator for X64 *)
     applied.
 *)
 
-IMPORT SYSTEM, Files, ORS, ORB, X64, l := Listing, K := Kernel;
+IMPORT SYSTEM, Files, ORS, ORB, X64, l := Listing, K := Kernel, w := Writer;
 
 CONST
   WordSize* = ORB.WordSize;
@@ -340,7 +342,7 @@ BEGIN
   IF (mode IN {Code, String, Global, Import, Impcode}) & (index >= 0) THEN
     (* Preload code (rip) relative address because SIB doesn't support rip relative *)
     iprelreg := FirstFreeReg();
-    OpModRegRm(8DH, mode, iprelreg, 8, n, -1, 0, offset, immsize); (* lea *)
+    OpModRegRm(8DH, mode, iprelreg, 8, n, -1, 0, offset, 0); (* lea *)
     mode    := Eadr;
     n       := iprelreg;
     offset  := 0;
@@ -828,7 +830,11 @@ END Dyadic;
 (* ---- Item construction ---- *)
 
 PROCEDURE ZeroFill(VAR obj: ARRAY OF BYTE);  VAR i: INTEGER;
-BEGIN FOR i := 0 TO LEN(obj)-1 DO obj[i] := 0 END END ZeroFill;
+BEGIN
+  w.s("ORG.ZeroFill. LEN(obj) "); w.i(LEN(obj)); w.sl(".");
+  FOR i := 0 TO LEN(obj)-1 DO obj[i] := 0 END;
+  (*w.sl("ORG.ZeroFill complete.")*)
+END ZeroFill;
 
 PROCEDURE MakeItem*(VAR x: Item; y: ORB.Object; curlev: INTEGER);
 VAR base: INTEGER;
@@ -837,7 +843,9 @@ BEGIN
   l.i(curlev, Trc); l.s(")", Trc);
   ASSERT(y.class IN {ORB.Const, ORB.Var, ORB.Par, ORB.SProc, ORB.Typ});
 
-  ZeroFill(x);  X64.ClearMode(x);
+  w.sl("ORG.MakeItem calling ZeroFill(x).");
+  ZeroFill(x);
+  X64.ClearMode(x);
   x.mode     := y.class;
   x.type     := y.type;
   x.readonly := y.rdo;
@@ -878,6 +886,7 @@ PROCEDURE MakeConstItem*(VAR x: Item;  t: ORB.Type;  v: INTEGER);
 BEGIN
   Trace(TraceMakeItem, "MakeConstItem, value: ");
   l.i(v, Trc); l.s(", type ", Trc); l.Type(t, Trc); l.l(Trc);
+  w.sl("ORG.MakeConstItem calling ZeroFill(x).");
   ZeroFill(x);  X64.ClearMode(x);
   x.mode := Const;  x.type  := t;  x.n := v
 END MakeConstItem;
@@ -885,6 +894,7 @@ END MakeConstItem;
 PROCEDURE MakeRealItem*(VAR x: Item; v: REAL);
 BEGIN
   Trace(TraceMakeItem, "MakeRealItem."); l.l(Trc);
+  w.sl("ORG.MakeRealItem calling ZeroFill(x).");
   ZeroFill(x);  X64.ClearMode(x);
   x.mode := Const;  x.type  := ORB.realType;  x.n := SYSTEM.VAL(INTEGER, v)
 END MakeRealItem;
@@ -896,6 +906,7 @@ BEGIN
   i := 0;  WHILE (i < len) & (ORS.str[i] # 0X) DO l.c(ORS.str[i], Trc); INC(i) END;
   l.sl("')", Trc);
 
+  w.sl("ORG.MakeStringItem calling ZeroFill(x).");
   ZeroFill(x);  X64.ClearMode(x);
   x.mode := String;  x.type   := ORB.strType;  x.readonly := TRUE;
   x.n    := len;     x.offset := Strx;
@@ -1063,64 +1074,6 @@ BEGIN Trace(TraceAny, "CopyString(x: "); l.Item(x, Trc);  l.s(", y: ", Trc); l.I
 END CopyString;
 
 
-(* ---- selection - fields, indices & pointers ---- *)
-
-PROCEDURE Field*(VAR x: Item; y: ORB.Object);   (* x := x.y *)
-BEGIN
-  Trace(TraceAny, "Field(x: "); l.Item(x, Trc);
-  l.s(", y: ", Trc); l.Object(y, Trc); l.sl(")", Trc);
-  ASSERT(x.mode IN {Stkind, Strucp, Eadr, Global, Import});
-  ASSERT(y.class = ORB.Fld);
-  IF x.mode IN {Stkind, Strucp} THEN x.mode := Stkind END;
-  INC(x.offset, y.val)
-END Field;
-
-PROCEDURE Index*(VAR x, y: Item);   (* x := x[y] *)
-VAR elemsize: INTEGER;
-BEGIN Trace(TraceAny, "Index(x: "); l.Item(x, Trc); l.s(", y: ", Trc); l.Item(y, Trc); l.l(Trc);
-  ASSERT(x.type.form = ORB.Array);
-  ASSERT(x.mode IN {Stkind, Strucp, Eadr, String, Global, Import});
-  IF x.mode IN {Stkind, Strucp} THEN x.mode := Stkind END;
-
-  elemsize := x.type.base.size;
-  Trace(TraceAny, "  "); l.s("x base type: ", Trc); l.Type(x.type.base, Trc); l.l(Trc);
-  Trace(TraceAny, "  "); l.s("elemsize: ", Trc); l.i(elemsize, Trc); l.l(Trc);
-
-  IF y.mode = Const THEN
-    INC(x.offset, y.n * elemsize)
-  ELSE
-    IF (elemsize IN {1, 2, 4, 8})
-     & (x.mode IN {Stkind, Strucp, Eadr, Code, String, Global, Import})
-     & (x.index < 0) THEN
-      (* Use X64 SIB index and scale *)
-      x.scale := 0;
-      IF    elemsize = 2 THEN x.scale := 1
-      ELSIF elemsize = 4 THEN x.scale := 2
-      ELSIF elemsize = 8 THEN x.scale := 3
-      END;
-      Load(y);
-      x.index := y.n;
-      FreeRegs(y);
-      ReserveReg(x.index)
-    ELSE
-      (* Apply index to base address in x *)
-      LoadAddress(x);  x.mode := Eadr;
-      AluOpToReg(Plus, y.mode, x.n, X64.IsSigned(y.type), y.type.size, y.n, y.index, y.scale, y.offset);
-      FreeRegs(y)
-    END
-  END;
-  Disassemble(y.mode, "Index")
-END Index;
-
-PROCEDURE DeRef*(VAR x: Item);
-BEGIN Trace(TraceAny, "DeRef(x), x: "); l.Item(x, Trc); l.l(Trc);
-  ASSERT(x.type.form = ORB.Pointer);
-  ASSERT(x.mode IN {Stkind, Eadr, Code, String, Global, Import});
-  Load(x);  x.mode := Eadr;
-  Disassemble(0, "DeRef")
-END DeRef;
-
-
 (* ---- Paramter passing ---- *)
 
 PROCEDURE ValueParam*(VAR x: Item;  stkoff: INTEGER);
@@ -1163,9 +1116,20 @@ BEGIN
   ELSE
     ASSERT(x.mode IN {Stkind, Strucp, Eadr, String, Global, Import});
     IF (x.mode = Strucp) & ((ftype.form = ORB.Array) & (ftype.len < 0) OR (ftype.form = ORB.Record)) THEN
-      (* Passing open array or record parm to same *)
-      PushMem(Eadr, FALSE, 8, RSP, -1, 0, x.n + 8 * X64.SPO + 8);  X64.AdjustStack(1);  (* Length or descriptor *)
-      PushMem(Eadr, FALSE, 8, RSP, -1, 0, x.n + 8 * X64.SPO);      X64.AdjustStack(1);  (* Address *)
+      IF x.type.form = ftype.form THEN
+        (* Passing open array to open array, or dynamic record to dynamic record *)
+        PushMem(Eadr, FALSE, 8, RSP, -1, 0, x.n + 8 * X64.SPO + 8)
+      ELSE ASSERT(x.type.form = ORB.Record);  (* Cannot pass open array to dynamic record *)
+        (* Passing dynamic record to ARRAY OF BYTE *)
+        reg := ReserveNextFree();  (* Obtain length from type descriptor *)
+        LoadMem(reg, Eadr, FALSE, 8, RSP, -1, 0, x.n + 8 * X64.SPO + 8);  (* Load address of record *)
+        LoadMem(reg, Eadr, FALSE, 8, reg, -1, 0, -8);  (* Load address of type descriptor from qword preceeding record *)
+        PushMem(Eadr, FALSE, 8, reg, -1, 0, 0);        (* Push record length from first qword of type descriptor *)
+        ReleaseReg(reg)
+      END;
+      X64.AdjustStack(1);
+      PushMem(Eadr, FALSE, 8, RSP, -1, 0, x.n + 8 * X64.SPO);  (* Push array/record address *)
+      X64.AdjustStack(1)
     ELSE
       Depar(x);
       (* First pass array length or type descriptor address, if any *)
@@ -1914,13 +1878,24 @@ BEGIN
   END
 RETURN result END OpToIntCondition;
 
+(*
+      80   r/m8,  imm8
+      81   r/m16, imm16
+      81   r/m32, imm32
+rex.w 81   r/m64, imm32
+      83   r/m16, imm8
+      83   r/m32, imm8
+rex.w 83   r/m64, imm8
+*)
+
 PROCEDURE Compare(VAR x, y: Item);
 VAR immsize: INTEGER;
 BEGIN
   Depar(x);  Depar(y);
   ASSERT(x.mode >= Const);  ASSERT(y.mode >= Const);
   IF (y.mode = Const) & (y.n >= -80000000H) & (y.n < 80000000H) THEN
-    IF (y.n >= -80H) & (y.n < 80H) THEN immsize := 1 ELSE immsize := 4 END;
+    IF x.type.size <= 4 THEN immsize := x.type.size ELSE immsize := 4 END;
+    IF (y.n >= -80H) & (y.n < 80H) THEN immsize := 1 END;
     IF    x.type.size = 1 THEN OpItem(80H, 7, x.type.size, immsize, x)
     ELSIF immsize     = 1 THEN OpItem(83H, 7, x.type.size, immsize, x)
     ELSE                       OpItem(81H, 7, x.type.size, immsize, x)
@@ -2072,13 +2047,13 @@ BEGIN
     OpModRegRm(0FAFH, Reg, x.n, 8, reg, -1, 0, 0, 0)
   ELSE
     Depar(x);
-    IF x.mode IN {Reg, Eadr} THEN reg := x.n ELSE reg := FirstFreeReg() END;
+    IF (x.mode IN {Reg, Eadr}) & (x.n # RSP) THEN reg := x.n ELSE reg := FirstFreeReg() END;
     IF (y < -80H) OR (y >= 80H) THEN
       OpItem(69H, reg, 8, 4, x);  X64.EmitBytes(4, y)  (* imul reg,x,imm32 *)
     ELSE
       OpItem(6BH, reg, 8, 1, x);  X64.Emit(y)          (* imul reg,x,imm8 *)
     END;
-    FreeRegs(x);  x.n := reg;  ReserveReg(reg)
+    FreeRegs(x);  x.mode := Reg;  x.n := reg;  ReserveReg(reg)
   END
 END MulImmediate;
 
@@ -2244,6 +2219,68 @@ BEGIN Trace(TraceAny, "Neg(x: "); l.Item(x, Trc); l.l(Trc);
 END Neg;
 
 
+(* ---- selection - fields, indices & pointers ---- *)
+
+PROCEDURE Field*(VAR x: Item; y: ORB.Object);   (* x := x.y *)
+BEGIN
+  Trace(TraceAny, "Field(x: "); l.Item(x, Trc);
+  l.s(", y: ", Trc); l.Object(y, Trc); l.sl(")", Trc);
+  ASSERT(x.mode IN {Stkind, Strucp, Eadr, Global, Import});
+  ASSERT(y.class = ORB.Fld);
+  IF x.mode IN {Stkind, Strucp} THEN x.mode := Stkind END;
+  INC(x.offset, y.val)
+END Field;
+
+PROCEDURE Index*(VAR x, y: Item);   (* x := x[y] *)
+VAR elemsize: INTEGER;
+BEGIN Trace(TraceAny, "Index(x: "); l.Item(x, Trc); l.s(", y: ", Trc); l.Item(y, Trc); l.l(Trc);
+  ASSERT(x.type.form = ORB.Array);
+  ASSERT(x.mode IN {Stkind, Strucp, Eadr, String, Global, Import});
+  IF x.mode IN {Stkind, Strucp} THEN x.mode := Stkind END;
+
+  elemsize := x.type.base.size;
+  Trace(TraceAny, "  "); l.s("x base type: ", Trc); l.Type(x.type.base, Trc); l.l(Trc);
+  Trace(TraceAny, "  "); l.s("elemsize: ", Trc); l.i(elemsize, Trc); l.l(Trc);
+
+  IF y.mode = Const THEN
+    INC(x.offset, y.n * elemsize)
+  ELSE
+    IF (elemsize IN {1, 2, 4, 8})
+     & (x.mode IN {Stkind, Strucp, Eadr, Code, String, Global, Import})
+     & (x.index < 0) THEN
+      (* Use X64 SIB index and scale *)
+      x.scale := 0;
+      IF    elemsize = 2 THEN x.scale := 1
+      ELSIF elemsize = 4 THEN x.scale := 2
+      ELSIF elemsize = 8 THEN x.scale := 3
+      END;
+      Load(y);
+      x.index := y.n;
+      FreeRegs(y);
+      ReserveReg(x.index)
+    ELSE
+      (* Apply index to base address in x *)
+      LoadAddress(x);  x.mode := Eadr;
+    (*AluOpToReg(Plus, y.mode, x.n, X64.IsSigned(y.type), y.type.size, y.n, y.index, y.scale, y.offset);*)
+      Trace(TraceAny, "  "); l.s("MulImmediate by ", Trc); l.i(elemsize, Trc); l.sl(".", Trc);
+      MulImmediate(y, elemsize);
+      Trace(TraceAny, "  "); l.s("MulImmediate result y.mode ", Trc); l.Mode(y.mode, Trc); l.sl(".", Trc);
+      AluOpToReg(Plus, y.mode, x.n, X64.IsSigned(y.type), y.type.size, y.n, y.index, y.scale, y.offset);
+      FreeRegs(y)
+    END
+  END;
+  Disassemble(y.mode, "Index")
+END Index;
+
+PROCEDURE DeRef*(VAR x: Item);
+BEGIN Trace(TraceAny, "DeRef(x), x: "); l.Item(x, Trc); l.l(Trc);
+  ASSERT(x.type.form = ORB.Pointer);
+  ASSERT(x.mode IN {Stkind, Eadr, Code, String, Global, Import});
+  Load(x);  x.mode := Eadr;
+  Disassemble(0, "DeRef")
+END DeRef;
+
+
 (* ---- Control flow ---- *)
 
 (* Use of Item.o fields for conditions:
@@ -2280,7 +2317,11 @@ END FJump;
 
 PROCEDURE BJump*(L: INTEGER);
 BEGIN Trace(TraceAny, "BJump(L "); l.i(L, Trc); l.sl(")", Trc);
-  X64.Emit(0E9H);  X64.EmitBytes(4, L - (X64.PC + 4));
+  IF L - (X64.PC + 1) >= -80H THEN
+    X64.Emit(0EBH);  X64.Emit(L - (X64.PC + 1))
+  ELSE
+    X64.Emit(0E9H);  X64.EmitBytes(4, L - (X64.PC + 4))
+  END;
   Disassemble(0, "BJump")
 END BJump;
 
@@ -2292,7 +2333,7 @@ BEGIN
   IF x.mode # Cond THEN LoadFlags(x) END;
   cond := InvertedCondition(x.n);  ASSERT(cond DIV 16 = 8);
   ASSERT(L < X64.PC);
-  IF (X64.PC + 2 - L) >= -80H THEN
+  IF L - (X64.PC + 1) >= -80H THEN
     X64.Emit(70H + cond MOD 16);    X64.Emit(L - (X64.PC + 1))
   ELSE
     X64.Emit(0FH);  X64.Emit(cond); X64.EmitBytes(4, L - (X64.PC + 4))
@@ -2327,39 +2368,67 @@ For2:      Dyadic(add, ctl, inc)
        L1:
 *)
 
-PROCEDURE For0*(VAR var, ctl: Item);
+
+
+PROCEDURE For0*(VAR var, ctl: Item); (* ctl is initial value *)
+VAR loopvar: Item;
 BEGIN
   Trace(TraceAny, "For0(var: "); l.Item(var, Trc);
   l.s(", ctl: ", Trc);           l.Item(ctl, Trc); l.sl(")", Trc);
+  (*
   Load(ctl);
+  Depar(var);
+  ASSERT(ctl.mode = Reg);
+  ASSERT(var.mode IN {Eadr, Global, Import});
+  *)
+  (* Store ctl into var without changing var *)
+  loopvar := var;
+  IF loopvar.mode = Eadr THEN ASSERT(loopvar.n = RSP)
+  ELSE ASSERT(loopvar.mode IN {Global, Import}) END;
+  Store(loopvar, ctl);  FreeRegs(loopvar);  FreeRegs(ctl);
   Disassemble(0, "For0");
 END For0;
 
+
 PROCEDURE For1*(VAR var, ctl, lim, inc: Item; VAR L: INTEGER);
+VAR loopvar: Item;
 BEGIN
   Trace(TraceAny, "For1(var: "); l.Item(var, Trc);
   l.s(", ctl: ", Trc);           l.Item(ctl, Trc);
   l.s(", lim: ", Trc);           l.Item(lim, Trc);
   l.s(", inc: ", Trc);           l.Item(inc, Trc); l.sl(")", Trc);
+
+  loopvar := var;
+  IF loopvar.mode = Eadr THEN ASSERT(loopvar.n = RSP)
+  ELSE ASSERT(loopvar.mode IN {Global, Import}) END;
+
   ASSERT(inc.mode = Const);
   IF inc.n = 0 THEN ORS.Mark("zero increment"); inc.n := 1 END;
-  Dyadic(Cmp, ctl, lim);
+
+  Dyadic(Cmp, loopvar, lim);
   X64.Emit(0FH);
   IF inc.n > 0 THEN X64.Emit(87H) ELSE X64.Emit(83H) END; (* ja/jb *)
   L := X64.PC;
   X64.EmitBytes(4, 0);
-  Load(ctl);
-  StoreReg(ctl.n, var);
-  FreeRegs(var);  FreeRegs(ctl);
+
+  FreeRegs(loopvar);
+
   Disassemble(var.mode, "For1");
 END For1;
+
 
 PROCEDURE For2*(VAR var, ctl, inc: Item);
 BEGIN
   Trace(TraceAny, "For2(var: "); l.Item(var, Trc);
-  l.s(", ctl: ", Trc);           l.Item(ctl, Trc); l.sl(")", Trc);
-  Dyadic(Plus, ctl, inc);
-  FreeRegs(ctl);
+  l.s(", ctl: ", Trc);           l.Item(ctl, Trc);
+  l.s(", inc: ", Trc);           l.Item(inc, Trc); l.sl(")", Trc);
+
+  IF var.mode = Eadr THEN ASSERT(var.n = RSP)
+  ELSE ASSERT(var.mode IN {Global, Import}) END;
+
+  Dyadic(Plus, var, inc);
+  FreeRegs(var);
+  CheckRegs("For loop termination");
   Disassemble(0, "For2");
 END For2;
 
@@ -2467,18 +2536,22 @@ BEGIN
   Trace(TraceAny, "ORG Open('"); l.s(sourcefn, Trc); l.sl("')", Trc);
   X64.ClearStack;   ClearRegs;
   X64.Init;
+  w.sl("Calling ZeroFill(Hdr).");
   ZeroFill(Hdr);
+  w.sl("ZeroFill(Hdr) complete.");
   Strx     := 0;
   StrFInx  := 0;
   Varsize  := 0;
   VarFInx  := 0;
   ImpFInx  := 0;
   Disasmpc := 0;
+  w.sl("*6*");
   X64.SetPC(SYSTEM.SIZE(X64.CodeHeader));
   X64.Align(8); (* Increase alignment to match PO2013 where records are aligned on 8 bytes. *)
   X64.EmitString(modid);
   X64.Align(16);
-  Disasmpc := X64.PC
+  Disasmpc := X64.PC;
+  w.sl("ORG.Open complete.")
 END Open;
 
 PROCEDURE SetDataSize*(dc: INTEGER);

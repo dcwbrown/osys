@@ -1,4 +1,4 @@
-MODULE Fonts;  (*$la-*) (*$lc-*)
+MODULE Fonts;
 
 TYPE
    Font* = POINTER TO FontDesc;

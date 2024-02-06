@@ -104,7 +104,10 @@ BEGIN i := 0;
   UNTIL (ch < "0") OR (ch > "9") & (ch < "A") OR (ch > "Z") & (ch < "a") OR (ch > "z");
   id[i] := 0X;
   IF i < 10 THEN k := KWX[i-1];  (*search for keyword*)
-    WHILE (id # keyTab[k].id) & (k < KWX[i]) DO INC(k) END ;
+    WHILE (id # keyTab[k].id) & (k < KWX[i]) DO
+      (*w.s("  "); w.s(id); w.s(" # ["); w.i(k); w.s("] "); w.s(keyTab[k].id); w.sl(".");*)
+      INC(k)
+    END;
     IF k < KWX[i] THEN sym := keyTab[k].sym ELSE sym := ident END
   ELSE sym := ident
   END
@@ -115,10 +118,10 @@ PROCEDURE String;
 BEGIN i := 0; GetCh;
   WHILE ~R.eot & (ch # 22X) DO
     IF ch >= " " THEN
-      IF i < stringBufSize-1 THEN str[i] := ch; INC(i) ELSE Mark("string too long") END ;
-    END ;
+      IF i < stringBufSize-1 THEN str[i] := ch; INC(i) ELSE Mark("string too long") END;
+    END;
     GetCh
-  END ;
+  END;
   str[i] := 0X; INC(i); GetCh; slen := i
 END String;
 
@@ -134,8 +137,8 @@ RETURN val END GetHexChar;
 PROCEDURE HexString;
   VAR i, m, n: INTEGER;
 BEGIN i := 0; GetCh;
+  WHILE ~R.eot  & (ch <= " ") DO GetCh END;  (* skip whitespace *)
   WHILE ~R.eot & (ch # "$") DO
-    WHILE ~R.eot  & (ch <= " ") DO GetCh END;  (* skip whitespace *)
     m := GetHexChar();  n := GetHexChar();
     IF n >= 0 THEN m := m * 16 + n END;
     IF m < 0 THEN
@@ -146,7 +149,8 @@ BEGIN i := 0; GetCh;
       ELSE
         Mark("string too long")
       END
-    END
+    END;
+    WHILE ~R.eot  & (ch <= " ") DO GetCh END  (* skip whitespace *)
   END;
   GetCh; slen := i  (* No 0X appended! *)
 END HexString;
@@ -156,9 +160,9 @@ PROCEDURE Ten(e: INTEGER): REAL;
   VAR x, t: REAL;
 BEGIN x := 1.0; t := 10.0;
   WHILE e > 0 DO
-    IF ODD(e) THEN x := t * x END ;
+    IF ODD(e) THEN x := t * x END;
     t := t * t; e := e DIV 2
-  END ;
+  END;
   RETURN x
 END Ten;
 ---*)
@@ -170,19 +174,19 @@ PROCEDURE Number(VAR sym: INTEGER);
     negE: BOOLEAN;
 BEGIN ival := 0; i := 0; n := 0; k := 0;
   REPEAT
-    IF n < LEN(d) THEN d[n] := ORD(ch)-30H; INC(n) ELSE Mark("too many digits"); n := 0 END ;
+    IF n < LEN(d) THEN d[n] := ORD(ch)-30H; INC(n) ELSE Mark("too many digits"); n := 0 END;
     GetCh
   UNTIL (ch < "0") OR (ch > "9") & (ch < "A") OR (ch > "F");
   IF (ch = "H") OR (ch = "R") OR (ch = "X") THEN  (*hex*)
     REPEAT h := d[i];
-      IF h >= 10 THEN h := h-7 END ;
+      IF h >= 10 THEN h := h-7 END;
       k := k*10H + h; INC(i) (*no overflow check*)
     UNTIL i = n;
     IF ch = "X" THEN sym := char;
       IF k < 100H THEN ival := k ELSE Mark("illegal value"); ival := 0 END
     ELSIF ch = "R" THEN sym := real; rval := SYSTEM.VAL(REAL, k)
     ELSE sym := int; ival := k
-    END ;
+    END;
     GetCh
 
   ELSIF ch = "." THEN
@@ -192,7 +196,7 @@ BEGIN ival := 0; i := 0; n := 0; k := 0;
         IF d[i] < 10 THEN
           IF k <= (max-d[i]) DIV 10 THEN k := k *10 + d[i] ELSE Mark("too large"); k := 0 END
         ELSE Mark("bad integer")
-        END ;
+        END;
         INC(i)
       UNTIL i = n;
       sym := int; ival := k
@@ -204,25 +208,25 @@ BEGIN ival := 0; i := 0; n := 0; k := 0;
       REPEAT  (*integer part*) x := x * 10.0 + FLT(d[i]); INC(i) UNTIL i = n;
       WHILE (ch >= "0") & (ch <= "9") DO  (*fraction*)
         x := x * 10.0 + FLT(ORD(ch) - 30H); DEC(e); GetCh
-      END ;
+      END;
       IF (ch = "E") OR (ch = "D") THEN  (*scale factor*)
         GetCh; s := 0;
         IF ch = "-" THEN negE := TRUE; GetCh
         ELSE negE := FALSE;
           IF ch = "+" THEN GetCh END
-        END ;
+        END;
         IF (ch >= "0") & (ch <= "9") THEN
           REPEAT s := s*10 + ORD(ch)-30H; GetCh
           UNTIL (ch < "0") OR (ch >"9");
           IF negE THEN e := e-s ELSE e := e+s END
         ELSE Mark("digit?")
         END
-      END ;
+      END;
       IF e < 0 THEN
         IF e >= -maxExp THEN x := x / Ten(-e) ELSE x := 0.0 END
       ELSIF e > 0 THEN
         IF e <= maxExp THEN x := Ten(e) * x ELSE x := 0.0; Mark("too large") END
-      END ;
+      END;
       sym := real; rval := x
       ---*)
     END
@@ -231,7 +235,7 @@ BEGIN ival := 0; i := 0; n := 0; k := 0;
       IF d[i] < 10 THEN
         IF k <= (max-d[i]) DIV 10 THEN k := k*10 + d[i] ELSE Mark("too large"); k := 0 END
       ELSE Mark("bad integer")
-      END ;
+      END;
       INC(i)
     UNTIL i = n;
     sym := int; ival := k
@@ -255,7 +259,7 @@ BEGIN GetCh;
         IF ch = "*" THEN comment END
       ELSE GetCh
       END
-    END ;
+    END;
     WHILE ch = "*" DO GetCh END
   UNTIL (ch = ")") OR R.eot;
   IF ~R.eot THEN GetCh ELSE Mark("unterminated comment") END
@@ -315,7 +319,7 @@ BEGIN
       ELSIF ch = "]" THEN sym := rbrak
       ELSIF ch = "^" THEN sym := arrow
                      ELSE sym := null  (* _ ` *)
-      END ;
+      END;
       GetCh
     ELSIF ch < "{" THEN Identifier(sym) ELSE
       IF    ch = "{" THEN sym := lbrace
@@ -324,10 +328,11 @@ BEGIN
       ELSIF ch = "~" THEN sym := not
       ELSIF ch = 7FX THEN sym := upto
                      ELSE sym := null
-      END ;
+      END;
       GetCh
     END
-  UNTIL sym # null
+  UNTIL sym # null;
+  (*w.s("GetSym -> "); IF sym = ident THEN w.s(id) ELSE w.i(sym) END; w.sl(".");*)
 END Get;
 
 PROCEDURE Init*(T: Texts.Text; pos: INTEGER);

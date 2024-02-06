@@ -198,6 +198,10 @@ RETURN Ticks() DIV 10000 END Time;
 PROCEDURE Append*(s: ARRAY OF CHAR; VAR d: ARRAY OF CHAR);
 BEGIN P.Append(s, d) END Append;
 
+PROCEDURE Halt*(exitCode: INTEGER);
+BEGIN (*Heap.Finalise;*)  P.ExitProcess(exitCode) END Halt;
+
+
 (*
 PROCEDURE Clock*(): INTEGER;  (* Packed date and time *)
 BEGIN RETURN clock
