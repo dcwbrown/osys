@@ -14,12 +14,6 @@
 @echo ------------------------------------------------------------------------
 bootstrap\build\obuild
 @if errorlevel 1 goto end
-@echo ------------------------------------------------------------------------
-:: ::
-:: :: run linktest2
-:: ::
-:: @echo ------------------------------------------------------------------------
-:: @linktest2
 ::
 ::  use final compiler to rebuild compiler
 ::
@@ -27,6 +21,7 @@ bootstrap\build\obuild
 @cd bootstrap\build2
 @del /q *.* >NUL
 @copy ..\..\*.mod
+@echo ------------------------------------------------------------------------
 @..\..\obuild obuild.mod
 @cd ..\..
 :end

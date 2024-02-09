@@ -101,19 +101,19 @@ TYPE
 
   TypeDesc* = RECORD
     form*:   INTEGER;
-    mno*:    INTEGER;  (* <0: stack. 0: global. >0: import module num  *)
-    ref*:    INTEGER;  (* Only used for import/export                  *)
-    nofpar*: INTEGER;  (* For procedures: parameter count              *)
-                       (* For records:    extension level              *)
-    len*:    INTEGER;  (* For arrays:     len < 0 => open array        *)
-                       (* For records:    adr of descriptor            *)
-                       (* For procedures: size of params               *)
-    dsc*:    Object;   (* For procedure:  params & local vars          *)
-                       (* For records:    fields                       *)
-    typobj*: Object;   (* For Typ:        object representing type     *)
-    base*:   Type;     (* For arrays, records, pointers, fn procedures *)
-    size*:   INTEGER;  (* In bytes. For procedures: 8                  *)
-    native*: BOOLEAN   (* procedure using native abi                   *)
+    mno*:    INTEGER;  (* <0: stack. 0: global. >0: import module num      *)
+    ref*:    INTEGER;  (* Only used for import/export                      *)
+    nofpar*: INTEGER;  (* For procedures: parameter count                  *)
+                       (* For records:    extension level                  *)
+    len*:    INTEGER;  (* For arrays:     element count, < 0 => open array *)
+                       (* For records:    adr of descriptor                *)
+                       (* For procedures: size of params                   *)
+    dsc*:    Object;   (* For procedure:  params & local vars              *)
+                       (* For records:    fields                           *)
+    typobj*: Object;   (* For Typ:        object representing type         *)
+    base*:   Type;     (* For arrays, records, pointers, fn procedures     *)
+    size*:   INTEGER;  (* In bytes. For procedures: 8                      *)
+    native*: BOOLEAN   (* procedure using native abi                       *)
   END;
 
 
@@ -137,7 +137,9 @@ VAR
 PROCEDURE NewObj*(VAR obj: Object; id: ORS.Ident; class: INTEGER);
 (*insert new Object with name id*)
 VAR new, x: Object;
-BEGIN x := topScope;
+BEGIN
+  (*w.s("ORB.NewObj, id: '"); w.s(id); w.sl("'.");*)
+  x := topScope;
   WHILE (x.next # NIL) & (x.next.name # id) DO x := x.next END;
   IF x.next = NIL THEN
     NEW(new);
@@ -249,7 +251,7 @@ VAR key: INTEGER;
     name, modname: ORS.Ident;
     b: BYTE;
 BEGIN Read(R, ref);
-  w.s("InType: ref read "); w.i(ref); w.sl(".");
+  (*w.s("InType: ref read "); w.i(ref); w.sl(".");*)
   IF ref < 0 THEN
     T := typtab[-ref];  (*already read*)
     ASSERT(T # NIL)
@@ -311,7 +313,7 @@ BEGIN
     thismod.lev := 0; thismod.dsc := system; thismod.rdo := TRUE
   ELSE MakeFileName(fname, modid1, ".smb"); F := Files.Old(fname);
     IF F # NIL THEN
-      w.l; w.s("Importing module "); w.s(modid); w.sl(".");
+      (*w.l; w.s("Importing module "); w.s(modid); w.sl(".");*)
       Files.Set(R, F, 0); Files.ReadInt(R, key); Files.ReadInt(R, key); Files.ReadString(R, modname);
       thismod := ThisModule(modid, modid1, TRUE, key); thismod.rdo := TRUE;
       Read(R, class); (*version key*)
@@ -336,7 +338,7 @@ BEGIN
       ORS.Mark("import not available")
     END
   END;
-  w.sl("ORB.Import complete.")
+  (*w.sl("ORB.Import complete.")*)
 END Import;
 
 
@@ -379,9 +381,11 @@ BEGIN
   IF t.ref > 0 THEN (*type was already output*) Write(R, -t.ref)
   ELSE obj := t.typobj;
     IF obj # NIL THEN
-      Write(R, Ref); t.ref := Ref; INC(Ref); w.s("OutType: t.ref "); w.i(t.ref); w.sl(".");
+      Write(R, Ref); t.ref := Ref; INC(Ref);
+      (*w.s("OutType: t.ref "); w.i(t.ref); w.sl(".");*)
     ELSE (*anonymous*)
-      Write(R, 0); w.sl("OutType: t.ref 0 (anonymous, was).");
+      Write(R, 0);
+      (*w.sl("OutType: t.ref 0 (anonymous, was).");*)
     END;
     Write(R, t.form);
     IF t.form = Pointer THEN OutType(R, t.base)
@@ -483,10 +487,12 @@ PROCEDURE type(ref, form: INTEGER; size: INTEGER): Type;
 VAR tp, tp2: Type;
 BEGIN
   NEW(tp); tp.form := form; tp.size := size; tp.ref := ref; tp.base := NIL;
+  (*
   w.s("Create type, ref ");  w.i(ref);
   w.s(", typtab at ");       w.h(SYSTEM.ADR(typtab));
   w.s("H, typtab[ref] at "); w.h(SYSTEM.ADR(typtab[ref]));
   w.sl("H.");
+  *)
   tp2 := typtab[ref];
   typtab[ref] := tp; RETURN tp
 END type;

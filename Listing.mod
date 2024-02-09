@@ -584,6 +584,7 @@ BEGIN
   ELSIF (opcode >= 80H) & (opcode <= 83H) THEN (* alu with immediate op *)
 
     IF opcode = 81H THEN dispsize := 4 ELSE dispsize := 1 END;
+    IF opcode = 80H THEN regsize := 1 END;
     DisModRegRm(pc, opcode, base, index, disp, scale, regsize, indirect, Args);
     AluOp(opcode, Inst);
     IF indexhigh & (index < 8) THEN INC(index, 8) END;

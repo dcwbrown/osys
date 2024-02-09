@@ -150,17 +150,17 @@ VAR
   tag:  CHAR;
   len:  INTEGER;
 BEGIN
-  P.ws("Texts.Open('"); P.ws(name); P.wsl("').");
+  (*P.ws("Texts.Open('"); P.ws(name); P.wsl("').");*)
   f := Files.Old(name);
-  P.ws("  opened, f = "); P.wh(SYSTEM.VAL(INTEGER, f)); P.wsl("H.");
+  (*P.ws("  opened, f = "); P.wh(SYSTEM.VAL(INTEGER, f)); P.wsl("H.");*)
   IF f # NIL THEN
     Files.Set(R, f, 0); Files.Read(R, tag);
-    P.ws("  read tag: "); P.wh(ORD(tag)); P.wsl("H.");
+    (*P.ws("  read tag: "); P.wh(ORD(tag)); P.wsl("H.");*)
     IF tag = TextTag THEN
-      P.wsl("  Tag matches - this is an Oberon formatted text file.");
+      (*P.wsl("  Tag matches - this is an Oberon formatted text file.");*)
       Load(R, T)
     ELSE (*Ascii file*)
-      P.wsl("  Ascii text file.");
+      (*P.wsl("  Ascii text file.");*)
       len := Files.Length(f); Q := Trailer();
       NEW(q); q.fnt := Fonts.Default; q.col := 1; q.voff := 0; q.f := f; q.off := 0; q.len := len;
       Q.next := q; q.prev := Q; q.next := Q; Q.prev := q; T.trailer := Q; T.len := len
@@ -479,7 +479,7 @@ BEGIN
   W.voff := 0;
   (*P.ws("After W.voff :=, W "); DumpWriter(W); P.wsl(".");*)
   Files.Set(W.rider, Files.New(""), 0);
-  (*P.ws("After Files.Set, W "); DumpWriter(W); P.wsl(".");*)
+  (*P.ws("OpenWriter returning W "); DumpWriter(W); P.wsl(".");*)
 END OpenWriter;
 
 PROCEDURE SetFont* (VAR W: Writer; fnt: Fonts.Font);
@@ -519,7 +519,12 @@ END WriteLn;
 
 PROCEDURE WriteString* (VAR W: Writer; s: ARRAY OF CHAR);
 VAR i: INTEGER;
-BEGIN i := 0;
+BEGIN
+  (*
+  P.ws("Texts.WriteString(W, '"); P.ws(s); P.wsl("').");
+  P.ws("W: "); DumpWriter(W); P.wl;
+  *)
+  i := 0;
   WHILE s[i] >= " " DO Write(W, s[i]); INC(i) END
 END WriteString;
 

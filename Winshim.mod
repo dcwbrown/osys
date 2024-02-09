@@ -719,10 +719,12 @@ VAR
   expadr:      INTEGER;  (* Address relative to imported module of an export *)
   modulebody:  PROCEDURE;
 BEGIN
+  (*
   ws("Loading ");  WriteModuleName(modadr);
   ws(" from ");    wh(modadr);
   ws("H to ");     wh(LoadAdr);  wsl("H.");
   WriteModuleHeader(modadr);
+  *)
 
   hdr := SYSTEM.VAL(CodeHeaderPtr, modadr);
   SYSTEM.COPY(modadr, LoadAdr, hdr.imports);  (* Copy up to but excluding import table *)
@@ -730,8 +732,14 @@ BEGIN
   loadedsize := (hdr.imports + hdr.varsize + 15) DIV 16 * 16;
   (*ws("Loaded size "); wh(loadedsize); wsl("H.");*)
   SYSTEM.PUT(LoadAdr, loadedsize);      (* Update length in header to loaded size *)
-  ws("Writing sentinel at "); wh(LoadAdr + loadedsize); wsl("H.");
+  (*ws("Writing sentinel at "); wh(LoadAdr + loadedsize); wsl("H.");*)
   SYSTEM.PUT(LoadAdr + loadedsize, 0);  (* Add sentinel zero length module *)
+
+  ws("Loaded ");          WriteModuleName(modadr);
+  ws(" at ");             wh(LoadAdr);
+  ws("H, code ");         wh(hdr.imports);
+  ws("H bytes, data ");   wh(hdr.varsize);
+  ws("H bytes, limit ");  wh(LoadAdr + loadedsize);  wsl("H.");
 
   (* Build list of imported module header addresses *)
   i := 0;

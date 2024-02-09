@@ -1,8 +1,6 @@
 MODULE ORP;  (*N. Wirth 1.7.97 / 17.9.2018  Oberon compiler for RISC in Oberon-07*)
 
-(*$la+*)(*$lc+*)
-
-IMPORT Texts, Oberon, ORS, ORB, X64, ORG, l := Listing, w := Writer;
+IMPORT SYSTEM, Texts, Oberon, ORS, ORB, X64, ORG, l := Listing, w := Writer;
 
   (*Author: Niklaus Wirth, 2014.
     Parser of Oberon-RISC compiler. Uses Scanner ORS to obtain symbols (tokens),
@@ -226,13 +224,14 @@ END CompTypes;
 PROCEDURE Parameter(par: ORB.Object; native: BOOLEAN);
 VAR x: X64.Item;  varpar: BOOLEAN;  stkoff: INTEGER;
 BEGIN
-  l.StartRightCol; l.s("Parameter: ", Tr); l.Object(par, Tr); l.sl(".", Tr);
+  IF ORS.ListCodegen THEN l.StartRightCol; l.s("Parameter: ", Tr); l.Object(par, Tr); l.sl(".", Tr) END;
   expression(x);
   IF par # NIL THEN
     varpar := par.class = ORB.Par;
     IF native THEN stkoff := par.val ELSE stkoff := 0 END;
     IF CompTypes(par.type, x.type, varpar) THEN
-      IF ~varpar THEN ORG.ValueParam(x, stkoff)
+      IF ~varpar THEN
+        ORG.ValueParam(x, stkoff)
       ELSE (*par.class = Par*)
         IF ~par.rdo THEN CheckReadOnly(x) END;
         ORG.VarParam(x, par.type, stkoff)
@@ -245,15 +244,15 @@ BEGIN
         & (par.type.form = ORB.Array) & (par.type.base.form = ORB.Char)
         & (par.type.len < 0) THEN
       ORG.StringParam(x, stkoff)
-  (*ELSIF ~varpar & (par.type.form = ORB.Int64) & (x.type.form = ORB.Int64) THEN
-      ORG.ValueParam(x)  (*BYTE*) *)
+    ELSIF ~varpar & (par.type.form = ORB.Int64) & (x.type.form = ORB.Int64) THEN
+      ORG.ValueParam(x, stkoff)  (* BYTE/INTEGER interop *)
     ELSIF (x.type.form = ORB.String) & (x.n = 2)
         & (par.class = ORB.Var) & (par.type.form = ORB.Char) THEN
       ASSERT(x.mode = X64.String);
       ORG.StrToChar(x);  ORG.ValueParam(x, stkoff)
-    ELSIF (par.type.form = ORB.Array) & (par.type.base = ORB.byteType)
-     (* & (par.type.len >= 0) & (par.type.size = x.type.size) *) THEN
-      ORG.VarParam(x, par.type, stkoff)
+    ELSIF (par.type.form = ORB.Array) & (par.type.base = ORB.byteType) & (par.type.len < 0) THEN
+      IF ~par.rdo THEN CheckReadOnly(x) END;
+      ORG.ArrayOfByteParam(x, stkoff)  (* Can pass anything to a dynamic array of byte *)
     ELSE ORS.Mark("incompatible parameters");
       l.l(Tr);
       l.s("par.type ", Tr);         l.Type(par.type, Tr);
@@ -389,12 +388,15 @@ BEGIN (*sync*)
   ELSIF sym = ORS.lbrace THEN ORS.Get(sym);  set(x);         Check(ORS.rbrace, "no }")
   ELSIF sym = ORS.not    THEN ORS.Get(sym);  factor(x);  CheckBool(x);  ORG.Not(x)
   ELSE ORS.Mark("not a factor");  ORG.MakeConstItem(x, ORB.intType, 0)
-  END
+  END;
+
 END factor;
 
 PROCEDURE term(VAR x: X64.Item);
 VAR y: X64.Item;  op, f: INTEGER;
-BEGIN factor(x);  f := x.type.form;
+BEGIN
+  factor(x);
+  f := x.type.form;
   WHILE (sym >= ORS.times) & (sym <= ORS.and) DO
     op := sym;  ORS.Get(sym);
     IF op = ORS.times THEN
@@ -412,16 +414,25 @@ BEGIN factor(x);  f := x.type.form;
       END
     ELSE (*op = and*) CheckBool(x);  ORG.And1(x);  factor(y);  CheckBool(y);  ORG.And2(x, y)
     END
-  END
+  END;
 END term;
 
 PROCEDURE SimpleExpression(VAR x: X64.Item);
 VAR y: X64.Item;  op: INTEGER;
 BEGIN
-  IF sym = ORS.minus THEN ORS.Get(sym);  term(x);
-    IF x.type.form IN {ORB.Int64, ORB.Real, ORB.Set} THEN ORG.Neg(x) ELSE CheckInt(x) END
-  ELSIF sym = ORS.plus THEN ORS.Get(sym);  term(x);
-  ELSE term(x)
+  IF sym = ORS.minus THEN
+    ORS.Get(sym);
+    term(x);
+    IF x.type.form IN {ORB.Int64, ORB.Real, ORB.Set} THEN
+      ORG.Neg(x)
+    ELSE
+      CheckInt(x)
+    END
+  ELSIF sym = ORS.plus THEN
+    ORS.Get(sym);
+    term(x);
+  ELSE
+    term(x)
   END;
   WHILE (sym >= ORS.plus) & (sym <= ORS.or) DO
     op := sym;  ORS.Get(sym);
@@ -430,12 +441,13 @@ BEGIN
     ELSIF x.type.form = ORB.Real THEN term(y);  CheckReal(y);  ORG.RealOp(op, x, y)
     ELSE CheckSet(x);  term(y);  CheckSet(y);  ORG.SetOp(op, x, y)
     END
-  END
+  END;
 END SimpleExpression;
 
 PROCEDURE expression0(VAR x: X64.Item);
 VAR y: X64.Item;  obj: ORB.Object;  rel, xf, yf: INTEGER;
-BEGIN SimpleExpression(x);
+BEGIN
+  SimpleExpression(x);
   IF (sym >= ORS.eql) & (sym <= ORS.geq) THEN
     rel := sym;  ORS.Get(sym);  SimpleExpression(y);  xf := x.type.form;  yf := y.type.form;
     IF x.type = y.type THEN
@@ -563,7 +575,12 @@ BEGIN (* StatSequence *)
           ELSIF (x.type.form = ORB.Int64) & (y.type.form = ORB.Int64) THEN ORG.Store(x, y)  (*BYTE*)
           ELSIF (x.type.form = ORB.Char) & (y.type.form = ORB.String) & (y.n = 2) THEN ASSERT(y.mode = X64.String);
             ORG.StrToChar(y);  ORG.Store(x, y)
-          ELSE ORS.Mark("illegal assignment")
+          ELSE
+            l.s("StatSequence - illegal assignment: x.type ", Tr); l.Type(x.type, Tr);
+            l.s(", y.type ", Tr);      l.Type(y.type, Tr);                    l.l(Tr);
+            l.s("x.type at ", Tr);     l.h(SYSTEM.VAL(INTEGER, x.type), Tr);
+            l.s("H, y.type at ", Tr);  l.h(SYSTEM.VAL(INTEGER, y.type), Tr);  l.sl("H.", Tr);
+            ORS.Mark("illegal assignment")
           END
         ELSIF sym = ORS.eql THEN ORS.Mark("should be :=");  ORS.Get(sym);  expression(y)
         ELSIF sym = ORS.lparen THEN (*procedure call*)
@@ -927,10 +944,13 @@ BEGIN (*sync*) pbsList := NIL;
   IF sym = ORS.const THEN
     ORS.Get(sym);
     WHILE sym = ORS.ident DO
-      ORS.CopyId(id);  ORS.Get(sym);  CheckExport(expo);
+      ORS.CopyId(id);
+      ORS.Get(sym);  CheckExport(expo);
       IF sym = ORS.eql THEN ORS.Get(sym) ELSE ORS.Mark("= ?") END;
       expression(x);
-      IF (x.type.form = ORB.String) & (x.n = 2) THEN ASSERT(x.mode = X64.String); ORG.StrToChar(x) END;
+      IF (x.type.form = ORB.String) & (x.n = 2) THEN
+        ASSERT(x.mode = X64.String); ORG.StrToChar(x)
+      END;
       ORB.NewObj(obj, id, ORB.Const);
       obj.expo := expo;
       IF (x.mode = X64.Const) OR (x.type.form = ORB.String) THEN
@@ -1059,16 +1079,17 @@ BEGIN ORS.Get(sym);  CheckNative(native);
     (* passing is limited to 8 byte paremeters: we do not support passing  *)
     (* of arrays or records other than by the use of SYSTEM.ADR.           *)
 
-    l.CatchupSource;
-    l.s("Procedure declaration '", Tr);  l.s(procid, Tr);  l.sl("'.", Tr);
-    (* --- dump objects --- *)
-    l.s("parmsize: $",    Tr); l.h(parmsize, Tr);
-    l.s(", locsize: $",   Tr); l.h(locsize, Tr);
-    l.s(", framesize: $", Tr); l.h(framesize, Tr); l.l(Tr);
-
-    longestname := 0;  obj := type.dsc;  WHILE obj # NIL DO
-      IF slen(obj.name) > longestname THEN longestname := slen(obj.name) END;
-      obj := obj.next
+    IF ORS.ListCodegen THEN
+      l.CatchupSource;
+      l.s("Procedure declaration '", Tr);  l.s(procid, Tr);  l.sl("'.", Tr);
+      (* --- dump objects --- *)
+      l.s("parmsize: $",    Tr); l.h(parmsize, Tr);
+      l.s(", locsize: $",   Tr); l.h(locsize, Tr);
+      l.s(", framesize: $", Tr); l.h(framesize, Tr); l.l(Tr);
+      longestname := 0;  obj := type.dsc;  WHILE obj # NIL DO
+        IF slen(obj.name) > longestname THEN longestname := slen(obj.name) END;
+        obj := obj.next
+      END
     END;
 
     obj := type.dsc;
@@ -1081,11 +1102,15 @@ BEGIN ORS.Get(sym);  CheckNative(native);
             INC(obj.val, framesize)  (* Normal parameter *)
           END
         END;
-        l.Class(obj.class, Tr);  l.s(" ", Tr);  l.sn(obj.name, longestname, Tr);
-        l.s(" adr $", Tr);       l.hn(obj.val, 6, Tr);
+        IF ORS.ListCodegen THEN
+          l.Class(obj.class, Tr);  l.s(" ", Tr);  l.sn(obj.name, longestname, Tr);
+          l.s(" adr $", Tr);       l.hn(obj.val, 6, Tr)
+        END
       END;
-      l.s(" type ", Tr);  l.Type(obj.type, Tr);
-      l.l(Tr);
+      IF ORS.ListCodegen THEN
+        l.s(" type ", Tr);  l.Type(obj.type, Tr);
+        l.l(Tr)
+      END;
       obj := obj.next
     END;
 
@@ -1185,7 +1210,7 @@ BEGIN Texts.WriteString(W, "  compiling ");  ORS.Get(sym);
       IF (obj.class = ORB.Typ)
        & (obj.type.form = ORB.Pointer)
        & (obj.type.base.typobj # NIL) THEN
-      IF obj.type.base.typobj.exno = 0 THEN
+        IF ORS.ListCodegen & (obj.type.base.typobj.exno = 0) THEN
           l.s("Adding type descriptor table export for ", Tr);
           l.s(obj.name, Tr);  l.s(" -> ", Tr);
           l.s(obj.type.base.typobj.name, Tr);  l.l(Tr);
@@ -1272,7 +1297,10 @@ BEGIN
 END CompileFile;
 
 BEGIN
-  Texts.OpenWriter(W);  Texts.WriteString(W, "OR Compiler  17.9.2018");
+  Texts.OpenWriter(W);
+  w.sl("Calling Texts.WriteString.");
+  Texts.WriteString(W, "OR Compiler  17.9.2018");
+  w.sl("Texts.WriteString returned.");
   Texts.WriteLn(W);  Texts.Append(Oberon.Log, W.buf);
   l.InitBuf(Tr);
   l.s("hn test: hn(0, 4, buf) ", Tr); l.hn(0, 4, Tr); l.sl(".", Tr);

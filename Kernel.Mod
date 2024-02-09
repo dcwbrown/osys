@@ -221,16 +221,17 @@ CONST
   reserve = 80000000H;  (* Reserve 2GB contiguous *)
   commit  = 2000000H;   (* Initially commit 32MB  *)
 BEGIN
+  (*
   P.wsl("Kernel initialising.");
-
   P.ws("P.VirtualAlloc at ");  P.wh(SYSTEM.VAL(INTEGER, P.VirtualAlloc));  P.wsl("H.");
+  *)
 
   (* Initialize heap *)
-  HeapOrg := P.VirtualAlloc(0, reserve, MEMRESERVE, PAGEREADWRITE);
-  P.ws("Virtual alloc reservation returned ");  P.wh(HeapOrg);  P.wsl("H.");
+  HeapOrg := P.VirtualAlloc(80000000H, reserve, MEMRESERVE, PAGEREADWRITE);
+  (*P.ws("Virtual alloc reservation returned ");  P.wh(HeapOrg);  P.wsl("H.");*)
   ASSERT(HeapOrg # 0);
   HeapOrg := P.VirtualAlloc(HeapOrg, commit, MEMCOMMIT, PAGEREADWRITE);
-  P.ws("Virtual alloc commit returned ");  P.wh(HeapOrg);  P.wsl("H.");
+  (*P.ws("Virtual alloc commit returned ");  P.wh(HeapOrg);  P.wsl("H.");*)
   ASSERT(HeapOrg # 0);
 
   HeapLimit := HeapOrg + commit;
@@ -245,8 +246,9 @@ BEGIN
 
   SYSTEM.PUT(SYSTEM.ADR(P.NewPointer), SYSTEM.ADR(New));
 
-  P.ws("Kernel initialisation complete. HeapOrg "); P.wh(HeapOrg);
-  P.ws("H, HeapLimit "); P.wh(HeapLimit); P.wsl("H.");
+  P.ws("Heap allocated at "); P.wh(HeapOrg);
+  P.ws("H, commited to ");    P.wh(HeapOrg + commit);
+  P.ws("H, reserved to ");    P.wh(HeapOrg + reserve);  P.wsl("H.");
 END Init;
 
 BEGIN Init END Kernel.

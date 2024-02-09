@@ -3,7 +3,7 @@ MODULE X64;  (* DCWB August 2023; X64 constants *)
 IMPORT SYSTEM, ORS, ORB, w := Writer;
 
 CONST
-  MaxPC* = 10000H;  (* Text generation buffer size (64KB) *)
+  MaxPC* = 20000H;  (* Text generation buffer size (128KB) *)
 
   (* Named registers *)
   RAX* = 0;

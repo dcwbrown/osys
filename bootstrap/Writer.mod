@@ -2,6 +2,8 @@ MODULE Writer;  (* Character output convenience functions *)
 
 IMPORT SYSTEM, K := Kernel;
 
+CONST HO* = FALSE;
+
 VAR
   crlf:     ARRAY 2 OF CHAR;
   skipline: BOOLEAN;

@@ -4,6 +4,8 @@ MODULE Writer;  (* Character output convenience functions *)
 
 IMPORT SYSTEM, P := Winshim;
 
+CONST HO* = TRUE;
+
 VAR skipline: BOOLEAN;
 
 PROCEDURE SkipLine*; BEGIN skipline := TRUE  END SkipLine;
