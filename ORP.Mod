@@ -728,16 +728,33 @@ BEGIN NEW(typ);
   ELSE
     ORS.Mark("missing OF");  typ.base := ORB.intType
   END;
-  typ.size := (len * typ.base.size + 7) DIV 8 * 8;
+  typ.size := len * typ.base.size;  (* Was: (len * typ.base.size + 7) DIV 8 * 8 *)
   typ.form := ORB.Array;
   typ.len  := len;
   type     := typ
 END ArrayType;
 
+PROCEDURE Alignment(type: ORB.Type): INTEGER;
+VAR result, align: INTEGER;  field: ORB.Object;
+BEGIN
+  IF type.form = ORB.Array THEN
+    result := Alignment(type.base)
+  ELSIF type.form = ORB.Record THEN
+    result := 0;  field := type.dsc;
+    WHILE field # NIL DO
+      align := Alignment(field.type);
+      IF align > result THEN result := align END;
+      field := field.next
+    END
+  ELSE
+    result := type.size
+  END
+RETURN result END Alignment;
+
 PROCEDURE RecordType(VAR type: ORB.Type);
 VAR obj, obj0, new, bot, base: ORB.Object;
     typ, tp: ORB.Type;
-    offset, off, n: INTEGER;
+    offset, off, align, n: INTEGER;
 BEGIN NEW(typ);  typ.form := ORB.NoTyp;  typ.base := NIL;  typ.mno := -level;  typ.nofpar := 0;
   offset := 0;  bot := NIL;
   IF sym = ORS.lparen THEN
@@ -777,9 +794,10 @@ BEGIN NEW(typ);  typ.form := ORB.NoTyp;  typ.base := NIL;  typ.mno := -level;  t
     (*IF tp.size > 1 THEN offset := (offset + 7) DIV 8 * 8 END;*)
 
     (* Align suitably for size of field *)
-    IF    tp.size > 4 THEN offset := (offset + 7) DIV 8 * 8
-    ELSIF tp.size > 2 THEN offset := (offset + 3) DIV 4 * 4
-    ELSIF tp.size > 1 THEN offset := (offset + 1) DIV 2 * 2
+    align := Alignment(tp);
+    IF    align > 4 THEN offset := (offset + 7) DIV 8 * 8
+    ELSIF align > 2 THEN offset := (offset + 3) DIV 4 * 4
+    ELSIF align > 1 THEN offset := (offset + 1) DIV 2 * 2
     END;
 
     offset := offset + n * tp.size;  off := offset;  obj0 := obj;
@@ -1167,7 +1185,7 @@ BEGIN Texts.WriteString(W, "  compiling ");  ORS.Get(sym);
     IF sym = ORS.import THEN
       ORS.Get(sym);
       WHILE sym = ORS.ident DO
-        w.s("Importing "); w.s(ORS.id); w.sl(".");
+        (*w.s("Importing "); w.s(ORS.id); w.sl(".");*)
         ORS.CopyId(impid);  ORS.Get(sym);
         IF sym = ORS.becomes THEN
           ORS.Get(sym);
@@ -1185,7 +1203,7 @@ BEGIN Texts.WriteString(W, "  compiling ");  ORS.Get(sym);
     END;
 
     ORG.Open(sourcefn, modid);
-    w.sl("Parse declarations.");
+    (*w.sl("Parse declarations.");*)
     Declarations(dc);
     ORG.SetDataSize((dc + 7) DIV 8 * 8);
 
@@ -1229,16 +1247,19 @@ BEGIN Texts.WriteString(W, "  compiling ");  ORS.Get(sym);
     END;
 
     IF ORS.errcnt = 0 THEN
+      (*
       Texts.WriteString(W, "Exporting symbols for module ");
       Texts.WriteString(W, modid); Texts.WriteLn(W);
+      *)
       ORB.Export(modid, newSF, key);
       IF newSF THEN Texts.WriteString(W, " new symbol file") END
     END;
 
     IF ORS.errcnt = 0 THEN
       ORG.Close(modid, key, exno);
-      Texts.WriteInt(W, X64.PC, 6);  Texts.WriteInt(W, dc, 6);  Texts.WriteHex(W, key)
-    ELSE Texts.WriteLn(W);  Texts.WriteString(W, "compilation FAILED")
+      Texts.WriteInt(W, X64.PC, 8);  Texts.WriteInt(W, dc, 8);  Texts.WriteHex(W, key)
+    ELSE
+      Texts.WriteLn(W);  Texts.WriteString(W, "compilation FAILED")
     END;
 
     Texts.WriteLn(W);  Texts.Append(Oberon.Log, W.buf);
@@ -1291,19 +1312,16 @@ END Compile;
 PROCEDURE CompileFile*(fn: ARRAY OF CHAR);
 VAR T: Texts.Text;
 BEGIN
-  w.s("CompileFile('"); w.s(fn); w.sl("').");
+  (*w.s("CompileFile('"); w.s(fn); w.sl("').");*)
   NEW(T);  Texts.Open(T, fn);  IF T.len > 0 THEN ORS.Init(T, 0);
   Module(fn) END;
 END CompileFile;
 
 BEGIN
   Texts.OpenWriter(W);
-  w.sl("Calling Texts.WriteString.");
-  Texts.WriteString(W, "OR Compiler  17.9.2018");
-  w.sl("Texts.WriteString returned.");
+  Texts.WriteString(W, "OR Compiler  09.02.2024");
   Texts.WriteLn(W);  Texts.Append(Oberon.Log, W.buf);
   l.InitBuf(Tr);
-  l.s("hn test: hn(0, 4, buf) ", Tr); l.hn(0, 4, Tr); l.sl(".", Tr);
   NEW(dummy);  dummy.class := ORB.Var;  dummy.type := ORB.intType;
   expression := expression0;  Type := Type0;  FormalType := FormalType0
 END ORP.

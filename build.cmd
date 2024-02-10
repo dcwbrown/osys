@@ -24,4 +24,16 @@ bootstrap\build\obuild
 @echo ------------------------------------------------------------------------
 @..\..\obuild obuild.mod
 @cd ..\..
+@if errorlevel 1 goto end
+::
+::  use rebuilt compiler to build another
+::
+@mkdir bootstrap\build3 >NUL 2>NUL
+@cd bootstrap\build3
+@del /q *.* >NUL
+@copy ..\..\*.mod
+@echo ------------------------------------------------------------------------
+@..\build2\obuild obuild.mod
+@cd ..\..
+
 :end

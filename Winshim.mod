@@ -134,13 +134,6 @@ VAR
 
 PROCEDURE NoLog(s: ARRAY OF BYTE); BEGIN END NoLog;
 
-PROCEDURE ForLoopTest();
-VAR i, j: INTEGER;
-BEGIN
-  FOR i := 0 TO 10 DO INC(j,i) END;
-END ForLoopTest;
-
-
 (* -------------------------------------------------------------------------- *)
 (* ---------------------- Very basic string functions ----------------------- *)
 (* -------------------------------------------------------------------------- *)

@@ -1,4 +1,5 @@
 MODULE WinPE;  (* Create exe from a list of compiled Oberon modules *)
+(* DCWB 14.04.2023..10.02.2024 *)
 IMPORT SYSTEM, K := Kernel, X64, Files, w := Writer;
 
 
@@ -21,13 +22,14 @@ TYPE
     next: ObjectFile;
     name: ARRAY 1204 OF CHAR
   END;
+  Zeroes58 = ARRAY 3AH OF BYTE;
 
   U8  = BYTE;         U16 = SYSTEM.CARD16;  U32 = SYSTEM.CARD32;
   I8  = SYSTEM.INT8;  I16 = SYSTEM.INT16;   I32 = SYSTEM.INT32;   I64 = INTEGER;
 
   PEheader = RECORD
     eMagic:     U16;  (* 5AD4 *)
-    zeroes:     ARRAY 3AH OF BYTE;
+    zeroes:     Zeroes58;
     eLfanew:    U32;
     dosProgram: ARRAY 40H OF CHAR;
     signature:  U32;
@@ -191,13 +193,19 @@ VAR
   BEGIN
     lookups[n] := RvaImport + SYSTEM.SIZE(ImportDirectoryTable) + i;
     INC(n);
-    hints[i] := dll;  INC(i, 2);  AddProc(hints, i, name);
+    ASSERT(dll < 256);
+    hints[i] := dll;  hints[i+1] := 0;  INC(i, 2);
+    AddProc(hints, i, name);
   END AddImport;
 
 BEGIN
   ZeroFill(Idt);
 
   Idt.Kernel32LookupTable := FieldRVA(Idt.Kernel32Lookups);
+  (*
+  w.s("Idt.Kernel32LookupTable: "); w.h(Idt.Kernel32LookupTable); w.sl("H.");
+  w.s("FieldRVA(Idt.Kernel32Lookups): "); w.h(FieldRVA(Idt.Kernel32Lookups)); w.sl("H.");
+  *)
   Idt.Kernel32Dllnameadr  := FieldRVA(Idt.Kernel32Dllname);
   Idt.Kernel32Dllname     := "KERNEL32.DLL";
   Idt.Kernel32Target      := RvaModules + Bootstrap.Header.imports + 8;  (* 8 for HeaderAdr var *)
@@ -248,14 +256,22 @@ BEGIN
 
   hintsize := i;
 
-
   spos(FadrImport);
 
+  (*
+  w.sl("Import directory table:");
+  w.DumpMem(2, SYSTEM.ADR(Idt), 0, SYSTEM.SIZE(ImportDirectoryTable));
+  *)
   Files.WriteBytes(Exe, Idt, 0, SYSTEM.SIZE(ImportDirectoryTable));
+
+  (*
+  w.sl("Import hints:");
+  w.DumpMem(2, SYSTEM.ADR(importhints), SYSTEM.SIZE(ImportDirectoryTable), hintsize);
+  *)
   Files.WriteBytes(Exe, importhints, 0, hintsize);
 
   ImportSize := Align(Files.Pos(Exe), 16) - FadrImport;
-  w.s("IDT size "); w.h(ImportSize); w.sl("H.");
+  (*w.s("IDT size "); w.h(ImportSize); w.sl("H.");*)
   ASSERT(FadrImport + ImportSize < FadrModules);
 END WriteImports;
 
@@ -350,6 +366,15 @@ VAR
   hdr: PEheader;
 
 BEGIN
+  (*
+  w.s("Size of eMagic:     "); w.h(SYSTEM.ADR(hdr.zeroes)     - SYSTEM.ADR(hdr.eMagic));     w.sl("H.");
+  w.s("Size of zeroes:     "); w.h(SYSTEM.ADR(hdr.eLfanew)    - SYSTEM.ADR(hdr.zeroes));     w.sl("H.");
+  w.s("Size of eLfanew:    "); w.h(SYSTEM.ADR(hdr.dosProgram) - SYSTEM.ADR(hdr.eLfanew));    w.sl("H.");
+  w.s("Size of dosProgram: "); w.h(SYSTEM.ADR(hdr.signature)  - SYSTEM.ADR(hdr.dosProgram)); w.sl("H.");
+  w.s("Size of signature:  "); w.h(SYSTEM.ADR(hdr.machine)    - SYSTEM.ADR(hdr.signature));  w.sl("H.");
+  w.s("Size of Zeroes58:   "); w.h(SYSTEM.SIZE(Zeroes58));                                   w.sl("H.");
+  w.s("Size of PEheader:   "); w.h(SYSTEM.SIZE(PEheader));                                   w.sl("H.");
+  *)
   ZeroFill(hdr);
 
   (* MSDOS stub *)
@@ -406,6 +431,7 @@ BEGIN
 
   spos(0);
   Files.WriteBytes(Exe, hdr, 0, SYSTEM.SIZE(PEheader));
+  (*w.DumpMem(2, SYSTEM.ADR(hdr), 0, SYSTEM.SIZE(PEheader));*)
 
   (* Write section headers *)
   WriteSectionHeader(".idata",
@@ -443,7 +469,7 @@ BEGIN
   IF f = NIL THEN w.sl("Couldn't open Winshim.code."); K.Halt(99) END;
   Files.Set(r, f, 0);
   Files.ReadBytes(r, Bootstrap,  SYSTEM.SIZE(BootstrapBuffer));
-  w.s("Bootstap bytes read: "); w.i(Files.Pos(r)); w.sl(".");
+  (*w.s("Bootstrap bytes read: "); w.i(Files.Pos(r)); w.sl(".");*)
   ASSERT(r.res >= 0);
   Files.Close(f)
 END GetBootstrap;
@@ -470,8 +496,8 @@ END WriteBootstrap;
 PROCEDURE Generate*(filename: ARRAY OF CHAR);
 VAR fpos: INTEGER;
 BEGIN
-  w.s("WinPE.Generate. SIZE(CodeHeader) "); w.h(SYSTEM.SIZE(X64.CodeHeader)); w.sl("H.");
-
+  w.s("WinPE.Generate. SIZE(CodeHeader) "); w.h(SYSTEM.SIZE(X64.CodeHeader));
+  w.s("H, SIZE(PEheader) "); w.h(SYSTEM.SIZE(PEheader)); w.sl("H.");
   ExeFile := Files.New(filename);
 
   GetBootstrap;
@@ -487,5 +513,5 @@ BEGIN
   Files.Register(ExeFile)
 END Generate;
 
-BEGIN (* w.sl("WinPE loaded.") *)
+BEGIN
 END WinPE.

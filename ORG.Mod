@@ -1,7 +1,5 @@
 MODULE ORG;  (* DCWB June 2023; Code generator for X64 *)
 
-(*$la+*)(*$lc+*)
-
 (* Originally: N.Wirth, 16.4.2016 / 4.4.2017 / 17.9.2018  Oberon compiler; code generator for RISC*)
 
 (*
@@ -615,7 +613,7 @@ VAR reg: INTEGER;
 BEGIN
   IF x.mode = Reg THEN reg := x.n ELSE reg := ReserveNextFree() END;
   LoadAddressReg(reg, x);
-  FreeRegs(x);  x.mode := Reg;  x.n := reg
+  FreeRegs(x);  x.mode := Reg;  x.n := reg;  ReserveReg(x.n)
 END LoadAddress;
 
 PROCEDURE LoadStructure(rbase, rlength: INTEGER; VAR x: Item);  (* length returned as byte count *)
@@ -1492,23 +1490,23 @@ END Enter;
 PROCEDURE EmitStrings();
 VAR i: INTEGER;
 BEGIN
-  IF Disasmpc < X64.PC THEN Disassemble(0, "") END;
+  IF ORS.ListAssembly & (Disasmpc < X64.PC) THEN Disassemble(0, "") END;
   IF Strx > 0 THEN
-    l.l(Tr);
+    (*l.l(Tr);*)
     i := 0;
     WHILE i < StrFInx DO  (* Relocate collected string addresses *)
       X64.Patch(StrFix[i], 4, X64.PC + X64.Peek(StrFix[i], 4, FALSE));  INC(i)
     END;
-
     i := 0;
     WHILE i < Strx DO  (* Emit 1 string  *)
       WHILE (Str[i] # 0X) & (i < Strx) DO X64.Emit(ORD(Str[i])); INC(i) END;
       IF i < Strx THEN ASSERT(Str[i] = 0X); INC(i) END;
       X64.Emit(0);
-      l.DisassembleString(Disasmpc);
+      IF ORS.ListAssembly THEN l.DisassembleString(Disasmpc) END;
     END
   END;
-  Strx := 0;  StrFInx := 0
+  Strx := 0;  StrFInx := 0;
+  IF ~ORS.ListAssembly THEN Disasmpc := X64.PC END
 END EmitStrings;
 
 PROCEDURE Return*(form: INTEGER;  VAR x: Item;  parmsize, locsize: INTEGER);
@@ -1519,7 +1517,11 @@ BEGIN
   l.s(", parmsize ", Tr); l.i(parmsize, Tr);
   l.s(", SPO ", Tr);      l.i(X64.SPO, Tr); l.l(Tr);
 
-  IF form # ORB.NoTyp THEN Load(x); Disassemble(x.mode, "Load function result") END;
+  IF form # ORB.NoTyp THEN
+    Load(x);
+    IF x.n # RAX THEN MoveReg(RAX, x.n) END;
+    Disassemble(x.mode, "Load function result")
+  END;
 
   IF locsize > 0 THEN
     AluOpFromImmediate(Plus, Reg, locsize, 8, RSP, -1, 0, 0);
@@ -1656,7 +1658,7 @@ END REG;
 PROCEDURE Adr*(VAR x: Item);
 BEGIN Trace(TraceAny, "Adr(x "); l.Item(x, Tr); l.sl(")", Tr);
   IF x.mode IN {Stkind, Strucp, Eadr, Code, String, Global, Import, Impcode} THEN
-    LoadAddress(x);  x.mode := Reg
+    LoadAddress(x);  x.mode := Reg;  ASSERT(~(x.n IN Free));
   ELSE
     ORS.Mark("not addressable")
   END;
@@ -1702,12 +1704,25 @@ END Increment;
 PROCEDURE Assert*(VAR x: Item);
 BEGIN Trace(TraceAny, "Assert(x: ");  l.Item(x, Tr);  l.sl(")", Tr);
   IF x.mode # Cond THEN LoadFlags(x) END;
+  IF x.n <= 1 THEN (* assertion is constant at compile time *)
+    ASSERT(x.offset = 0);  ASSERT(x.index = 0);
+    IF x.n = 0 THEN CallSysFn(AssertionFailureProc) END
+  ELSE
+    ASSERT(x.n DIV 16 = 8);
+    X64.Emit(x.n - 10H);  X64.Emit(6);  (* Skip over call instruction if condition met *)
+    FixLink(x.offset); (* FALSE chain jumps to assert trap *)
+    CallSysFn(AssertionFailureProc);
+    FixLink(x.index); (* TRUE chain bypasses asser trap *)
+  END;
+  Disassemble(x.mode, "ASSERT")
+
+  (*
   IF x.n > 1 THEN
     ASSERT(x.n DIV 16 = 8);
     X64.Emit(x.n - 10H);  X64.Emit(6);  (* Skip over call instruction if condition met *)
   END;
   IF x.n # 1 THEN CallSysFn(AssertionFailureProc) END;  (* Jump to assert failure handler *)
-  Disassemble(x.mode, "ASSERT")
+  *)
 END Assert;
 
 PROCEDURE New*(VAR x: Item);
@@ -2545,7 +2560,7 @@ BEGIN
 
   Dyadic(Cmp, loopvar, lim);
   X64.Emit(0FH);
-  IF inc.n > 0 THEN X64.Emit(87H) ELSE X64.Emit(83H) END; (* ja/jb *)
+  IF inc.n > 0 THEN X64.Emit(8FH) ELSE X64.Emit(8CH) END; (* jg/jl *)
   L := X64.PC;
   X64.EmitBytes(4, 0);
 
@@ -2578,7 +2593,10 @@ BEGIN
   IF Disasmpc < X64.PC THEN Disassemble(0, "") END;
   ASSERT(Disasmpc = X64.PC);
   X64.EmitBytes(8, i);
-  l.DisassembleInt(Disasmpc, comment)
+  IF ORS.ListAssembly THEN
+    l.DisassembleInt(Disasmpc, comment)
+  ELSE Disasmpc := X64.PC
+  END
 END EmitInt;
 
 PROCEDURE Q(T: ORB.Type);
@@ -2819,7 +2837,7 @@ BEGIN
   END;
 *)
 
-  l.s("Export count ", Tr); l.i((X64.PC - Hdr.exports) DIV 4, Tr); l.sl(".", Tr);
+  (*l.s("Export count ", Tr); l.i((X64.PC - Hdr.exports) DIV 4, Tr); l.sl(".", Tr);*)
   X64.EmitBytes(4, -1);  (* Mark end of table *)
 
   (* End of resident code/tables *)

@@ -307,7 +307,7 @@ VAR key: INTEGER; class, k: INTEGER;
     modname, fname: ORS.Ident;
     F: Files.File; R: Files.Rider;
 BEGIN
-  w.s("ORB.Import("); w.s(modid); w.s(", "); w.s(modid1); w.sl(").");
+  (*w.s("ORB.Import("); w.s(modid); w.s(", "); w.s(modid1); w.sl(").");*)
   IF modid1 = "SYSTEM" THEN
     thismod := ThisModule(modid, modid1, TRUE, key); DEC(nofmod);
     thismod.lev := 0; thismod.dsc := system; thismod.rdo := TRUE
@@ -424,7 +424,7 @@ VAR x, sum, oldkey: INTEGER;
     filename: ORS.Ident;
     F, F1: Files.File; R, R1: Files.Rider;
 BEGIN
-  w.Noskip; w.s("Exporting module "); w.s(modid); w.sl(".");
+  (*w.Noskip; w.s("Exporting module "); w.s(modid); w.sl(".");*)
   Ref := Record + 1;
   MakeFileName(filename, modid, ".smb");
   F := Files.New(filename); Files.Set(R, F, 0);
@@ -457,7 +457,7 @@ BEGIN
     END;
     obj := obj.next
   END;
-  REPEAT Write(R, 0) UNTIL Files.Length(F) MOD 4 = 0;
+  REPEAT Write(R, 0) UNTIL Files.Length(F) MOD 8 = 0; (* Zero fill to whole multiple of integer size *)
 
   FOR Ref := Record+1 TO maxTypTab-1 DO typtab[Ref] := NIL END;
 

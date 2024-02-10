@@ -1,8 +1,8 @@
 MODULE Files;
-
+(* DCWB 11.01.2024..10.02.2024 *)
 IMPORT SYSTEM, Kernel, P := Winshim;
 
-(* Adapted Oberon 07 by NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013 *)
+(* DCWB 10.02.2023 *)
 
 CONST MaxPath = P.MaxPath;
 
@@ -283,9 +283,9 @@ BEGIN
   IF length > 0 THEN
     ASSERT(offset + length <= LEN(x));
     SyncFilePos(r);
-    P.ws("WriteBytes. offset "); P.wh(offset); P.ws("H, length "); P.wh(length); P.wsl("H.");
+    (*P.ws("WriteBytes. offset "); P.wh(offset); P.ws("H, length "); P.wh(length); P.wsl("H.");*)
     res := P.WriteFile(r.file.handle, SYSTEM.ADR(x) + offset, length, SYSTEM.ADR(byteswritten), 0);
-    P.ws("  byteswritten "); P.wh(byteswritten); P.wsl("H.");
+    (*P.ws("  byteswritten "); P.wh(byteswritten); P.wsl("H.");*)
     ASSERT(byteswritten = length);
     INC(r.pos, length);  r.file.pos := r.pos
   END

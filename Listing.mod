@@ -1275,7 +1275,6 @@ PROCEDURE Init*(sourcefn: ARRAY OF CHAR);
 BEGIN
   Sourcefile := Files.Old(sourcefn);  Files.Set(Source, Sourcefile, 0);
   SourceBol  := 0;  SourceLine := 1;  (*disasmpc := 0;*)
-  w.l;
   GetChar
 END Init;
 

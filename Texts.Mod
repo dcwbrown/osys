@@ -1,7 +1,5 @@
 MODULE Texts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 20.3.2017*)
 
-(*$la+*)(*$lc+*)
-
 IMPORT SYSTEM, Files, Fonts, P := Winshim;
 
 CONST (*scanner symbol classes*)
@@ -530,9 +528,9 @@ END WriteString;
 
 PROCEDURE WriteInt* (VAR W: Writer; x, n: INTEGER);
 VAR i: INTEGER; x0: INTEGER;
-    a: ARRAY 10 OF CHAR;
+    a: ARRAY 20 OF CHAR;
 BEGIN
-  IF ROR(x, 31) = 1 THEN WriteString(W, " -2147483648")
+  IF ROR(x, 63) = 1 THEN WriteString(W, " -9223372036854775808")
   ELSE i := 0;
     IF x < 0 THEN DEC(n); x0 := -x ELSE x0 := x END;
     REPEAT
@@ -546,12 +544,12 @@ END WriteInt;
 
 PROCEDURE WriteHex* (VAR W: Writer; x: INTEGER);
 VAR i: INTEGER; y: INTEGER;
-    a: ARRAY 10 OF CHAR;
+    a: ARRAY 20 OF CHAR;
 BEGIN i := 0; Write(W, " ");
   REPEAT y := x MOD 10H;
     IF y < 10 THEN a[i] := CHR(y + 30H) ELSE a[i] := CHR(y + 37H) END;
     x := x DIV 10H; INC(i)
-  UNTIL i = 8;
+  UNTIL i = 16;
   REPEAT DEC(i); Write(W, a[i]) UNTIL i = 0
 END WriteHex;
 
@@ -604,6 +602,7 @@ BEGIN
 END WriteRealFix;
 ---*)
 
+
 (*
 PROCEDURE WritePair(VAR W: Writer; ch: CHAR; x: INTEGER);
 BEGIN Write(W, ch);
@@ -612,14 +611,15 @@ END WritePair;
 
 PROCEDURE WriteClock* (VAR W: Writer; d: INTEGER);
 BEGIN
-  WritePair(W, " ", d DIV 20000H MOD 20H);   (*day*)
-  WritePair(W, ".", d DIV 400000H MOD 10H); (*month*)
-  WritePair(W, ".", d DIV 4000000H MOD 40H);   (*year*)
-  WritePair(W, " ", d DIV 1000H MOD 20H);   (*hour*)
-  WritePair(W, ":", d DIV 40H MOD 40H);  (*min*)
-  WritePair(W, ":", d MOD 40H)  (*sec*)
+  WritePair(W, " ", d DIV 20000H MOD 20H);    (*day*)
+  WritePair(W, ".", d DIV 400000H MOD 10H);   (*month*)
+  WritePair(W, ".", d DIV 4000000H MOD 40H);  (*year*)
+  WritePair(W, " ", d DIV 1000H MOD 20H);     (*hour*)
+  WritePair(W, ":", d DIV 40H MOD 40H);       (*min*)
+  WritePair(W, ":", d MOD 40H)                (*sec*)
 END WriteClock;
 *)
+
 
 BEGIN TrailerFile := Files.New("")
 END Texts.
