@@ -885,7 +885,7 @@ BEGIN
 
   (*MessageBoxA(0, SYSTEM.ADR("Complete."), SYSTEM.ADR("Winshim"), 0);*)
 
-  wsl("Winshim complete.");
+  (*wsl("Winshim complete.");*)
   (*MessageBox("Winshim", "Complete");*)
   ExitProcess(0);
 END Winshim.

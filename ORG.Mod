@@ -74,19 +74,19 @@ TYPE
 VAR
   Hdr*:    X64.CodeHeader;
 
-  Str:     ARRAY 8192 OF CHAR;  (* Max bytes of string per module body *)
-  Strx:    INTEGER;
-  StrFix:  ARRAY 512 OF SYSTEM.CARD32;  (* Code offsets needing fixup *)
-  StrFInx: INTEGER;
+  Str:      ARRAY 8192 OF CHAR;  (* Max bytes of string per module body *)
+  Strx:     INTEGER;
+  StrFix:   ARRAY 512 OF SYSTEM.CARD32;  (* Code offsets needing fixup *)
+  StrFInx:  INTEGER;
 
-  Varsize: INTEGER;      (* Module global VAR size *)
-  VarFix:  ARRAY 1024 OF SYSTEM.CARD32;
-  VarFInx: INTEGER;
+  Varsize*: INTEGER;      (* Module global VAR size *)
+  VarFix:   ARRAY 1024 OF SYSTEM.CARD32;
+  VarFInx:  INTEGER;
 
-  ImpFix:  ARRAY 2048 OF RECORD offset, fix: SYSTEM.CARD32 END;
-  ImpFInx: INTEGER;
+  ImpFix:   ARRAY 2048 OF RECORD offset, fix: SYSTEM.CARD32 END;
+  ImpFInx:  INTEGER;
 
-  Free*:   SET;      (* Free registers *)
+  Free*:    SET;      (* Free registers *)
 
 
 (* -------------------------------- Tracing --------------------------------- *)

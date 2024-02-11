@@ -353,6 +353,7 @@ BEGIN keyTab[k].id := name; keyTab[k].sym := sym; INC(k)
 END EnterKW;
 
 BEGIN
+  ch := 0X;
   Texts.OpenWriter(W);
 
   k      := 0;

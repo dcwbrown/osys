@@ -18,7 +18,9 @@ BEGIN
   IF ORS.errcnt = 0 THEN ORP.CompileFile("ORP.mod")       END;
   IF ORS.errcnt = 0 THEN ORP.CompileFile("WinPE.mod")     END;
   IF ORS.errcnt = 0 THEN ORP.CompileFile("obuild.mod")    END;
+  IF ORS.errcnt = 0 THEN ORP.CompileFile("hob.mod")       END;
   IF ORS.errcnt = 0 THEN
+    WinPE.Init;
     WinPE.AddModule("Kernel.code");
     WinPE.AddModule("Files.code");
     WinPE.AddModule("Fonts.code");
@@ -34,5 +36,22 @@ BEGIN
     WinPE.AddModule("WinPE.code");
     WinPE.AddModule("obuild.code");
     WinPE.Generate("obuild.exe");
+
+    WinPE.Init;
+    WinPE.AddModule("Kernel.code");
+    WinPE.AddModule("Files.code");
+    WinPE.AddModule("Fonts.code");
+    WinPE.AddModule("Texts.code");
+    WinPE.AddModule("Writer.code");
+    WinPE.AddModule("Oberon.code");
+    WinPE.AddModule("ORS.code");
+    WinPE.AddModule("ORB.code");
+    WinPE.AddModule("X64.code");
+    WinPE.AddModule("Listing.code");
+    WinPE.AddModule("ORG.code");
+    WinPE.AddModule("ORP.code");
+    WinPE.AddModule("WinPE.code");
+    WinPE.AddModule("hob.code");
+    WinPE.Generate("hob.exe");
   END
 END obuild.

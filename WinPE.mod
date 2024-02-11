@@ -496,8 +496,10 @@ END WriteBootstrap;
 PROCEDURE Generate*(filename: ARRAY OF CHAR);
 VAR fpos: INTEGER;
 BEGIN
+  (*
   w.s("WinPE.Generate. SIZE(CodeHeader) "); w.h(SYSTEM.SIZE(X64.CodeHeader));
   w.s("H, SIZE(PEheader) "); w.h(SYSTEM.SIZE(PEheader)); w.sl("H.");
+  *)
   ExeFile := Files.New(filename);
 
   GetBootstrap;
@@ -513,5 +515,8 @@ BEGIN
   Files.Register(ExeFile)
 END Generate;
 
-BEGIN
+PROCEDURE Init*;
+BEGIN Objects := NIL;  LastObject := NIL  END Init;
+
+BEGIN Init
 END WinPE.

@@ -35,5 +35,17 @@ bootstrap\build\obuild
 @echo ------------------------------------------------------------------------
 @..\build2\obuild obuild.mod
 @cd ..\..
+@if errorlevel 1 goto end
+::
+::  use build3 compiler to build another with existing .smbs
+::
+@mkdir bootstrap\build4 >NUL 2>NUL
+@cd bootstrap\build4
+@del /q *.* >NUL
+@copy ..\..\*.mod
+@copy ..\build3\*.smb
+@echo ------------------------------------------------------------------------
+@..\build3\obuild obuild.mod
+@cd ..\..
 
 :end

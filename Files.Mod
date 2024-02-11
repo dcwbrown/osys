@@ -1,5 +1,5 @@
-MODULE Files;
-(* DCWB 11.01.2024..10.02.2024 *)
+MODULE Files;  (* DCWB 11.01.2024..10.02.2024 *)
+
 IMPORT SYSTEM, Kernel, P := Winshim;
 
 (* DCWB 10.02.2023 *)
@@ -22,7 +22,7 @@ TYPE
     tempname:   FileName;
     registered: BOOLEAN;
     name:       FileName;
-    norm:       FileName;   (* Normalised filename helps work with Windows case insensitivity *)
+  (*norm:       FileName;   (* Normalised filename helps work with Windows case insensitivity *)*)
     handle:     INTEGER;
     pos:        INTEGER;
   END;
@@ -33,14 +33,15 @@ VAR
 
 (* --------------------------------- Files ---------------------------------- *)
 
+(*
 PROCEDURE NormaliseFileName(name: ARRAY OF CHAR; VAR normalised: ARRAY OF CHAR);
 VAR i, l: INTEGER; ch: CHAR;
 BEGIN i := 0;
   l := LEN(name)-1;  IF l > LEN(normalised)-1 THEN l := LEN(normalised)-1 END;
   ch := name[0];
   WHILE (i < l) & (ch # 0X) DO
-    IF (ch > "A") & (ch < "Z") THEN normalised[i] := CHR(ORD(ch) + ORD("a") - ORD("A"))
-    ELSIF ch = "\" (*"*) THEN normalised[i] := "/"
+    IF (ch >= "A") & (ch <= "Z") THEN normalised[i] := CHR(ORD(ch) + ORD("a") - ORD("A"))
+    ELSIF ch = 5CX (* \ *) THEN normalised[i] := "/"
     ELSE normalised[i] := ch
     END;
     INC(i); ch := name[i]
@@ -48,17 +49,19 @@ BEGIN i := 0;
   ASSERT(ch = 0X);
   normalised[i] := 0X
 END NormaliseFileName;
+*)
 
 PROCEDURE Old*(name: ARRAY OF CHAR): File;
 VAR
   h:    INTEGER;
   res:  INTEGER;
   f:    File;
-  norm: FileName;
+(*norm: FileName;*)
 BEGIN
   f := first;
-  NormaliseFileName(name, norm);
-  WHILE (f # NIL) & ~(f.registered & (f.norm = norm)) DO f := f.next END;
+  (*NormaliseFileName(name, norm);*)
+  (*WHILE (f # NIL) & ~(f.registered & (f.norm = norm)) DO f := f.next END;*)
+  WHILE (f # NIL) & ~(f.registered & (f.name = name)) DO f := f.next END;
   IF f = NIL THEN
     res := P.FileOpen(name, P.OpenRW, h);
     IF res > 0 THEN (* error encountered *)
@@ -69,7 +72,7 @@ BEGIN
       f.tempname   := "";
       f.registered := TRUE;
       f.name       := name;
-      f.norm       := norm;
+    (*f.norm       := norm;*)
       f.handle     := h;
       f.next       := first;  first := f;
     END
@@ -100,7 +103,7 @@ BEGIN
   f.tempname   := tempname;
   f.registered := FALSE;
   f.name       := name;
-  NormaliseFileName(name, f.norm);
+  (*NormaliseFileName(name, f.norm);*)
   f.handle     := h;
   f.next       := first;  first := f;
 RETURN f END New;
@@ -118,6 +121,7 @@ BEGIN
   f.registered := FALSE;
 END Unregister;
 
+(*
 PROCEDURE UnregisterByNormalisedName(norm: ARRAY OF CHAR);
 VAR f: File;
 BEGIN f := first;
@@ -126,6 +130,16 @@ BEGIN f := first;
     f := f.next;
   END
 END UnregisterByNormalisedName;
+*)
+
+PROCEDURE UnregisterByName(name: ARRAY OF CHAR);
+VAR f: File;
+BEGIN f := first;
+  WHILE f # NIL DO
+    IF f.registered & (f.name = name) THEN Unregister(f) END;
+    f := f.next;
+  END
+END UnregisterByName;
 
 PROCEDURE Register*(f: File);
 VAR
@@ -135,7 +149,8 @@ VAR
 BEGIN
   IF (f # NIL) & (f.name[0] # 0X) & ~f.registered THEN
     ASSERT(P.CloseHandle(f.handle) # 0);
-    UnregisterByNormalisedName(f.norm);
+    (*UnregisterByNormalisedName(f.norm);*)
+    UnregisterByName(f.name);
     P.MoveFile(f.tempname, f.name);
     ASSERT(P.FileOpen(f.name, P.OpenRW, f.handle) = 0);
     f.registered := TRUE;
