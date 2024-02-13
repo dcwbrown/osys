@@ -70,6 +70,7 @@ TYPE
 
 VAR
   (* WinPE.mod builds the executable with the following Winshim variables pre-loaded *)
+  Exeadr: INTEGER;
   Header: CodeHeaderPtr;
 
   (* Pre-loaded Kernel32 imports *)
@@ -105,6 +106,7 @@ VAR
   GetTempPathA*:            PROCEDURE-(buflen, bufadr: INTEGER): INTEGER;
   GetTempFileNameA*:        PROCEDURE-(pathadr, prefixadr, unique, tempfilenameadr: INTEGER): INTEGER;
   GetLastError*:            PROCEDURE-(): INTEGER;
+  UnmapViewOfFile:          PROCEDURE-(adr: INTEGER): INTEGER;
 
   AddVectoredExceptionHandler*:    PROCEDURE-(first, filter: INTEGER);
   GetSystemTimePreciseAsFileTime*: PROCEDURE-(tickAdr: INTEGER): INTEGER;
@@ -118,6 +120,7 @@ VAR
 
   (* End of pre-loaded variables *)
 
+  Stdin:     INTEGER;
   Stdout:    INTEGER;
   crlf*:     ARRAY 3 OF CHAR;
   Log*:      PROCEDURE(s: ARRAY OF BYTE);
@@ -130,6 +133,9 @@ VAR
   AssertionFailure:   PROCEDURE;
   ArraySizeMismatch:  PROCEDURE;
   UnterminatedString: PROCEDURE;
+  PostMortemDump:     PROCEDURE(modadr, offset, excpcode: INTEGER);
+
+  ExceptionDepth: INTEGER;
 
 
 PROCEDURE NoLog(s: ARRAY OF BYTE); BEGIN END NoLog;
@@ -598,38 +604,42 @@ VAR modadr, excpadr, excpcode: INTEGER;
 BEGIN
   excpcode := p.exception.ExceptionCode;
   excpadr  := p.exception.ExceptionAddress;
-  wl;  ws("** Exception ");  wh(excpcode);
-  ws("H at address ");  wh(excpadr); wc("H");
+  wl;
+
+  IF    excpcode = 080000003H THEN ws("** Breakpoint (INT 3)");
+  ELSIF excpcode = 080000004H THEN ws("** Single step (0F1H instr)");
+  ELSIF excpcode = 0C0000005H THEN ws("** Access violation");
+  ELSIF excpcode = 0C0000006H THEN ws("** In-page error");
+  ELSIF excpcode = 0C000001DH THEN ws("** Illegal instruction");
+  ELSIF excpcode = 0C000008EH THEN ws("** Divide by zero");
+  ELSIF excpcode = 0C0000094H THEN ws("** Integer divide by zero");
+  ELSE ws("** Exception ");  wh(excpcode);  wc("H")
+  END;
+  ws(" at address ");  wh(excpadr); wc("H");
   modadr := LocateModule(excpadr);
   IF modadr # 0  THEN
     ws(" in module "); WriteModuleName(modadr);
     ws(" at offset "); wh(excpadr - modadr); wc("H")
   END;
   wsl(". **");
-  IF    excpcode = 080000003H THEN wsl("  Breakpoint (INT 3).");
-  ELSIF excpcode = 080000004H THEN wsl("  Single step (0F1H instr).");
-  ELSIF excpcode = 0C0000005H THEN wsl("  Access violation.");
-  ELSIF excpcode = 0C0000006H THEN wsl("  In-page error.");
-  ELSIF excpcode = 0C000001DH THEN wsl("  Illegal instruction.");
-  ELSIF excpcode = 0C000008EH THEN wsl("  Divide by zero.");
-  ELSIF excpcode = 0C0000094H THEN wsl("  Integer divide by zero.");
-  END;
-  ws("  rax "); whw(p.context.rax, 16);  ws("  rbx "); whw(p.context.rbx, 16);
-  ws("  rcx "); whw(p.context.rcx, 16);  ws("  rdx "); whw(p.context.rdx, 16);  wl;
-  ws("  rsp "); whw(p.context.rsp, 16);  ws("  rbp "); whw(p.context.rbp, 16);
-  ws("  rsi "); whw(p.context.rsi, 16);  ws("  rdi "); whw(p.context.rdi, 16);  wl;
-  ws("  r8  "); whw(p.context.r8,  16);  ws("  r9  "); whw(p.context.r9,  16);
-  ws("  r10 "); whw(p.context.r10, 16);  ws("  r11 "); whw(p.context.r11, 16);  wl;
-  ws("  r12 "); whw(p.context.r12, 16);  ws("  r13 "); whw(p.context.r13, 16);
-  ws("  r14 "); whw(p.context.r14, 16);  ws("  r15 "); whw(p.context.r15, 16);  wl;
 
-  (* Dump top of stack (i.e. lowest addresses) *)
-  DumpMem(2, p.context.rsp, p.context.rsp, 128);
-  (*
-  wsl("Context:");
-  DumpMem(2, SYSTEM.VAL(INTEGER, p.context), 0, 800H);
-  *)
-  ExitProcess(99);
+  IF (modadr # 0) & (PostMortemDump # NIL) & (ExceptionDepth < 2) THEN
+    INC(ExceptionDepth);
+    PostMortemDump(modadr, excpadr - modadr, excpcode)
+  ELSE
+    ws("  rax "); whw(p.context.rax, 16);  ws("  rbx "); whw(p.context.rbx, 16);
+    ws("  rcx "); whw(p.context.rcx, 16);  ws("  rdx "); whw(p.context.rdx, 16);  wl;
+    ws("  rsp "); whw(p.context.rsp, 16);  ws("  rbp "); whw(p.context.rbp, 16);
+    ws("  rsi "); whw(p.context.rsi, 16);  ws("  rdi "); whw(p.context.rdi, 16);  wl;
+    ws("  r8  "); whw(p.context.r8,  16);  ws("  r9  "); whw(p.context.r9,  16);
+    ws("  r10 "); whw(p.context.r10, 16);  ws("  r11 "); whw(p.context.r11, 16);  wl;
+    ws("  r12 "); whw(p.context.r12, 16);  ws("  r13 "); whw(p.context.r13, 16);
+    ws("  r14 "); whw(p.context.r14, 16);  ws("  r15 "); whw(p.context.r15, 16);  wl;
+    (* Dump top of stack (i.e. lowest addresses) *)
+    DumpMem(2, p.context.rsp, p.context.rsp, 128)
+  END;
+
+  ExitProcess(99)
 END ExceptionHandler;
 
 
@@ -647,6 +657,10 @@ BEGIN
     ws(" at offset "); wh(adr - modadr); wc("H")
   END;
   wsl(".");
+  IF (modadr # 0) & (PostMortemDump # NIL) & (ExceptionDepth < 2) THEN
+    INC(ExceptionDepth);
+    PostMortemDump(modadr, adr - modadr, -1)
+  END;
   ExitProcess(99)
 END Trap;
 
@@ -694,7 +708,9 @@ BEGIN
 RETURN modadr END FindModule;
 
 
-PROCEDURE LoadModule(modadr: INTEGER);  (* Load module whose code image is at modadr *)
+PROCEDURE LoadModule(modadr: INTEGER; VAR bodyadr: INTEGER);
+(* Load module whose code image is at modadr *)
+(* Module is loaded at LoadAdr which is then updated *)
 VAR
   adr:         INTEGER;
   loadedsize:  SYSTEM.CARD32;
@@ -790,13 +806,8 @@ BEGIN
     INC(i)
   END;
 
-  (* Run loaded modules body *)
-  SYSTEM.PUT(SYSTEM.ADR(modulebody), LoadAdr + hdr.initcode);
-  modulebody;
-
-  INC(LoadAdr, loadedsize);
-
-  (*wsl("LoadModule complete.")*)
+  bodyadr := LoadAdr + hdr.initcode;
+  INC(LoadAdr, loadedsize)
 END LoadModule;
 
 (* -------------------------------------------------------------------------- *)
@@ -815,7 +826,12 @@ RETURN pc END GetPC;
 
 
 PROCEDURE LoadRemainingModules;
-VAR moduleadr: INTEGER;  modulelength: SYSTEM.CARD32;
+VAR
+  moduleadr:    INTEGER;
+  modulelength: SYSTEM.CARD32;
+  bodyadr:      INTEGER;
+  body:         PROCEDURE;
+  res:          INTEGER;
 BEGIN
   (* Load and link remaining code modules from EXE file image *)
   moduleadr := SYSTEM.VAL(INTEGER, Header) + Header.imports + Header.varsize;  (* Address of first module for Oberon machine *)
@@ -827,10 +843,16 @@ BEGIN
   *)
   SYSTEM.GET(moduleadr, modulelength);
   WHILE modulelength # 0 DO
-    LoadModule(moduleadr);
-    (*ws("  module length "); wh(modulelength); wsl("H.");*)
+    LoadModule(moduleadr, bodyadr);
+    SYSTEM.PUT(SYSTEM.ADR(body), bodyadr);
     moduleadr := (moduleadr + modulelength + 15) DIV 16 * 16;
     SYSTEM.GET(moduleadr, modulelength);
+    IF modulelength = 0 THEN
+      (* This is the last module. We have no further need for the executable *)
+      (* image so unmap it before running the module body.                   *)
+      res := UnmapViewOfFile(Exeadr)
+    END;
+    body
   END;
 
   SYSTEM.PUT(LoadAdr, 0);  (* Mark end of loaded modules *)
@@ -840,17 +862,24 @@ END LoadRemainingModules;
 (* -------------------------------------------------------------------------- *)
 
 BEGIN
-  HWnd := 0;
-  Log  := NoLog;
+  HWnd               := 0;
+  Log                := NoLog;
+  ExceptionDepth     := 0;
+  NewPointer         := NIL;
+  AssertionFailure   := NIL;
+  ArraySizeMismatch  := NIL;
+  UnterminatedString := NIL;
+  PostMortemDump     := NIL;
 
-  (* Initialise console output *)
+  (* Initialise console input/output *)
+  Stdin  := GetStdHandle(-10);  (* -10:   StdInputHandle *)
   Stdout := GetStdHandle(-11);  (* -11:   StdOutputHandle *)
   SetConsoleOutputCP(65001);    (* 65001: UTF8            *)
   crlf := $0D 0A 00$;
 
   Log := WriteStdout;
 
-  wsl("Winshim starting.");
+  ws("Winshim starting, Header at "); wh(SYSTEM.VAL(INTEGER, Header)); wsl("H.");
   (*
   ws("Stdout handle "); wh(Stdout);            wsl("H.");
   ws("NoLog at ");      wh(SYSTEM.ADR(NoLog)); wsl("H.");
@@ -884,8 +913,8 @@ BEGIN
   LoadRemainingModules;
 
   (*MessageBoxA(0, SYSTEM.ADR("Complete."), SYSTEM.ADR("Winshim"), 0);*)
-
   (*wsl("Winshim complete.");*)
   (*MessageBox("Winshim", "Complete");*)
+
   ExitProcess(0);
 END Winshim.

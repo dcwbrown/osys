@@ -22,7 +22,7 @@ bootstrap\build\obuild
 @del /q *.* >NUL
 @copy ..\..\*.mod
 @echo ------------------------------------------------------------------------
-@..\..\obuild obuild.mod
+..\..\obuild obuild.mod
 @cd ..\..
 @if errorlevel 1 goto end
 ::
@@ -33,7 +33,7 @@ bootstrap\build\obuild
 @del /q *.* >NUL
 @copy ..\..\*.mod
 @echo ------------------------------------------------------------------------
-@..\build2\obuild obuild.mod
+..\build2\obuild obuild.mod
 @cd ..\..
 @if errorlevel 1 goto end
 ::
@@ -45,7 +45,7 @@ bootstrap\build\obuild
 @copy ..\..\*.mod
 @copy ..\build3\*.smb
 @echo ------------------------------------------------------------------------
-@..\build3\obuild obuild.mod
+..\build3\obuild obuild.mod
 @cd ..\..
 
 :end

@@ -12,7 +12,7 @@ CONST
   FadrImport  = 400H;  RvaImport  = 1000H;  (* Import directory table *)
   FadrModules = 800H;  RvaModules = 2000H;  (* Oberon modules starting with Winboot *)
 
-  Kernel32ImportCount = 28;
+  Kernel32ImportCount = 29;
   User32ImportCount   =  2;
   Shell32ImportCount  =  1;
 
@@ -208,7 +208,7 @@ BEGIN
   *)
   Idt.Kernel32Dllnameadr  := FieldRVA(Idt.Kernel32Dllname);
   Idt.Kernel32Dllname     := "KERNEL32.DLL";
-  Idt.Kernel32Target      := RvaModules + Bootstrap.Header.imports + 8;  (* 8 for HeaderAdr var *)
+  Idt.Kernel32Target      := RvaModules + Bootstrap.Header.imports + 16;  (* 16 for EXE and Header addresses *)
   n := 0;  i := 0;
   AddImport(Idt.Kernel32Lookups, n, i, 0, importhints, "LoadLibraryA");
   AddImport(Idt.Kernel32Lookups, n, i, 0, importhints, "GetProcAddress");
@@ -236,6 +236,7 @@ BEGIN
   AddImport(Idt.Kernel32Lookups, n, i, 0, importhints, "GetTempPathA");
   AddImport(Idt.Kernel32Lookups, n, i, 0, importhints, "GetTempFileNameA");
   AddImport(Idt.Kernel32Lookups, n, i, 0, importhints, "GetLastError");
+  AddImport(Idt.Kernel32Lookups, n, i, 0, importhints, "UnmapViewOfFile");
   AddImport(Idt.Kernel32Lookups, n, i, 0, importhints, "AddVectoredExceptionHandler");
   AddImport(Idt.Kernel32Lookups, n, i, 0, importhints, "GetSystemTimePreciseAsFileTime");
 
@@ -482,6 +483,9 @@ PROCEDURE WriteBootstrap;
 BEGIN
   spos(FadrModules);
   Files.WriteBytes(Exe, Bootstrap, 0, Bootstrap.Header.imports);  (* Code and tables   *)
+
+  (* Preset bootstrap modules global VARs *)
+  Files.WriteInt(Exe, ImageBase);                                 (* EXE load address  *)
   Files.WriteInt(Exe, ImageBase + RvaModules);                    (* Header address    *)
   Files.WriteBytes(Exe, Idt.Kernel32Lookups, 0, Kernel32ImportCount * 8);
   Files.WriteBytes(Exe, Idt.User32Lookups,   0, User32ImportCount   * 8);
