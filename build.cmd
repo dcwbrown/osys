@@ -14,37 +14,37 @@
 @echo ------------------------------------------------------------------------
 bootstrap\build\obuild
 @if errorlevel 1 goto end
+@echo ------------------------------------------------------------------------
 ::
 ::  use final compiler to rebuild compiler
 ::
 @mkdir bootstrap\build2 >NUL 2>NUL
 @cd bootstrap\build2
 @del /q *.* >NUL
-@copy ..\..\*.mod
-@echo ------------------------------------------------------------------------
+@copy ..\..\*.mod >NUL
 ..\..\obuild obuild.mod
 @cd ..\..
 @if errorlevel 1 goto end
+@echo ------------------------------------------------------------------------
 ::
 ::  use rebuilt compiler to build another
 ::
 @mkdir bootstrap\build3 >NUL 2>NUL
 @cd bootstrap\build3
 @del /q *.* >NUL
-@copy ..\..\*.mod
-@echo ------------------------------------------------------------------------
+@copy ..\..\*.mod >NUL
 ..\build2\obuild obuild.mod
 @cd ..\..
 @if errorlevel 1 goto end
+@echo ------------------------------------------------------------------------
 ::
 ::  use build3 compiler to build another with existing .smbs
 ::
 @mkdir bootstrap\build4 >NUL 2>NUL
 @cd bootstrap\build4
 @del /q *.* >NUL
-@copy ..\..\*.mod
-@copy ..\build3\*.smb
-@echo ------------------------------------------------------------------------
+@copy ..\..\*.mod >NUL
+@copy ..\build3\*.smb >NUL
 ..\build3\obuild obuild.mod
 @cd ..\..
 

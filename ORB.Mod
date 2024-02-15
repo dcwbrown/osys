@@ -132,8 +132,6 @@ VAR
 
   typtab: ARRAY maxTypTab OF Type;
 
-  (*DisassembleType: PROCEDURE;*)
-
 PROCEDURE NewObj*(VAR obj: Object; id: ORS.Ident; class: INTEGER);
 (*insert new Object with name id*)
 VAR new, x: Object;
@@ -307,14 +305,16 @@ VAR key: INTEGER; class, k: INTEGER;
     modname, fname: ORS.Ident;
     F: Files.File; R: Files.Rider;
 BEGIN
-  (*w.s("ORB.Import("); w.s(modid); w.s(", "); w.s(modid1); w.sl(").");*)
   IF modid1 = "SYSTEM" THEN
     thismod := ThisModule(modid, modid1, TRUE, key); DEC(nofmod);
     thismod.lev := 0; thismod.dsc := system; thismod.rdo := TRUE
   ELSE MakeFileName(fname, modid1, ".smb"); F := Files.Old(fname);
     IF F # NIL THEN
-      (*w.l; w.s("Importing module "); w.s(modid); w.sl(".");*)
       Files.Set(R, F, 0); Files.ReadInt(R, key); Files.ReadInt(R, key); Files.ReadString(R, modname);
+      IF modid1 # modname THEN
+        (* catch module name mismatch due to Windows filename case insensitivity *)
+        ORS.Mark("Module name case mismatch");  modid1 := modname;
+      END;
       thismod := ThisModule(modid, modid1, TRUE, key); thismod.rdo := TRUE;
       Read(R, class); (*version key*)
       IF class # versionkey THEN ORS.Mark("wrong version") END;
@@ -505,26 +505,8 @@ BEGIN NEW(obj); obj.name := name; obj.class := cl; obj.type := type; obj.val := 
   obj.next := system; system := obj
 END enter;
 
-(*
-PROCEDURE DisassembleType0;
-VAR
-  typeproc:  PROCEDURE(ref, form: INTEGER; size: INTEGER): Type;
-  enterproc: PROCEDURE(name: ARRAY OF CHAR; cl: INTEGER; type: Type; n: INTEGER);
-BEGIN
-  w.sl("PROCEDURE type memory dump:");
-  typeproc  := type;
-  enterproc := enter;
-  w.DumpMem(2,
-    SYSTEM.VAL(INTEGER, typeproc),
-    SYSTEM.VAL(INTEGER, typeproc) - 100000000H,
-    SYSTEM.VAL(INTEGER, enterproc) - SYSTEM.VAL(INTEGER, typeproc)
-  );
-END DisassembleType0;
-*)
 
 BEGIN
-  (*DisassembleType := DisassembleType0;*)
-
   byteType   := type(Byte,   Int64,   1);
   boolType   := type(Bool,   Bool,    1);
   charType   := type(Char,   Char,    1);

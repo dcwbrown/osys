@@ -10,7 +10,9 @@ CONST
 
   ImageBase   = 400000H;
   FadrImport  = 400H;  RvaImport  = 1000H;  (* Import directory table *)
-  FadrModules = 800H;  RvaModules = 2000H;  (* Oberon modules starting with Winboot *)
+  FadrModules = 800H;  RvaModules = 2000H;  (* Oberon modules *)
+
+  BootstrapVarBytes = 16;  (* preloaded bootstrap VAR size preceeding imported proc addresses *)
 
   Kernel32ImportCount = 29;
   User32ImportCount   =  2;
@@ -208,7 +210,7 @@ BEGIN
   *)
   Idt.Kernel32Dllnameadr  := FieldRVA(Idt.Kernel32Dllname);
   Idt.Kernel32Dllname     := "KERNEL32.DLL";
-  Idt.Kernel32Target      := RvaModules + Bootstrap.Header.imports + 16;  (* 16 for EXE and Header addresses *)
+  Idt.Kernel32Target      := RvaModules + Bootstrap.Header.imports + BootstrapVarBytes;
   n := 0;  i := 0;
   AddImport(Idt.Kernel32Lookups, n, i, 0, importhints, "LoadLibraryA");
   AddImport(Idt.Kernel32Lookups, n, i, 0, importhints, "GetProcAddress");
@@ -273,7 +275,8 @@ BEGIN
 
   ImportSize := Align(Files.Pos(Exe), 16) - FadrImport;
   (*w.s("IDT size "); w.h(ImportSize); w.sl("H.");*)
-  ASSERT(FadrImport + ImportSize < FadrModules);
+  ASSERT(FadrImport + ImportSize < FadrModules);  (* If fails, increase FadrModules *)
+  ASSERT(RvaImport  + ImportSize < RvaModules);   (* If fails, increase RvaModules *)
 END WriteImports;
 
 
@@ -283,7 +286,8 @@ END WriteImports;
 PROCEDURE CopyFile(name: ARRAY OF CHAR);
 VAR  f: Files.File;  r: Files.Rider;  buf: ARRAY 1000H OF BYTE;
 BEGIN
-  w.s("Adding "); w.s(name); w.s(" at file offset "); w.h(Files.Pos(Exe)); w.sl("H.");
+  w.s("Adding "); w.s(name); w.s(" at file offset "); w.h(Files.Pos(Exe));
+  w.s("H, FadrModules + "); w.h(Files.Pos(Exe) - FadrModules); w.sl("H.");
   ASSERT(Files.Pos(Exe) MOD 16 = 0);
   f := Files.Old(name);
   IF f = NIL THEN
@@ -297,9 +301,6 @@ BEGIN
   FileAlign(Exe, 16);
 END CopyFile;
 
-
-(* -------------------------------------------------------------------------- *)
-(* -------------------------------------------------------------------------- *)
 
 PROCEDURE WriteModules;
 VAR object: ObjectFile;
@@ -487,12 +488,15 @@ BEGIN
   (* Preset bootstrap modules global VARs *)
   Files.WriteInt(Exe, ImageBase);                                 (* EXE load address  *)
   Files.WriteInt(Exe, ImageBase + RvaModules);                    (* Header address    *)
+  ASSERT(Files.Pos(Exe) -  (FadrModules + Bootstrap.Header.imports) = BootstrapVarBytes);
+
+  (* Preset bootstrap VARs with WIndows proc addresses *)
   Files.WriteBytes(Exe, Idt.Kernel32Lookups, 0, Kernel32ImportCount * 8);
   Files.WriteBytes(Exe, Idt.User32Lookups,   0, User32ImportCount   * 8);
   Files.WriteBytes(Exe, Idt.Shell32Lookups,  0, Shell32ImportCount  * 8);
 
   WriteZeroes(Bootstrap.Header.varsize
-            - ((Kernel32ImportCount + User32ImportCount + Shell32ImportCount) * 8 + 8));
+            - ((Kernel32ImportCount + User32ImportCount + Shell32ImportCount) * 8 + BootstrapVarBytes));
   FileAlign(Exe, 16)
 END WriteBootstrap;
 
@@ -516,7 +520,9 @@ BEGIN
 
   WritePEHeader;
 
-  Files.Register(ExeFile)
+  Files.Register(ExeFile);
+
+  w.s("WinPE generated "); w.s(filename); w.sl(".")
 END Generate;
 
 PROCEDURE Init*;

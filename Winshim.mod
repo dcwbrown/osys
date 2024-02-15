@@ -112,21 +112,21 @@ VAR
   GetSystemTimePreciseAsFileTime*: PROCEDURE-(tickAdr: INTEGER): INTEGER;
 
   (* Pre-loaded User32 imports *)
-  MessageBoxA:        PROCEDURE-(hWnd, lpText, lpCaption, uType: INTEGER)(*: INTEGER*);
-  MessageBoxW:        PROCEDURE-(hWnd, lpText, lpCaption, uType: INTEGER): INTEGER;
+  MessageBoxA: PROCEDURE-(hWnd, lpText, lpCaption, uType: INTEGER)(*: INTEGER*);
+  MessageBoxW: PROCEDURE-(hWnd, lpText, lpCaption, uType: INTEGER): INTEGER;
 
   (* Pre-loaded Shell32 imports *)
   CommandLineToArgvW: PROCEDURE-(lpCmdLine, pNumArgs: INTEGER): INTEGER;
 
   (* End of pre-loaded variables *)
 
-  Stdin:     INTEGER;
-  Stdout:    INTEGER;
-  crlf*:     ARRAY 3 OF CHAR;
-  Log*:      PROCEDURE(s: ARRAY OF BYTE);
-  OberonAdr: INTEGER;   (* Address of first module (Winshim.mod) *)
-  LoadAdr:   INTEGER;   (* Where to load next module *)
-  HWnd:      INTEGER;   (* Set if a window has been created *)
+  Stdin:      INTEGER;
+  Stdout:     INTEGER;
+  crlf*:      ARRAY 3 OF CHAR;
+  Log*:       PROCEDURE(s: ARRAY OF BYTE);
+  OberonAdr:  INTEGER;   (* Address of first module (Winshim.mod) *)
+  LoadAdr:    INTEGER;   (* Where to load next module *)
+  HWnd:       INTEGER;   (* Set if a window has been created *)
 
   (* System functions *)
   NewPointer*:        PROCEDURE(ptr, tag: INTEGER);
@@ -284,7 +284,7 @@ PROCEDURE assert(expectation: BOOLEAN; msg: ARRAY OF CHAR);
 VAR res: INTEGER;
 BEGIN
   IF ~expectation THEN
-    Log("Winshim assertion failure: "); Log(msg); Log(crlf);
+    ws("Winshim assertion failure: "); ws(msg); wsl(crlf);
     res := CloseHandle(Stdout);
     ExitProcess(99)
   END
@@ -810,8 +810,6 @@ BEGIN
   INC(LoadAdr, loadedsize)
 END LoadModule;
 
-(* -------------------------------------------------------------------------- *)
-
 PROCEDURE IncPC(increment: INTEGER);  (* Update return address by increment *)
 VAR pc: INTEGER;
 BEGIN
@@ -824,6 +822,7 @@ VAR pc: INTEGER;
 BEGIN SYSTEM.GET(SYSTEM.ADR(pc) + 8, pc);
 RETURN pc END GetPC;
 
+(* -------------------------------------------------------------------------- *)
 
 PROCEDURE LoadRemainingModules;
 VAR
@@ -836,11 +835,11 @@ BEGIN
   (* Load and link remaining code modules from EXE file image *)
   moduleadr := SYSTEM.VAL(INTEGER, Header) + Header.imports + Header.varsize;  (* Address of first module for Oberon machine *)
   moduleadr := (moduleadr + 15) DIV 16 * 16;
-  (*
-  ws("Load remaining modules starting from "); wh(moduleadr); wsl("H.");
-  wsl("First remaining module header:");
-  WriteModuleHeader(moduleadr);
-  *)
+
+  ws("Load remaining modules starting from "); wh(moduleadr);
+  ws("H, RvaModules + "); wh(moduleadr - SYSTEM.VAL(INTEGER, Header)); wsl("H.");
+  ws("First remaining module: '"); WriteModuleName(moduleadr); wsl("'.");
+
   SYSTEM.GET(moduleadr, modulelength);
   WHILE modulelength # 0 DO
     LoadModule(moduleadr, bodyadr);
@@ -860,6 +859,7 @@ BEGIN
 END LoadRemainingModules;
 
 (* -------------------------------------------------------------------------- *)
+
 
 BEGIN
   HWnd               := 0;
@@ -895,7 +895,7 @@ BEGIN
   IncPC(OberonAdr - SYSTEM.VAL(INTEGER, Header));  (* Transfer to copied code *)
   ws("Transferred PC to code copied to Oberon memory at ");  wh(GetPC());  wsl("H.");
 
-  Log := WriteStdout;  (* Correct Log fn address following move *)
+  Log        := WriteStdout;  (* Correct Log fn address following move *)
 
   (* Initialise system fuction handlers *)
   NewPointer         := NewPointerHandler;

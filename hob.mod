@@ -7,10 +7,10 @@ MODULE hob;
 
 
 IMPORT
-  SYSTEM, H := Winshim, Files, Texts, w := Writer, ORS, X64, ORG, ORP, WinPE;
+  SYSTEM, H := Winshim, Files, Texts, w := Writer, ORS, X64, ORG, ORP, WinPE, WinArgs;
 
 TYPE
-  ModuleName = ARRAY 64 OF CHAR;
+  ModuleName = ARRAY 1024 OF CHAR;
   PathName   = ARRAY H.MaxPath OF CHAR;
 
   Module     = POINTER TO ModuleDesc;
@@ -20,6 +20,7 @@ TYPE
     next:         Module;
     modname:      ModuleName;
     filename:     PathName;
+    codename:     PathName;
     file:         Files.File;
     dependencies: Dependency;
     scanned:      BOOLEAN
@@ -84,6 +85,7 @@ BEGIN NEW(mod);
     w.s("Could not find source file "); w.s(filename); w.s(" for module '"); w.s(modname); w.sl("'.");
     H.ExitProcess(99)
   END;
+  mod.codename := "";  H.Append(modname, mod.codename);  H.Append(".code", mod.codename);
   IF H.Length(modname)      > LongestModname  THEN LongestModname  := H.Length(modname) END;
   IF H.Length(mod.filename) > LongestFilename THEN LongestFilename := H.Length(mod.filename) END;
   mod.next := Modules;  Modules := mod
@@ -156,8 +158,6 @@ BEGIN
       AddImport(module, "Kernel")
     END
   END;
-
-  (* All modules need kernel excepting those marked RTL- *)
 
   module.scanned := TRUE
 END ScanModuleFileImports;
@@ -287,6 +287,9 @@ BEGIN
       (*Compile(mod);*)
       ORP.CompileFile(mod.filename);
       IF ORS.errcnt # 0 THEN H.ExitProcess(99) END;
+
+      IF mod.modname # "Winshim" THEN WinPE.AddModule(mod.codename) END;
+
       INC(codesize, X64.PC);  INC(varsize, ORG.Varsize);
       RemoveDependencies(mod);
       IF prev = NIL THEN Modules := mod.next ELSE prev.next := mod.next END
@@ -362,7 +365,6 @@ END AddExecutableDirToSourceSearchpath;
 (* ---------------------------- Argument parsing ---------------------------- *)
 (* -------------------------------------------------------------------------- *)
 
-(*
 PROCEDURE ArgError(n: INTEGER; arg, msg: ARRAY OF CHAR);
 BEGIN
   w.s("Argument "); w.i(n); w.s(" '"); w.s(arg); w.s("': "); w.sl(msg);
@@ -377,13 +379,13 @@ BEGIN
   Modulename := "";
 
   i := 1;
-  WHILE i < K.NumArgs DO
-    K.GetArg(i, arg);
+  WHILE i < WinArgs.Argcount DO
+    WinArgs.GetArg(i, arg);
     IF arg[0] = "/" THEN
-      IF    arg = "/source" THEN INC(i);  K.GetArg(i, SourcePath)
-      ELSIF arg = "/s"      THEN INC(i);  K.GetArg(i, SourcePath)
-      ELSIF arg = "/build"  THEN INC(i);  K.GetArg(i, BuildPath)
-      ELSIF arg = "/b"      THEN INC(i);  K.GetArg(i, BuildPath)
+      IF    arg = "/source" THEN INC(i);  WinArgs.GetArg(i, SourcePath)
+      ELSIF arg = "/s"      THEN INC(i);  WinArgs.GetArg(i, SourcePath)
+      ELSIF arg = "/build"  THEN INC(i);  WinArgs.GetArg(i, BuildPath)
+      ELSIF arg = "/b"      THEN INC(i);  WinArgs.GetArg(i, BuildPath)
       ELSIF arg = "/v"      THEN Verbose := TRUE
       ELSE
         ArgError(i, arg, "unrecognised option.")
@@ -404,19 +406,15 @@ BEGIN
     H.ExitProcess(99);
   END
 END ScanArguments;
-*)
+
 
 BEGIN
-  Verbose         := TRUE;
+  Verbose         := FALSE;
   LongestModname  := 0;
   LongestFilename := 0;
-  (*
   ScanArguments;
-  AddExecutableDirToSourceSearchpath;
+  (*AddExecutableDirToSourceSearchpath;*)
   w.s("SourcePath: '");    w.s(SourcePath);
   w.s("', BuildPath: '");  w.s(BuildPath);  w.sl("'.");
-  *)
-  SourcePath := "./";
-  Modulename := "hob";
   Build
 END hob.
