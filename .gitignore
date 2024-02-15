@@ -6,7 +6,7 @@
 *.exe
 *.code
 t[0-9]
-bootstrap/*/*
+knowngood.prev/*
 build1/*
 build2/*
 *.sublime-*
