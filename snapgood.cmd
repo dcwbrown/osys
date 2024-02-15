@@ -1,7 +1,7 @@
 :: Copy latest build to knowngood
-@if exist build2\hob.exe goto good
+@if exist build2\ob.exe goto good
 ::
-@echo Cannot snapshot good build: no file build2\hob.exe
+@echo Cannot snapshot good build: no file build2\ob.exe
 @goto end
 ::
 :good
@@ -14,3 +14,5 @@
 @copy build2\*.smb knowngood >NUL
 @copy build2\*.code knowngood >NUL
 @copy build2\*.exe knowngood >NUL
+::
+:end

@@ -1,4 +1,4 @@
-MODULE hob;
+MODULE ob;
 
 (* Hosted Oberon build command                                                *)
 (*                                                                            *)
@@ -417,4 +417,4 @@ BEGIN
   w.s("SourcePath: '");    w.s(SourcePath);
   w.s("', BuildPath: '");  w.s(BuildPath);  w.sl("'.");
   Build
-END hob.
+END ob.

@@ -7,13 +7,13 @@
 ::
 @echo ----------------- Build new compiler using known good compiler -----------------
 @cd build1
-..\knowngood\hob hob
+..\knowngood\ob ob
 @if errorlevel 1 goto end
 @cd ..
 ::
 @echo ---------------- Build new compiler using newly built compiler -----------------
 @cd build2
-..\build1\hob hob
+..\build1\ob ob
 @if errorlevel 1 goto end
 @cd ..
 @echo.
