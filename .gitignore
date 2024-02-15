@@ -7,4 +7,6 @@
 *.code
 t[0-9]
 bootstrap/*/*
+build1/*
+build2/*
 *.sublime-*

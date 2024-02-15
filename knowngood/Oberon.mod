@@ -1,6 +1,6 @@
 MODULE Oberon;
 
-IMPORT SYSTEM, Kernel, Texts;
+IMPORT SYSTEM, Shim := Winshim, Texts;
 
 VAR
   Log*: Texts.Text;
@@ -13,10 +13,12 @@ BEGIN
     Texts.OpenReader(R, Log, beg);  pos := beg;
     WHILE pos < end DO
       i := 0;
-      WHILE (pos < end) & (i < LEN(buf)) DO
-        Texts.Read(R, buf[i]);  INC(pos);  INC(i)
+      WHILE (pos < end) & (i < LEN(buf)-1) DO
+        Texts.Read(R, buf[i]);
+        IF buf[i] = 0DX THEN INC(i); buf[i] := 0AX END;  (* Add LF after CR *)
+        INC(pos);  INC(i)
       END;
-      Kernel.WriteLog(SYSTEM.ADR(buf), i);
+      buf[i] := 0X; Shim.Log(buf);
     END
   END
 END NotifyLog;

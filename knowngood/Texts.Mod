@@ -1,5 +1,6 @@
 MODULE Texts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 20.3.2017*)
-IMPORT Files, Fonts;
+
+IMPORT SYSTEM, Files, Fonts, P := Winshim;
 
 CONST (*scanner symbol classes*)
   Inval*  = 0;  (* invalid symbol                     *)
@@ -82,6 +83,28 @@ VAR
   TrailerFile: Files.File;
 
 
+(* -------------------- Debug ------------------------*)
+
+PROCEDURE DumpBuffer(B: Buffer);
+BEGIN
+  P.ws("at ");          P.wh(SYSTEM.VAL(INTEGER, B));
+  P.ws("H, .len ");     P.wh(B.len);
+  P.ws("H, .header ");  P.wh(SYSTEM.VAL(INTEGER, B.header));
+  P.ws("H, .last ");    P.wh(SYSTEM.VAL(INTEGER, B.last));
+  P.ws("H")
+END DumpBuffer;
+
+PROCEDURE DumpWriter(W: Writer);
+BEGIN
+  P.ws("at ");            P.wh(SYSTEM.ADR(W));
+  P.ws("H, .buf (");      DumpBuffer(W.buf);
+  P.ws("), .fnt at ");    P.wh(SYSTEM.VAL(INTEGER, W.fnt));
+  P.ws("H, .col ");       P.wh(W.col);
+  P.ws("H, .rider at ");  P.wh(SYSTEM.VAL(INTEGER, W.rider));
+  P.ws("H")
+END DumpWriter;
+
+
 (* -------------------- Filing ------------------------*)
 
 PROCEDURE Trailer(): Piece;
@@ -124,18 +147,25 @@ VAR
   Q, q: Piece;
   tag:  CHAR;
   len:  INTEGER;
-BEGIN f := Files.Old(name);
+BEGIN
+  (*P.ws("Texts.Open('"); P.ws(name); P.wsl("').");*)
+  f := Files.Old(name);
+  (*P.ws("  opened, f = "); P.wh(SYSTEM.VAL(INTEGER, f)); P.wsl("H.");*)
   IF f # NIL THEN
     Files.Set(R, f, 0); Files.Read(R, tag);
-    IF tag = TextTag THEN Load(R, T)
+    (*P.ws("  read tag: "); P.wh(ORD(tag)); P.wsl("H.");*)
+    IF tag = TextTag THEN
+      (*P.wsl("  Tag matches - this is an Oberon formatted text file.");*)
+      Load(R, T)
     ELSE (*Ascii file*)
+      (*P.wsl("  Ascii text file.");*)
       len := Files.Length(f); Q := Trailer();
       NEW(q); q.fnt := Fonts.Default; q.col := 1; q.voff := 0; q.f := f; q.off := 0; q.len := len;
       Q.next := q; q.prev := Q; q.next := Q; Q.prev := q; T.trailer := Q; T.len := len
     END
   ELSE (*create new text*)
     Q := Trailer(); Q.next := Q; Q.prev := Q; T.trailer := Q; T.len := 0
-  END ;
+  END;
   T.changed := FALSE; T.org := -1; T.pce := T.trailer (*init cache*)
 END Open;
 
@@ -168,9 +198,9 @@ BEGIN pos := Files.Pos(W); Files.WriteInt(W, 0); (*place holder*)
   off := Files.Pos(W); p := T.trailer.next;
   WHILE p # T.trailer DO
     rlen := p.len; Files.Set(R, p.f, p.off);
-    WHILE rlen > 0 DO Files.Read(R, ch); Files.Write(W, ch); DEC(rlen) END ;
+    WHILE rlen > 0 DO Files.Read(R, ch); Files.Write(W, ch); DEC(rlen) END;
     p := p.next
-  END ;
+  END;
   Files.Set(W, Files.Base(W), pos); Files.WriteInt(W, off); (*fixup*)
   T.changed := FALSE;
   IF T.notify # NIL THEN T.notify(T, unmark, 0, 0) END
@@ -185,8 +215,11 @@ END Close;
 (* -------------------- Editing ----------------------- *)
 
 PROCEDURE OpenBuf* (B: Buffer);
-BEGIN NEW(B.header); (*null piece*)
-  B.last := B.header; B.len := 0
+BEGIN
+  (*P.ws("OpenBuf(B): "); DumpBuffer(B); P.wl;*)
+  NEW(B.header); (*null piece*)
+  B.last := B.header;  B.len := 0;
+  (*P.ws("OpenBuf returning: ");  DumpBuffer(B); P.wl;*)
 END OpenBuf;
 
 PROCEDURE FindPiece (T: Text; pos: INTEGER; VAR org: INTEGER; VAR pce: Piece);
@@ -196,7 +229,7 @@ BEGIN p := T.pce; porg := T.org;
     WHILE pos >= porg + p.len DO INC(porg, p.len); p := p.next END
   ELSE p := p.prev; DEC(porg, p.len);
     WHILE pos < porg DO p := p.prev; DEC(porg, p.len) END
-  END ;
+  END;
   T.pce := p; T.org := porg;  (*update cache*)
   pce := p; org := porg
 END FindPiece;
@@ -243,12 +276,14 @@ BEGIN p := SB.header; Q := DB.last;
   DB.last := Q; DB.len := DB.len + SB.len
 END Copy;
 
-PROCEDURE Insert* (T: Text; pos: INTEGER; B: Buffer);
+PROCEDURE Insert* (T: Text;  pos: INTEGER;  B: Buffer);
 VAR pl, pr, p, qb, qe: Piece; org, end: INTEGER;
 BEGIN
   FindPiece(T, pos, org, p); SplitPiece(p, pos - org, pr);
-  IF T.org >= org THEN T.org := org - p.prev.len; T.pce := p.prev END ;
-  pl := pr.prev; qb := B.header.next;
+  IF T.org >= org THEN T.org := org - p.prev.len; T.pce := p.prev END;
+  pl := pr.prev;
+  ASSERT(B.header # NIL);
+  qb := B.header.next;
   IF (qb # NIL) & (qb.f = pl.f) & (qb.off = pl.off + pl.len)
       & (qb.fnt = pl.fnt) & (qb.col = pl.col) & (qb.voff = pl.voff) THEN
     pl.len := pl.len + qb.len; qb := qb.next
@@ -262,7 +297,16 @@ BEGIN
 END Insert;
 
 PROCEDURE Append* (T: Text; B: Buffer);
-BEGIN Insert(T, T.len, B)
+BEGIN
+  (*
+  P.ws("Texts.Append(T, B at "); P.wh(SYSTEM.VAL(INTEGER, B));
+  P.ws("H by val, ");            P.wh(SYSTEM.ADR(B));
+  P.ws("H by adr), B.len ");     P.wh(B.len);
+  P.ws("H, B.header ");          P.wh(SYSTEM.VAL(INTEGER, B.header));
+  P.ws("H, B.last ");            P.wh(SYSTEM.VAL(INTEGER, B.last));
+  P.wsl("H.");
+  *)
+  Insert(T, T.len, B)
 END Append;
 
 PROCEDURE Delete* (T: Text; beg, end: INTEGER; B: Buffer);
@@ -343,9 +387,9 @@ PROCEDURE Ten(n: INTEGER): REAL;
 VAR t, p: REAL;
 BEGIN t := 1.0; p := 10.0;   (*compute 10^n *)
   WHILE n > 0 DO
-    IF ODD(n) THEN t := p * t END ;
+    IF ODD(n) THEN t := p * t END;
     p := p*p; n := n DIV 2
-  END ;
+  END;
   RETURN t
 END Ten;
 ----- *)
@@ -361,9 +405,9 @@ VAR ch, term: CHAR;
     ---*)
 BEGIN ch := S.nextCh; i := 0;
   WHILE ~S.eot & (ch <= " ") DO
-    IF ch = CR THEN INC(S.line) END ;
+    IF ch = CR THEN INC(S.line) END;
     Read(S, ch)
-  END ;
+  END;
   IF ("A" <= ch) & (ch <= "Z") OR ("a" <= ch) & (ch <= "z") THEN (*name*)
     REPEAT S.s[i] := ch; INC(i); Read(S, ch)
     UNTIL ((ch < "0") & (ch # ".") OR ("9" < ch) & (ch < "A") OR ("Z" < ch) & (ch < "a") OR ("z" < ch)) OR (i = 31);
@@ -373,40 +417,40 @@ BEGIN ch := S.nextCh; i := 0;
     WHILE (ch # 22X) & (ch >= " ") & (i # 31) DO S.s[i] := ch; INC(i); Read(S, ch) END;
     S.s[i] := 0X; S.len := i+1; Read(S, ch); S.class := String
   ELSE hex := FALSE;
-    IF ch = "-" THEN neg := TRUE; Read(S, ch) ELSE neg := FALSE END ;
+    IF ch = "-" THEN neg := TRUE; Read(S, ch) ELSE neg := FALSE END;
     IF ("0" <= ch) & (ch <= "9") THEN (*number*)
       n := ORD(ch) - 30H; h := n; Read(S, ch);
       WHILE ("0" <= ch) & (ch <= "9") OR ("A" <= ch) & (ch <= "F") DO
-        IF ch <= "9" THEN d := ORD(ch) - 30H ELSE d := ORD(ch) - 37H; hex := TRUE END ;
+        IF ch <= "9" THEN d := ORD(ch) - 30H ELSE d := ORD(ch) - 37H; hex := TRUE END;
         n := 10*n + d; h := 10H*h + d; Read(S, ch)
-      END ;
+      END;
       IF ch = "H" THEN (*hex integer*) Read(S, ch); S.i := h; S.class := Int  (*neg?*)
       (*---
       ELSIF ch = "." THEN (*real number*)
         Read(S, ch); x := 0.0; e := 0; j := 0;
         WHILE ("0" <= ch) & (ch <= "9") DO  (*fraction*)
           h := 10*n + (ORD(ch) - 30H);
-          IF h < maxM THEN n := h; INC(j) END ;
+          IF h < maxM THEN n := h; INC(j) END;
           Read(S, ch)
-        END ;
+        END;
         IF ch = "E" THEN (*scale factor*)
           s := 0; Read(S, ch);
           IF ch = "-" THEN negE := TRUE; Read(S, ch)
           ELSE negE := FALSE;
             IF ch = "+" THEN Read(S, ch) END
-          END ;
+          END;
           WHILE ("0" <= ch) & (ch <= "9") DO
             s := s*10 + ORD(ch) - 30H; Read(S, ch)
-          END ;
-          IF negE THEN DEC(e, s) ELSE INC(e, s) END ;
-        END ;
+          END;
+          IF negE THEN DEC(e, s) ELSE INC(e, s) END;
+        END;
         x := FLT(n); DEC(e, j);
         IF e < 0 THEN
           IF e >= -maxExp THEN x := x / Ten(-e) ELSE x := 0.0 END
         ELSIF e > 0 THEN
           IF e <= maxExp THEN x := Ten(e) * x ELSE x := 0.0 END
-        END ;
-        IF neg THEN S.x := -x ELSE S.x := x END ;
+        END;
+        IF neg THEN S.x := -x ELSE S.x := x END;
         IF hex THEN S.class := 0 ELSE S.class := Real END
       ---*)
       ELSE (*decimal integer*)
@@ -416,16 +460,24 @@ BEGIN ch := S.nextCh; i := 0;
     ELSE (*spectal character*) S.class := Char;
       IF neg THEN S.c := "-" ELSE S.c := ch; Read(S, ch) END
     END
-  END ;
+  END;
   S.nextCh := ch
 END Scan;
 
 (* --------------- Access: Writers (NW) ------------------ *)
 
 PROCEDURE OpenWriter* (VAR W: Writer);
-BEGIN NEW(W.buf);
-  OpenBuf(W.buf); W.fnt := Fonts.Default; W.col := 15; W.voff := 0;
-  Files.Set(W.rider, Files.New(""), 0)
+BEGIN
+  (*P.wsl("Texts.OpenWriter creating W.buf.");*)
+  NEW(W.buf);
+  OpenBuf(W.buf);
+  (*P.ws("OpenBuf returned buffer "); DumpBuffer(W.buf); P.wsl(".");*)
+  W.fnt := Fonts.Default;
+  W.col := 15;
+  W.voff := 0;
+  (*P.ws("After W.voff :=, W "); DumpWriter(W); P.wsl(".");*)
+  Files.Set(W.rider, Files.New(""), 0);
+  (*P.ws("OpenWriter returning W "); DumpWriter(W); P.wsl(".");*)
 END OpenWriter;
 
 PROCEDURE SetFont* (VAR W: Writer; fnt: Fonts.Font);
@@ -443,11 +495,17 @@ END SetOffset;
 PROCEDURE Write* (VAR W: Writer; ch: CHAR);
 VAR p: Piece;
 BEGIN
+  (*P.ws("Texts.Write(W, '"); P.wc(ch); P.ws("'). W.buf: "); DumpBuffer(W.buf); P.wl;*)
   IF (W.buf.last.fnt # W.fnt) OR (W.buf.last.col # W.col) OR (W.buf.last.voff # W.voff) THEN
-    NEW(p); p.f := Files.Base(W.rider); p.off := Files.Pos(W.rider); p.len := 0;
-    p.fnt := W.fnt; p.col := W.col; p.voff:= W.voff;
-    p.next := NIL; W.buf.last.next := p;
-    p.prev := W.buf.last; W.buf.last := p
+    NEW(p);
+    p.f   := Files.Base(W.rider);
+    p.off := Files.Pos(W.rider);
+    p.len := 0;
+    p.fnt := W.fnt;
+    p.col := W.col;
+    p.voff:= W.voff;
+    p.next := NIL;         W.buf.last.next := p;
+    p.prev := W.buf.last;  W.buf.last      := p
   END;
   Files.Write(W.rider, ch);
   INC(W.buf.last.len); INC(W.buf.len)
@@ -459,15 +517,20 @@ END WriteLn;
 
 PROCEDURE WriteString* (VAR W: Writer; s: ARRAY OF CHAR);
 VAR i: INTEGER;
-BEGIN i := 0;
+BEGIN
+  (*
+  P.ws("Texts.WriteString(W, '"); P.ws(s); P.wsl("').");
+  P.ws("W: "); DumpWriter(W); P.wl;
+  *)
+  i := 0;
   WHILE s[i] >= " " DO Write(W, s[i]); INC(i) END
 END WriteString;
 
 PROCEDURE WriteInt* (VAR W: Writer; x, n: INTEGER);
 VAR i: INTEGER; x0: INTEGER;
-    a: ARRAY 10 OF CHAR;
+    a: ARRAY 20 OF CHAR;
 BEGIN
-  IF ROR(x, 31) = 1 THEN WriteString(W, " -2147483648")
+  IF ROR(x, 63) = 1 THEN WriteString(W, " -9223372036854775808")
   ELSE i := 0;
     IF x < 0 THEN DEC(n); x0 := -x ELSE x0 := x END;
     REPEAT
@@ -481,12 +544,12 @@ END WriteInt;
 
 PROCEDURE WriteHex* (VAR W: Writer; x: INTEGER);
 VAR i: INTEGER; y: INTEGER;
-    a: ARRAY 10 OF CHAR;
+    a: ARRAY 20 OF CHAR;
 BEGIN i := 0; Write(W, " ");
   REPEAT y := x MOD 10H;
     IF y < 10 THEN a[i] := CHR(y + 30H) ELSE a[i] := CHR(y + 37H) END;
     x := x DIV 10H; INC(i)
-  UNTIL i = 8;
+  UNTIL i = 16;
   REPEAT DEC(i); Write(W, a[i]) UNTIL i = 0
 END WriteHex;
 
@@ -500,19 +563,19 @@ BEGIN e := ASR(ORD(x), 23) MOD 100H;  (*binary exponent*)
     WHILE n >= 3 DO Write(W, " "); DEC(n) END
   ELSIF e = 255 THEN WriteString(W, " NaN ")
   ELSE Write(W, " ");
-    WHILE n >= 15 DO DEC(n); Write(W, " ") END ;
+    WHILE n >= 15 DO DEC(n); Write(W, " ") END;
     (* 2 < n < 9 digits to be written*)
-    IF x < 0.0 THEN Write(W, "-"); x := -x ELSE Write(W, " ") END ;
+    IF x < 0.0 THEN Write(W, "-"); x := -x ELSE Write(W, " ") END;
     e := (e - 127) * 77 DIV 256 - 6;  (*decimal exponent*)
-    IF e >= 0 THEN x := x / Ten(e) ELSE x := Ten(-e) * x END ;
+    IF e >= 0 THEN x := x / Ten(e) ELSE x := Ten(-e) * x END;
     m := FLOOR(x + 0.5); i := 0;
-    IF m >= 10000000 THEN INC(e); m := m DIV 10 END ;
+    IF m >= 10000000 THEN INC(e); m := m DIV 10 END;
     REPEAT d[i] := CHR(m MOD 10 + 30H); m := m DIV 10; INC(i) UNTIL m = 0;
     DEC(i); Write(W, d[i]); Write(W, ".");
-    IF i < n-7 THEN n := 0 ELSE n := 14 - n END ;
-    WHILE i > n DO DEC(i); Write(W, d[i]) END ;
+    IF i < n-7 THEN n := 0 ELSE n := 14 - n END;
+    WHILE i > n DO DEC(i); Write(W, d[i]) END;
     Write(W, "E"); INC(e, 6);
-     IF e < 0 THEN Write(W, "-"); e := -e ELSE Write(W, "+") END ;
+     IF e < 0 THEN Write(W, "-"); e := -e ELSE Write(W, "+") END;
     Write(W, CHR(e DIV 10 + 30H)); Write(W, CHR(e MOD 10 + 30H))
   END
 END WriteReal;
@@ -523,21 +586,22 @@ VAR i, m: INTEGER; neg: BOOLEAN;
 BEGIN
   IF x = 0.0 THEN WriteString(W, "  0")
   ELSE
-    IF x < 0.0 THEN x := -x; neg := TRUE ELSE neg := FALSE END ;
-    IF k > 7 THEN k := 7 END ;
+    IF x < 0.0 THEN x := -x; neg := TRUE ELSE neg := FALSE END;
+    IF k > 7 THEN k := 7 END;
     x := Ten(k) * x; m := FLOOR(x + 0.5);
     i := 0;
     REPEAT d[i] := CHR(m MOD 10 + 30H); m := m DIV 10; INC(i) UNTIL m = 0;
     Write(W, " ");
-    WHILE n > i+3 DO  Write(W, " "); DEC(n) END ;
-    IF neg THEN Write(W, "-"); DEC(n) ELSE Write(W, " ") END ;
-    WHILE i > k DO DEC(i); Write(W, d[i]) END ;
+    WHILE n > i+3 DO  Write(W, " "); DEC(n) END;
+    IF neg THEN Write(W, "-"); DEC(n) ELSE Write(W, " ") END;
+    WHILE i > k DO DEC(i); Write(W, d[i]) END;
     Write(W, ".");
-    WHILE k > i DO DEC(k); Write(W, "0") END ;
+    WHILE k > i DO DEC(k); Write(W, "0") END;
     WHILE i > 0 DO DEC(i); Write(W, d[i]) END
   END
 END WriteRealFix;
 ---*)
+
 
 (*
 PROCEDURE WritePair(VAR W: Writer; ch: CHAR; x: INTEGER);
@@ -547,14 +611,15 @@ END WritePair;
 
 PROCEDURE WriteClock* (VAR W: Writer; d: INTEGER);
 BEGIN
-  WritePair(W, " ", d DIV 20000H MOD 20H);   (*day*)
-  WritePair(W, ".", d DIV 400000H MOD 10H); (*month*)
-  WritePair(W, ".", d DIV 4000000H MOD 40H);   (*year*)
-  WritePair(W, " ", d DIV 1000H MOD 20H);   (*hour*)
-  WritePair(W, ":", d DIV 40H MOD 40H);  (*min*)
-  WritePair(W, ":", d MOD 40H)  (*sec*)
+  WritePair(W, " ", d DIV 20000H MOD 20H);    (*day*)
+  WritePair(W, ".", d DIV 400000H MOD 10H);   (*month*)
+  WritePair(W, ".", d DIV 4000000H MOD 40H);  (*year*)
+  WritePair(W, " ", d DIV 1000H MOD 20H);     (*hour*)
+  WritePair(W, ":", d DIV 40H MOD 40H);       (*min*)
+  WritePair(W, ":", d MOD 40H)                (*sec*)
 END WriteClock;
 *)
+
 
 BEGIN TrailerFile := Files.New("")
 END Texts.
