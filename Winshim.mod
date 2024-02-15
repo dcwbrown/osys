@@ -4,8 +4,6 @@ CONST
   (* Platform independent file open kinds *)
   OpenRO*      = 0;  (* Open r/o, fail if doesn't exist *)
   OpenRW*      = 1;  (* Open r/w, fail if doesn't exist *)
-  OpenNew*     = 2;  (* Open r/w, fail if already exists *)
-  OpenReplace* = 3;  (* Open r/w, repace existing file if any *)
 
   (* System library procedure indices *)
   NewProc                = 0;
@@ -107,9 +105,11 @@ VAR
   GetTempFileNameA*:        PROCEDURE-(pathadr, prefixadr, unique, tempfilenameadr: INTEGER): INTEGER;
   GetLastError*:            PROCEDURE-(): INTEGER;
   UnmapViewOfFile:          PROCEDURE-(adr: INTEGER): INTEGER;
+  FormatMessageW:           PROCEDURE-(flags, source, mid, lid, buf, size, args: INTEGER): INTEGER;
 
   AddVectoredExceptionHandler*:    PROCEDURE-(first, filter: INTEGER);
   GetSystemTimePreciseAsFileTime*: PROCEDURE-(tickAdr: INTEGER): INTEGER;
+  SetFileInformationByHandle*:     PROCEDURE-(hFile, infoClass, info, bufsize: INTEGER): INTEGER;
 
   (* Pre-loaded User32 imports *)
   MessageBoxA: PROCEDURE-(hWnd, lpText, lpCaption, uType: INTEGER)(*: INTEGER*);
@@ -215,6 +215,50 @@ BEGIN WHILE n > 0 DO wc(" "); DEC(n) END END wb;
 
 
 (* -------------------------------------------------------------------------- *)
+
+PROCEDURE DumpMem*(indent, adr, start, len: INTEGER);
+VAR
+  rowstart:  INTEGER;
+  dumplimit: INTEGER;
+  i:         INTEGER;
+  byte:      BYTE;
+  bytes:     ARRAY 16 OF INTEGER;
+BEGIN
+  rowstart  := (       start       DIV 16) * 16;
+  dumplimit := ((start + len + 15) DIV 16) * 16;
+  WHILE rowstart < dumplimit DO
+    wb(indent); whw(rowstart, 12); ws("  ");
+    i := 0;
+    WHILE i < 16 DO  (* Load a row of bytes *)
+      IF (rowstart+i >= start) & (rowstart+i < start+len) THEN
+        SYSTEM.GET(rowstart-start+adr+i, byte);  bytes[i] := byte
+      ELSE
+        bytes[i] := -1
+      END;
+      INC(i)
+    END;
+    i := 0;
+    WHILE i < 16 DO  (* One row of hex Dump *)
+      IF i MOD 8 = 0 THEN wc(" ") END;
+      IF bytes[i] >= 0 THEN whw(bytes[i], 2);  wc(" ") ELSE ws("   ") END;
+      INC(i)
+    END;
+    ws("  ");
+    i := 0;
+    WHILE i < 16 DO  (* One row of character Dump *)
+      IF bytes[i] >= 0 THEN
+        IF (bytes[i] < 32) OR (bytes[i] >= 127) THEN wc(".") ELSE wc(CHR(bytes[i])) END
+      ELSE
+        wc(" ")
+      END;
+      INC(i)
+    END;
+    wl;  INC(rowstart, 16);
+  END
+END DumpMem;
+
+
+(* -------------------------------------------------------------------------- *)
 (* ------------------------ Bootstrap initialisation ------------------------ *)
 (* -------------------------------------------------------------------------- *)
 
@@ -277,251 +321,6 @@ BEGIN
   ws("Committed ");  wh(modulesize);  ws("H bytes at ");  wh(OberonAdr);  wsl("H.");
 END PrepareOberonMachine;
 
-(* -------------------------------------------------------------------------- *)
-
-
-PROCEDURE assert(expectation: BOOLEAN; msg: ARRAY OF CHAR);
-VAR res: INTEGER;
-BEGIN
-  IF ~expectation THEN
-    ws("Winshim assertion failure: "); ws(msg); wsl(crlf);
-    res := CloseHandle(Stdout);
-    ExitProcess(99)
-  END
-END assert;
-
-PROCEDURE NewPointerHandler(ptr, len: INTEGER);
-BEGIN
-  Log("NewPointer called.");  Log(crlf);
-  ExitProcess(99)
-END NewPointerHandler;
-
-(* -------------------------------------------------------------------------- *)
-
-(* -------------------------------------------------------------------------- *)
-(* ------------ Unicode Transformation Formats UTF-8 and UTF-16 ------------- *)
-(* -------------------------------------------------------------------------- *)
-
-(* UTF-8:                                                                                           *)
-(* -------------- codepoint --------------    ----------------------- bytes ----------------------- *)
-(* 0000 0000 0000 0000 0000 0000 0zzz zzzz    0zzzzzzz                                              *)
-(* 0000 0000 0000 0000 0000 0yyy yyzz zzzz    110yyyyy 10zzzzzz                                     *)
-(* 0000 0000 0000 0000 xxxx yyyy yyzz zzzz    1110xxxx 10yyyyyy 10zzzzzz                            *)
-(* 0000 0000 000w wwxx xxxx yyyy yyzz zzzz    11110www 10xxxxxx 10yyyyyy 10zzzzzz                   *)
-(* The below are beyond the range of valid Unicode codepoints                                       *)
-(* 0000 00vv wwww wwxx xxxx yyyy yyzz zzzz    111110vv 10wwwwww 10xxxxxx 10yyyyyy 10zzzzzz          *)
-(* 0uvv vvvv wwww wwxx xxxx yyyy yyzz zzzz    1111110u 10vvvvvv 10wwwwww 10xxxxxx 10yyyyyy 10zzzzzz *)
-
-PROCEDURE GetUtf8*(src: ARRAY OF CHAR; VAR i: INTEGER): INTEGER;
-VAR n, result: INTEGER;
-BEGIN ASSERT(i < LEN(src)); result := ORD(src[i]);  INC(i);
-  IF result >= 0C0H THEN
-    IF    result >= 0FCH THEN result := result MOD 2;  n := 5
-    ELSIF result >= 0F8H THEN result := result MOD 4;  n := 4
-    ELSIF result >= 0F0H THEN result := result MOD 8;  n := 3
-    ELSIF result >= 0E0H THEN result := result MOD 16; n := 2
-    ELSE                      result := result MOD 32; n := 1
-    END;
-    WHILE n > 0 DO
-      result := LSL(result,6);  DEC(n);
-      IF (i < LEN(src)) & (ORD(src[i]) DIV 40H = 2) THEN
-        INC(result, ORD(src[i]) MOD 40H);  INC(i)
-      END
-    END
-  END;
-RETURN result END GetUtf8;
-
-PROCEDURE PutUtf8*(c: INTEGER; VAR dst: ARRAY OF CHAR; VAR i: INTEGER);
-VAR n: INTEGER;
-BEGIN
-  ASSERT(i < LEN(dst));
-  ASSERT(c > 0);  ASSERT(c < 80000000H);
-  IF i < LEN(dst) THEN
-    IF c < 80H THEN dst[i] := CHR(c);  INC(i)
-    ELSE
-      IF    c < 800H     THEN  dst[i] := CHR(0C0H + ASR(c, 6));    n := 1;
-      ELSIF c < 10000H   THEN  dst[i] := CHR(0E0H + ASR(c, 12));   n := 2;
-      ELSIF c < 200000H  THEN  dst[i] := CHR(0F0H + ASR(c, 18));   n := 3;
-      ELSIF c < 4000000H THEN  dst[i] := CHR(0F8H + ASR(c, 24));   n := 4;
-      ELSE                     dst[i] := CHR(0FCH + ASR(c, 30));   n := 5;
-      END;
-      INC(i);
-      WHILE (n > 0) & (i < LEN(dst)) DO
-        DEC(n);  dst[i] := CHR(80H + ASR(c, n*6) MOD 40H);  INC(i)
-      END;
-    END
-  END
-END PutUtf8;
-
-
-(* UTF-16:                                                                      *)
-(* -------------- codepoint --------------    ------------- words ------------- *)
-(* 0000 0000 0000 0000 zzzz zzzz zzzz zzzz    zzzzzzzzzzzzzzzz                  *)
-(* 0000 0000 000x xxxx yyyy yyzz zzzz zzzz    110110wwwwyyyyyy 110111zzzzzzzzzz *)
-(* Where xxxxx is 1-16, and wwww is xxxxx-1 (0-15).                             *)
-
-PROCEDURE GetUtf16*(src: ARRAY OF SYSTEM.CARD16; VAR i: INTEGER): INTEGER;
-VAR result: INTEGER;
-BEGIN
-  ASSERT(i < LEN(src));
-  result := src[i];  INC(i);
-  IF result DIV 400H = 36H THEN    (* High surrogate *)
-    result := LSL(result MOD 400H, 10) + 10000H;
-    IF (i < LEN(src)) & (src[i] DIV 400H = 37H) THEN  (* Low surrogate *)
-      INC(result, src[i] MOD 400H);  INC(i)
-    END
-  END
-RETURN result END GetUtf16;
-
-PROCEDURE PutUtf16*(ch: INTEGER; VAR dst: ARRAY OF SYSTEM.CARD16; VAR i: INTEGER);
-BEGIN
-  ASSERT(i < LEN(dst));
-  IF (ch < 10000H) & (i < LEN(dst)) THEN
-    dst[i] := ch;  INC(i)
-  ELSIF i+1 < LEN(dst) THEN
-    DEC(ch, 10000H);
-    dst[i] := 0D800H + ch DIV 400H;  INC(i);
-    dst[i] := 0DC00H + ch MOD 400H;  INC(i);
-  END
-END PutUtf16;
-
-
-PROCEDURE Utf8ToUtf16*(src: ARRAY OF CHAR;  VAR dst: ARRAY OF SYSTEM.CARD16): INTEGER;
-VAR i, j: INTEGER;
-BEGIN  i := 0;  j := 0;
-  WHILE (i < LEN(src)) & (src[i] # 0X) DO PutUtf16(GetUtf8(src, i), dst, j) END;
-  IF j < LEN(dst) THEN dst[j] := 0;  INC(j) END
-RETURN j END Utf8ToUtf16;
-
-PROCEDURE Utf16ToUtf8*(src: ARRAY OF SYSTEM.CARD16;  VAR dst: ARRAY OF CHAR): INTEGER;
-VAR i, j: INTEGER;
-BEGIN  i := 0;  j := 0;
-  WHILE (i < LEN(src)) & (src[i] # 0) DO PutUtf8(GetUtf16(src, i), dst, j) END;
-  IF j < LEN(dst) THEN dst[j] := 0X;  INC(j) END
-RETURN j END Utf16ToUtf8;
-
-
-(* -------------------------------------------------------------------------- *)
-(* ---------------- Last resort error reporting - MessageBox ---------------- *)
-(* -------------------------------------------------------------------------- *)
-
-PROCEDURE MessageBox*(title, msg: ARRAY OF CHAR);
-VAR
-  res:     INTEGER;
-  title16: ARRAY 256 OF SYSTEM.CARD16;
-  msg16:   ARRAY 256 OF SYSTEM.CARD16;
-BEGIN
-  res := Utf8ToUtf16(title, title16);
-  res := Utf8ToUtf16(msg,   msg16);
-  res := MessageBoxW(HWnd, SYSTEM.ADR(msg16), SYSTEM.ADR(title16), 0)
-END MessageBox;
-
-
-(* -------------------------------------------------------------------------- *)
-(* -------------- Platform independent low level file operations -------------- *)
-(* -------------------------------------------------------------------------- *)
-
-PROCEDURE FileOpen*(name: ARRAY OF CHAR; openkind: INTEGER; VAR handle: INTEGER): INTEGER;
-VAR
-  name16:      ARRAY 261 OF SYSTEM.CARD16;
-  disposition: INTEGER;
-  flags:       INTEGER;
-  access:      INTEGER;
-  mode:        INTEGER;
-  res:         INTEGER;
-BEGIN
-  IF openkind = OpenNew THEN
-    disposition := 1;         (* Create new *)
-    flags       := 4000100H;  (* FileFlagDeleteOnClose, FileAttributeTemporary *)
-  ELSIF openkind = OpenReplace THEN
-    disposition := 2;         (* Create always *)
-    flags       := 0;
-  ELSE
-    disposition := 3;         (* Open existing *)
-    flags       := 0;
-  END;
-
-  IF openkind = OpenRO THEN
-    access := 080000000H;  (* GenericRead *)
-    mode   := 1;           (* FileShareRead *)
-  ELSE
-    access := 0C0000000H;  (* GenericRead, GenericWrite *)
-    mode   := 7;           (* FileShareRead, FileShareWrite, FileShareDelete *)
-  END;
-
-  res := Utf8ToUtf16(name, name16);
-  res := CreateFileW(SYSTEM.ADR(name16), access, mode, 0, disposition, flags, 0);
-  IF res < 0 THEN
-    handle := 0;  res := GetLastError()
-  ELSE
-    handle := res;  res := 0
-  END
-RETURN res END FileOpen;
-
-PROCEDURE MoveFile*(source, dest: ARRAY OF CHAR);
-VAR
-  sourcew: ARRAY MaxPath OF SYSTEM.CARD16;
-  destw:   ARRAY MaxPath OF SYSTEM.CARD16;
-  res:     INTEGER;
-BEGIN
-  res := Utf8ToUtf16(source, sourcew);  ASSERT(res > 0);
-  res := Utf8ToUtf16(dest,   destw);    ASSERT(res > 0);
-  res := MoveFileExW(SYSTEM.ADR(sourcew), SYSTEM.ADR(destw), 3);  (* 1 => replace existing, 2 => copy allowed *)
-  ASSERT(res # 0)
-END MoveFile;
-
-(* -------------------------------------------------------------------------- *)
-
-
-PROCEDURE WriteStdout(s: ARRAY OF BYTE);
-VAR written, result: INTEGER;
-BEGIN
-  result := WriteFile(Stdout, SYSTEM.ADR(s), Length(s), SYSTEM.ADR(written), 0);
-END WriteStdout;
-
-(* -------------------------------------------------------------------------- *)
-
-PROCEDURE DumpMem*(indent, adr, start, len: INTEGER);
-VAR
-  rowstart:  INTEGER;
-  dumplimit: INTEGER;
-  i:         INTEGER;
-  byte:      BYTE;
-  bytes:     ARRAY 16 OF INTEGER;
-BEGIN
-  rowstart  := (       start       DIV 16) * 16;
-  dumplimit := ((start + len + 15) DIV 16) * 16;
-  WHILE rowstart < dumplimit DO
-    wb(indent); whw(rowstart, 12); ws("  ");
-    i := 0;
-    WHILE i < 16 DO  (* Load a row of bytes *)
-      IF (rowstart+i >= start) & (rowstart+i < start+len) THEN
-        SYSTEM.GET(rowstart-start+adr+i, byte);  bytes[i] := byte
-      ELSE
-        bytes[i] := -1
-      END;
-      INC(i)
-    END;
-    i := 0;
-    WHILE i < 16 DO  (* One row of hex Dump *)
-      IF i MOD 8 = 0 THEN wc(" ") END;
-      IF bytes[i] >= 0 THEN whw(bytes[i], 2);  wc(" ") ELSE ws("   ") END;
-      INC(i)
-    END;
-    ws("  ");
-    i := 0;
-    WHILE i < 16 DO  (* One row of character Dump *)
-      IF bytes[i] >= 0 THEN
-        IF (bytes[i] < 32) OR (bytes[i] >= 127) THEN wc(".") ELSE wc(CHR(bytes[i])) END
-      ELSE
-        wc(" ")
-      END;
-      INC(i)
-    END;
-    wl;  INC(rowstart, 16);
-  END
-END DumpMem;
-
 
 (* -------------------------------------------------------------------------- *)
 
@@ -563,17 +362,6 @@ BEGIN
     SYSTEM.GET(adr, export);  INC(adr, 4);
   END
 END WriteExports;
-
-(* -------------------------------------------------------------------------- *)
-
-PROCEDURE GetString(adr: INTEGER; VAR s: ARRAY OF CHAR; VAR len: INTEGER);
-VAR i: INTEGER;
-BEGIN i := 0;
-  (*ws("GetString -> '");*)
-  REPEAT SYSTEM.GET(adr, s[i]); INC(adr); INC(i) UNTIL s[i-1] = 0X;
-  len := i;
-  (*ws(s); wsl("'.")*)
-END GetString;
 
 
 (* ----------------------- Windows exception handling ----------------------- *)
@@ -648,7 +436,7 @@ END ExceptionHandler;
 PROCEDURE Trap(desc: ARRAY OF CHAR);
 VAR adr, modadr: INTEGER;
 BEGIN
-  Log(desc);  Log(crlf);
+  wsl(desc);
   SYSTEM.GET(SYSTEM.ADR(LEN(desc)) + 8, adr);  (* Get caller address of trap caller *)
   ws("At address ");  wh(adr);  ws("H");
   modadr := LocateModule(adr);
@@ -665,15 +453,243 @@ BEGIN
 END Trap;
 
 PROCEDURE AssertionFailureHandler();
-BEGIN Trap("** Assertion failure **") END AssertionFailureHandler;
+BEGIN wl; Trap("** Assertion failure **") END AssertionFailureHandler;
 
 PROCEDURE ArraySizeMismatchHandler();
-BEGIN Trap("** Array size mismatch **") END ArraySizeMismatchHandler;
+BEGIN wl; Trap("** Array size mismatch **") END ArraySizeMismatchHandler;
 
 PROCEDURE UnterminatedStringHandler();
-BEGIN Trap("** Unterminated string **") END UnterminatedStringHandler;
+BEGIN wl; Trap("** Unterminated string **") END UnterminatedStringHandler;
+
+PROCEDURE NewPointerHandler(ptr, len: INTEGER);
+BEGIN
+  Log("NewPointer called.");  Log(crlf);
+  ExitProcess(99)
+END NewPointerHandler;
 
 
+(* ------------------ Winshim internal assertion handlers ------------------- *)
+
+PROCEDURE assertmsg(expectation: BOOLEAN; msg: ARRAY OF CHAR);
+VAR res: INTEGER;
+BEGIN
+  IF ~expectation THEN
+    ws(" * "); ws(msg); wsl(" *");
+    res := CloseHandle(Stdout);
+    ExitProcess(99)
+  END
+END assertmsg;
+
+PROCEDURE assert(expectation: BOOLEAN);
+BEGIN IF ~expectation THEN Trap("** Winshim assertion failure **") END
+END assert;
+
+
+(* -------------------------------------------------------------------------- *)
+(* ------------ Unicode Transformation Formats UTF-8 and UTF-16 ------------- *)
+(* -------------------------------------------------------------------------- *)
+
+(* UTF-8:                                                                                           *)
+(* -------------- codepoint --------------    ----------------------- bytes ----------------------- *)
+(* 0000 0000 0000 0000 0000 0000 0zzz zzzz    0zzzzzzz                                              *)
+(* 0000 0000 0000 0000 0000 0yyy yyzz zzzz    110yyyyy 10zzzzzz                                     *)
+(* 0000 0000 0000 0000 xxxx yyyy yyzz zzzz    1110xxxx 10yyyyyy 10zzzzzz                            *)
+(* 0000 0000 000w wwxx xxxx yyyy yyzz zzzz    11110www 10xxxxxx 10yyyyyy 10zzzzzz                   *)
+(* The below are beyond the range of valid Unicode codepoints                                       *)
+(* 0000 00vv wwww wwxx xxxx yyyy yyzz zzzz    111110vv 10wwwwww 10xxxxxx 10yyyyyy 10zzzzzz          *)
+(* 0uvv vvvv wwww wwxx xxxx yyyy yyzz zzzz    1111110u 10vvvvvv 10wwwwww 10xxxxxx 10yyyyyy 10zzzzzz *)
+
+PROCEDURE GetUtf8*(src: ARRAY OF CHAR; VAR i: INTEGER): INTEGER;
+VAR n, result: INTEGER;
+BEGIN assert(i < LEN(src)); result := ORD(src[i]);  INC(i);
+  IF result >= 0C0H THEN
+    IF    result >= 0FCH THEN result := result MOD 2;  n := 5
+    ELSIF result >= 0F8H THEN result := result MOD 4;  n := 4
+    ELSIF result >= 0F0H THEN result := result MOD 8;  n := 3
+    ELSIF result >= 0E0H THEN result := result MOD 16; n := 2
+    ELSE                      result := result MOD 32; n := 1
+    END;
+    WHILE n > 0 DO
+      result := LSL(result,6);  DEC(n);
+      IF (i < LEN(src)) & (ORD(src[i]) DIV 40H = 2) THEN
+        INC(result, ORD(src[i]) MOD 40H);  INC(i)
+      END
+    END
+  END;
+RETURN result END GetUtf8;
+
+PROCEDURE PutUtf8*(c: INTEGER; VAR dst: ARRAY OF CHAR; VAR i: INTEGER);
+VAR n: INTEGER;
+BEGIN
+  assert(i < LEN(dst));
+  assert(c > 0);  assert(c < 80000000H);
+  IF i < LEN(dst) THEN
+    IF c < 80H THEN dst[i] := CHR(c);  INC(i)
+    ELSE
+      IF    c < 800H     THEN  dst[i] := CHR(0C0H + ASR(c, 6));    n := 1;
+      ELSIF c < 10000H   THEN  dst[i] := CHR(0E0H + ASR(c, 12));   n := 2;
+      ELSIF c < 200000H  THEN  dst[i] := CHR(0F0H + ASR(c, 18));   n := 3;
+      ELSIF c < 4000000H THEN  dst[i] := CHR(0F8H + ASR(c, 24));   n := 4;
+      ELSE                     dst[i] := CHR(0FCH + ASR(c, 30));   n := 5;
+      END;
+      INC(i);
+      WHILE (n > 0) & (i < LEN(dst)) DO
+        DEC(n);  dst[i] := CHR(80H + ASR(c, n*6) MOD 40H);  INC(i)
+      END;
+    END
+  END
+END PutUtf8;
+
+
+(* UTF-16:                                                                      *)
+(* -------------- codepoint --------------    ------------- words ------------- *)
+(* 0000 0000 0000 0000 zzzz zzzz zzzz zzzz    zzzzzzzzzzzzzzzz                  *)
+(* 0000 0000 000x xxxx yyyy yyzz zzzz zzzz    110110wwwwyyyyyy 110111zzzzzzzzzz *)
+(* Where xxxxx is 1-16, and wwww is xxxxx-1 (0-15).                             *)
+
+PROCEDURE GetUtf16*(src: ARRAY OF SYSTEM.CARD16; VAR i: INTEGER): INTEGER;
+VAR result: INTEGER;
+BEGIN
+  assert(i < LEN(src));
+  result := src[i];  INC(i);
+  IF result DIV 400H = 36H THEN    (* High surrogate *)
+    result := LSL(result MOD 400H, 10) + 10000H;
+    IF (i < LEN(src)) & (src[i] DIV 400H = 37H) THEN  (* Low surrogate *)
+      INC(result, src[i] MOD 400H);  INC(i)
+    END
+  END
+RETURN result END GetUtf16;
+
+PROCEDURE PutUtf16*(ch: INTEGER; VAR dst: ARRAY OF SYSTEM.CARD16; VAR i: INTEGER);
+BEGIN
+  assert(i < LEN(dst));
+  IF (ch < 10000H) & (i < LEN(dst)) THEN
+    dst[i] := ch;  INC(i)
+  ELSIF i+1 < LEN(dst) THEN
+    DEC(ch, 10000H);
+    dst[i] := 0D800H + ch DIV 400H;  INC(i);
+    dst[i] := 0DC00H + ch MOD 400H;  INC(i);
+  END
+END PutUtf16;
+
+
+PROCEDURE Utf8ToUtf16*(src: ARRAY OF CHAR;  VAR dst: ARRAY OF SYSTEM.CARD16): INTEGER;
+VAR i, j: INTEGER;
+BEGIN  i := 0;  j := 0;
+  WHILE (i < LEN(src)) & (src[i] # 0X) DO PutUtf16(GetUtf8(src, i), dst, j) END;
+  IF j < LEN(dst) THEN dst[j] := 0;  INC(j) END
+RETURN j END Utf8ToUtf16;
+
+PROCEDURE Utf16ToUtf8*(src: ARRAY OF SYSTEM.CARD16;  VAR dst: ARRAY OF CHAR): INTEGER;
+VAR i, j: INTEGER;
+BEGIN  i := 0;  j := 0;
+  WHILE (i < LEN(src)) & (src[i] # 0) DO PutUtf8(GetUtf16(src, i), dst, j) END;
+  IF j < LEN(dst) THEN dst[j] := 0X;  INC(j) END
+RETURN j END Utf16ToUtf8;
+
+
+(* -------------------------------------------------------------------------- *)
+
+PROCEDURE WriteWindowsErrorMessage(err: INTEGER);
+VAR
+  msgW:    ARRAY 1024 OF SYSTEM.CARD16;
+  msg:     ARRAY 1024 OF CHAR;
+  i, res:  INTEGER;
+BEGIN
+  res := FormatMessageW(1000H, 0, err, 0, SYSTEM.ADR(msgW), 1024, 0); (* 1000H: FORMAT_MESSAGE_FROM_SYSTEM *)
+  res := Utf16ToUtf8(msgW, msg);
+  i := Length(msg) - 1;
+  WHILE (i >= 0) & (msg[i] <= " ") DO DEC(i) END;  (* Drop trailing newline(s) *)
+  msg[i + 1] := 0X;
+  ws(msg)
+END WriteWindowsErrorMessage;
+
+PROCEDURE AssertWinErr*(err: INTEGER);
+BEGIN
+  IF err # 0 THEN
+    wl; ws("** "); WriteWindowsErrorMessage(err); Trap(" **")
+  END
+END AssertWinErr;
+
+
+(* -------------------------------------------------------------------------- *)
+(* ---------------- Last resort error reporting - MessageBox ---------------- *)
+(* -------------------------------------------------------------------------- *)
+
+PROCEDURE MessageBox*(title, msg: ARRAY OF CHAR);
+VAR
+  res:     INTEGER;
+  title16: ARRAY 256 OF SYSTEM.CARD16;
+  msg16:   ARRAY 256 OF SYSTEM.CARD16;
+BEGIN
+  res := Utf8ToUtf16(title, title16);
+  res := Utf8ToUtf16(msg,   msg16);
+  res := MessageBoxW(HWnd, SYSTEM.ADR(msg16), SYSTEM.ADR(title16), 0)
+END MessageBox;
+
+
+(* -------------------------------------------------------------------------- *)
+(* ------------- Platform independent low level file operations ------------- *)
+(* -------------------------------------------------------------------------- *)
+
+PROCEDURE FileOpen*(name: ARRAY OF CHAR; openkind: INTEGER; VAR handle: INTEGER): INTEGER;
+VAR
+  name16:      ARRAY 261 OF SYSTEM.CARD16;
+  disposition: INTEGER;
+  flags:       INTEGER;
+  access:      INTEGER;
+  mode:        INTEGER;
+  res:         INTEGER;
+BEGIN
+  disposition := 3;         (* Open existing *)
+  flags       := 0;
+  IF openkind = OpenRO THEN
+    access := 080000000H;  (* GenericRead *)
+    mode   := 1;           (* FileShareRead *)
+  ELSE
+    access := 010000000H;  (* GenericAll (includes delete access) *)
+    mode   := 7;           (* FileShareRead, FileShareWrite, FileShareDelete *)
+  END;
+  res := Utf8ToUtf16(name, name16);
+  res := CreateFileW(SYSTEM.ADR(name16), access, mode, 0, disposition, flags, 0);
+  IF res < 0 THEN
+    handle := 0;  res := GetLastError()
+  ELSE
+    handle := res;  res := 0
+  END
+RETURN res END FileOpen;
+
+PROCEDURE MoveFile*(source, dest: ARRAY OF CHAR): INTEGER;
+VAR
+  sourcew: ARRAY MaxPath OF SYSTEM.CARD16;
+  destw:   ARRAY MaxPath OF SYSTEM.CARD16;
+  res:     INTEGER;
+BEGIN
+  res := Utf8ToUtf16(source, sourcew);  assert(res > 0);
+  res := Utf8ToUtf16(dest,   destw);    assert(res > 0);
+  res := MoveFileExW(SYSTEM.ADR(sourcew), SYSTEM.ADR(destw), 3);  (* 1 => replace existing, 2 => copy allowed *)
+  IF res = 0 THEN res := GetLastError() ELSE res := 0 END
+RETURN res END MoveFile;
+
+(* -------------------------------------------------------------------------- *)
+
+
+PROCEDURE WriteStdout(s: ARRAY OF BYTE);
+VAR written, result: INTEGER;
+BEGIN
+  result := WriteFile(Stdout, SYSTEM.ADR(s), Length(s), SYSTEM.ADR(written), 0);
+END WriteStdout;
+
+(* -------------------------------------------------------------------------- *)
+
+PROCEDURE GetString(adr: INTEGER; VAR s: ARRAY OF CHAR; VAR len: INTEGER);
+VAR i: INTEGER;
+BEGIN i := 0;
+  (*ws("GetString -> '");*)
+  REPEAT SYSTEM.GET(adr, s[i]); INC(adr); INC(i) UNTIL s[i-1] = 0X;
+  len := i;
+  (*ws(s); wsl("'.")*)
+END GetString;
 
 
 (* -------------------------------------------------------------------------- *)
@@ -703,7 +719,7 @@ BEGIN
       GetString(modadr + SYSTEM.SIZE(CodeHeader), modname, len)
     END
   END;
-  assert(hdr.length # 0, "FindModule hdr.length is 0.");
+  assert(hdr.length # 0); (*, "FindModule hdr.length is 0.");*)
   (*ws("Requested key "); wh(hdr.key); ws("H, found key "); wh(hdr.key); wsl("H.");*)
 RETURN modadr END FindModule;
 
@@ -784,12 +800,12 @@ BEGIN
       ELSIF impno = AssertionFailureProc   THEN disp := SYSTEM.ADR(AssertionFailure)   + disp - LoadAdr
       ELSIF impno = ArraySizeMismatchProc  THEN disp := SYSTEM.ADR(ArraySizeMismatch)  + disp - LoadAdr
       ELSIF impno = UnterminatedStringProc THEN disp := SYSTEM.ADR(UnterminatedString) + disp - LoadAdr
-      ELSE  assert(FALSE, "LoadModule: Unexpected system function import number.")
+      ELSE  assert(FALSE) (*, "LoadModule: Unexpected system function import number.")*)
       END;
       (*ws("disp'   -"); wh(-disp); wsl("H.");*)
       SYSTEM.PUT(LoadAdr + offset, disp)
     ELSE
-      assert(modno > 0, "LoadModule: modno is < 0.");
+      assert(modno > 0); (*, "LoadModule: modno is < 0.");*)
       impmodadr := modules[modno-1];
       expadr := ExportedAddress(SYSTEM.VAL(CodeHeaderPtr, impmodadr), impno-1);
       (*

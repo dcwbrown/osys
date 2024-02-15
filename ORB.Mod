@@ -25,8 +25,8 @@ CONST
   (* class values *)
   Head*  = 0;
   Const* = 1;
-  Var*   = 2;  (* VAR variable (or atomic value parameter) *)
-  Par*   = 3;  (* VAR parameter *)
+  Var*   = 2;  (* VAR variable or atomic value parameter *)
+  Par*   = 3;  (* VAR parameter or structured value parameter *)
   Fld*   = 4;
   Typ*   = 5;
   SProc* = 6;

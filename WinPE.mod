@@ -9,12 +9,12 @@ CONST
   FileAlignment   =  200H;  (* Sections are a multiple of this size on file *)
 
   ImageBase   = 400000H;
-  FadrImport  = 400H;  RvaImport  = 1000H;  (* Import directory table *)
-  FadrModules = 800H;  RvaModules = 2000H;  (* Oberon modules *)
+  FadrImport  = 0400H;  RvaImport  = 1000H;  (* Import directory table *)
+  FadrModules = 0A00H;  RvaModules = 2000H;  (* Oberon modules *)
 
   BootstrapVarBytes = 16;  (* preloaded bootstrap VAR size preceeding imported proc addresses *)
 
-  Kernel32ImportCount = 29;
+  Kernel32ImportCount = 31;
   User32ImportCount   =  2;
   Shell32ImportCount  =  1;
 
@@ -239,8 +239,10 @@ BEGIN
   AddImport(Idt.Kernel32Lookups, n, i, 0, importhints, "GetTempFileNameA");
   AddImport(Idt.Kernel32Lookups, n, i, 0, importhints, "GetLastError");
   AddImport(Idt.Kernel32Lookups, n, i, 0, importhints, "UnmapViewOfFile");
+  AddImport(Idt.Kernel32Lookups, n, i, 0, importhints, "FormatMessageW");
   AddImport(Idt.Kernel32Lookups, n, i, 0, importhints, "AddVectoredExceptionHandler");
   AddImport(Idt.Kernel32Lookups, n, i, 0, importhints, "GetSystemTimePreciseAsFileTime");
+  AddImport(Idt.Kernel32Lookups, n, i, 0, importhints, "SetFileInformationByHandle");
 
   Idt.User32LookupTable := FieldRVA(Idt.User32Lookups);
   Idt.User32Dllnameadr  := FieldRVA(Idt.User32Dllname);

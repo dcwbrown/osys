@@ -22,7 +22,6 @@ TYPE
     tempname:   FileName;
     registered: BOOLEAN;
     name:       FileName;
-  (*norm:       FileName;   (* Normalised filename helps work with Windows case insensitivity *)*)
     handle:     INTEGER;
     pos:        INTEGER;
   END;
@@ -33,34 +32,13 @@ VAR
 
 (* --------------------------------- Files ---------------------------------- *)
 
-(*
-PROCEDURE NormaliseFileName(name: ARRAY OF CHAR; VAR normalised: ARRAY OF CHAR);
-VAR i, l: INTEGER; ch: CHAR;
-BEGIN i := 0;
-  l := LEN(name)-1;  IF l > LEN(normalised)-1 THEN l := LEN(normalised)-1 END;
-  ch := name[0];
-  WHILE (i < l) & (ch # 0X) DO
-    IF (ch >= "A") & (ch <= "Z") THEN normalised[i] := CHR(ORD(ch) + ORD("a") - ORD("A"))
-    ELSIF ch = 5CX (* \ *) THEN normalised[i] := "/"
-    ELSE normalised[i] := ch
-    END;
-    INC(i); ch := name[i]
-  END;
-  ASSERT(ch = 0X);
-  normalised[i] := 0X
-END NormaliseFileName;
-*)
-
 PROCEDURE Old*(name: ARRAY OF CHAR): File;
 VAR
   h:    INTEGER;
   res:  INTEGER;
   f:    File;
-(*norm: FileName;*)
 BEGIN
   f := first;
-  (*NormaliseFileName(name, norm);*)
-  (*WHILE (f # NIL) & ~(f.registered & (f.norm = norm)) DO f := f.next END;*)
   WHILE (f # NIL) & ~(f.registered & (f.name = name)) DO f := f.next END;
   IF f = NIL THEN
     res := P.FileOpen(name, P.OpenRW, h);
@@ -68,16 +46,13 @@ BEGIN
       f := NIL
     ELSE
       NEW(f);
-      (*P.ws("File allocated at "); P.wh(SYSTEM.VAL(INTEGER, f)); P.wsl("H.");*)
       f.tempname   := "";
       f.registered := TRUE;
       f.name       := name;
-    (*f.norm       := norm;*)
       f.handle     := h;
       f.next       := first;  first := f;
     END
   END;
-  (*P.wsl("Old complete.");*)
 RETURN f END Old;
 
 PROCEDURE MakeTempFile(VAR name: ARRAY OF CHAR);
@@ -91,19 +66,22 @@ END MakeTempFile;
 
 PROCEDURE New*(name: ARRAY OF CHAR): File;
 VAR
-  res:      INTEGER;
-  h:        INTEGER;
-  f:        File;
-  tempname: FileName;
+  res:         INTEGER;
+  h:           INTEGER;
+  f:           File;
+  tempname:    FileName;
+  disposition: INTEGER;
 BEGIN
   MakeTempFile(tempname);
   res := P.FileOpen(tempname, P.OpenRW, h);
   ASSERT(res = 0);
+  disposition := 1;  (* 1 = DeleteFile on close *)
+  res := P.SetFileInformationByHandle(h, 4, SYSTEM.ADR(disposition), 8);
+  ASSERT(res # 0);
   NEW(f);
   f.tempname   := tempname;
   f.registered := FALSE;
   f.name       := name;
-  (*NormaliseFileName(name, f.norm);*)
   f.handle     := h;
   f.next       := first;  first := f;
 RETURN f END New;
@@ -116,21 +94,10 @@ PROCEDURE Unregister(f: File);
 BEGIN
   ASSERT(P.CloseHandle(f.handle) # 0);
   MakeTempFile(f.tempname);
-  P.MoveFile(f.name, f.tempname);
+  ASSERT(P.MoveFile(f.name, f.tempname) = 0);
   ASSERT(P.FileOpen(f.tempname, P.OpenRW, f.handle) = 0);
   f.registered := FALSE;
 END Unregister;
-
-(*
-PROCEDURE UnregisterByNormalisedName(norm: ARRAY OF CHAR);
-VAR f: File;
-BEGIN f := first;
-  WHILE f # NIL DO
-    IF f.registered & (f.norm = norm) THEN Unregister(f) END;
-    f := f.next;
-  END
-END UnregisterByNormalisedName;
-*)
 
 PROCEDURE UnregisterByName(name: ARRAY OF CHAR);
 VAR f: File;
@@ -143,15 +110,24 @@ END UnregisterByName;
 
 PROCEDURE Register*(f: File);
 VAR
-  tmpnamew: ARRAY MaxPath OF SYSTEM.CARD16;
-  regnamew: ARRAY MaxPath OF SYSTEM.CARD16;
-  res:      INTEGER;
+  nameW:       ARRAY MaxPath OF SYSTEM.CARD16;
+  res:         INTEGER;
+  err:         INTEGER;
+  disposition: INTEGER;
 BEGIN
   IF (f # NIL) & (f.name[0] # 0X) & ~f.registered THEN
+    disposition := 0;  (* Remove delete on close flag *)
+    res := P.SetFileInformationByHandle(f.handle, 4, SYSTEM.ADR(disposition), 8);
+    ASSERT(res # 0);
     ASSERT(P.CloseHandle(f.handle) # 0);
-    (*UnregisterByNormalisedName(f.norm);*)
     UnregisterByName(f.name);
-    P.MoveFile(f.tempname, f.name);
+    IF P.MoveFile(f.tempname, f.name) # 0 THEN
+      err := P.GetLastError();
+      res := P.Utf8ToUtf16(f.tempname, nameW);  (* Couldn't move temp file, so delete it *)
+      res := P.DeleteFileW(SYSTEM.ADR(nameW));
+      P.wl; P.ws("** Cannot register "); P.ws(f.name); P.ws(" as it is already in use: **");
+      P.AssertWinErr(err);
+    END;
     ASSERT(P.FileOpen(f.name, P.OpenRW, f.handle) = 0);
     f.registered := TRUE;
   END
@@ -186,12 +162,6 @@ PROCEDURE SyncFilePos(VAR r: Rider);
 VAR res: INTEGER;
 BEGIN
   IF r.pos # r.file.pos THEN
-    (*
-    P.ws("Files.SyncFilePos: r.pos "); P.wh(r.pos);
-    P.ws("H, r.file.pos ");            P.wh(r.file.pos);
-    P.ws("H, r.file.handle ");         P.wh(r.file.handle);
-    P.wsl("H.");
-    *)
     res := P.SetFilePointerEx(r.file.handle, r.pos, 0, 0);
     ASSERT(res # 0);
     r.file.pos := r.pos
