@@ -73,45 +73,39 @@ VAR
   Dummy:  INTEGER;
 
   (* Pre-loaded Kernel32 imports *)
-  LoadLibraryA*:                   PROCEDURE-(libname: INTEGER): INTEGER;
-  GetProcAddress*:                 PROCEDURE-(hmodule, procname: INTEGER): INTEGER;
-  VirtualAlloc*:                   PROCEDURE-(address, size, type, protection: INTEGER): INTEGER;
-  ExitProcess*:                    PROCEDURE-(exitcode: INTEGER);
-  GetStdHandle*:                   PROCEDURE-(nStdHandle: SYSTEM.INT32): INTEGER;
-  SetConsoleOutputCP*:             PROCEDURE-(codepage: INTEGER) (* : INTEGER *);
-  GetCommandLineW*:                PROCEDURE-(): INTEGER;
-  GetModuleFileNameW*:             PROCEDURE-(hModule, lpFilename, nSize: INTEGER): INTEGER;
-  GetCurrentDirectoryW*:           PROCEDURE-(nsize, pbuffer: INTEGER): INTEGER;
-  GetFileAttributesW*:             PROCEDURE-(lpFileName: INTEGER): INTEGER;
-  DeleteFileW*:                    PROCEDURE-(lpFilename: INTEGER): INTEGER;
-  CloseHandle*:                    PROCEDURE-(hObject: INTEGER): INTEGER;
-  FlushFileBuffers*:               PROCEDURE-(hFile: INTEGER): INTEGER;
-  SetEndOfFile*:                   PROCEDURE-(hFile: INTEGER): INTEGER;
-  GetFileSizeEx*:                  PROCEDURE-(hFile, lpFileSize: INTEGER): INTEGER;
-  GetCurrentProcessId*:            PROCEDURE-(): INTEGER;
-  MoveFileExW*:                    PROCEDURE-(lpExistingFileName, lpNewFileName, dwFlags: INTEGER): INTEGER;
-  CreateFileW*:                    PROCEDURE-(lpFileName, dwDesiredAccess, dwShareMode,
-                                              lpSecurityAttributes, dwCreationDisposition,
-                                              dwFlagsAndAttributes, hTemplateFile: INTEGER): INTEGER;
-  ReadFile*:                       PROCEDURE-(hFile, lpBuffer, nNumberOfBytesToRead,
-                                              lpNumberOfBytesRead, lpOverlapped: INTEGER): INTEGER;
-  WriteFile*:                      PROCEDURE-(hFile, lpBuffer, nNumberOfBytesToWrite,
-                                              lpNumberOfBytesWritten, lpOverlapped: INTEGER): INTEGER;
-  SetFilePointerEx*:               PROCEDURE-(hFile, liDistanceToMove,
-                                              lpNewFilePointer, dwMoveMethod: INTEGER): INTEGER;
-  GetEnvironmentVariableW*:        PROCEDURE-(lpName, lpBuffer, nSize: INTEGER): INTEGER;
-  GetFileAttributesExW*:           PROCEDURE-(lpName, fInfoLevelId, lpFileInformation: INTEGER): INTEGER;
-                                   (* fInfoLevelId Must be 0 (GetFileExInfoStandard) *)
-  GetTempPathA*:                   PROCEDURE-(buflen, bufadr: INTEGER): INTEGER;
-  GetTempFileNameA*:               PROCEDURE-(pathadr, prefixadr, unique, tempfilenameadr: INTEGER): INTEGER;
-  GetLastError*:                   PROCEDURE-(): INTEGER;
-  UnmapViewOfFile:                 PROCEDURE-(adr: INTEGER): INTEGER;
-  FormatMessageW:                  PROCEDURE-(flags, source, mid, lid, buf, size, args: INTEGER): INTEGER;
   AddVectoredExceptionHandler*:    PROCEDURE-(first, filter: INTEGER): INTEGER;
-  GetSystemTimePreciseAsFileTime*: PROCEDURE-(tickAdr: INTEGER);
-  SetFileInformationByHandle*:     PROCEDURE-(hFile, infoClass, info, bufsize: INTEGER): INTEGER;
-  FileTimeToSystemTime*:           PROCEDURE-(filetime, systemtime: INTEGER): INTEGER;
+  CloseHandle*:                    PROCEDURE-(hObject: INTEGER): INTEGER;
+  CreateFileW*:                    PROCEDURE-(lpFileName, dwDesiredAccess, dwShareMode, lpSecurityAttributes, dwCreationDisposition, dwFlagsAndAttributes, hTemplateFile: INTEGER): INTEGER;
+  DeleteFileW*:                    PROCEDURE-(lpFilename: INTEGER): INTEGER;
+  ExitProcess*:                    PROCEDURE-(exitcode: INTEGER);
   FileTimeToLocalFileTime*:        PROCEDURE-(filetime, localfiletime: INTEGER): INTEGER;
+  FileTimeToSystemTime*:           PROCEDURE-(filetime, systemtime: INTEGER): INTEGER;
+  FlushFileBuffers*:               PROCEDURE-(hFile: INTEGER): INTEGER;
+  FormatMessageW:                  PROCEDURE-(flags, source, mid, lid, buf, size, args: INTEGER): INTEGER;
+  GetCommandLineW*:                PROCEDURE-(): INTEGER;
+  GetCurrentDirectoryW*:           PROCEDURE-(nsize, pbuffer: INTEGER): INTEGER;
+  GetCurrentProcessId*:            PROCEDURE-(): INTEGER;
+  GetEnvironmentVariableW*:        PROCEDURE-(lpName, lpBuffer, nSize: INTEGER): INTEGER;
+  GetFileAttributesExW*:           PROCEDURE-(lpName, fInfoLevelId, lpFileInformation: INTEGER): INTEGER;  (* fInfoLevelId Must be 0 (GetFileExInfoStandard) *)
+  GetFileAttributesW*:             PROCEDURE-(lpFileName: INTEGER): INTEGER;
+  GetFileSizeEx*:                  PROCEDURE-(hFile, lpFileSize: INTEGER): INTEGER;
+  GetLastError*:                   PROCEDURE-(): INTEGER;
+  GetModuleFileNameW*:             PROCEDURE-(hModule, lpFilename, nSize: INTEGER): INTEGER;
+  GetProcAddress*:                 PROCEDURE-(hmodule, procname: INTEGER): INTEGER;
+  GetStdHandle*:                   PROCEDURE-(nStdHandle: SYSTEM.INT32): INTEGER;
+  GetSystemTimePreciseAsFileTime*: PROCEDURE-(tickAdr: INTEGER);
+  GetTempFileNameA*:               PROCEDURE-(pathadr, prefixadr, unique, tempfilenameadr: INTEGER): INTEGER;
+  GetTempPathA*:                   PROCEDURE-(buflen, bufadr: INTEGER): INTEGER;
+  LoadLibraryA*:                   PROCEDURE-(libname: INTEGER): INTEGER;
+  MoveFileExW*:                    PROCEDURE-(lpExistingFileName, lpNewFileName, dwFlags: INTEGER): INTEGER;
+  ReadFile*:                       PROCEDURE-(hFile, lpBuffer, nNumberOfBytesToRead, lpNumberOfBytesRead, lpOverlapped: INTEGER): INTEGER;
+  SetConsoleOutputCP*:             PROCEDURE-(codepage: INTEGER) (* : INTEGER *);
+  SetEndOfFile*:                   PROCEDURE-(hFile: INTEGER): INTEGER;
+  SetFileInformationByHandle*:     PROCEDURE-(hFile, infoClass, info, bufsize: INTEGER): INTEGER;
+  SetFilePointerEx*:               PROCEDURE-(hFile, liDistanceToMove, lpNewFilePointer, dwMoveMethod: INTEGER): INTEGER;
+  UnmapViewOfFile:                 PROCEDURE-(adr: INTEGER): INTEGER;
+  VirtualAlloc*:                   PROCEDURE-(address, size, type, protection: INTEGER): INTEGER;
+  WriteFile*:                      PROCEDURE-(hFile, lpBuffer, nNumberOfBytesToWrite, lpNumberOfBytesWritten, lpOverlapped: INTEGER): INTEGER;
 
   (* Pre-loaded User32 imports *)
   MessageBoxA: PROCEDURE-(hWnd, lpText, lpCaption, uType: INTEGER)(*: INTEGER*);
