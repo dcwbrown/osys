@@ -1,6 +1,6 @@
 MODULE WinPE;  (* Create exe from a list of compiled Oberon modules *)
 (* DCWB 14.04.2023..10.02.2024 *)
-IMPORT SYSTEM, K := Kernel, X64, Files, w := Writer;
+IMPORT SYSTEM, H := Winshim, K := Kernel, X64, Files, w := Writer;
 
 
 CONST
@@ -10,12 +10,12 @@ CONST
 
   ImageBase   = 400000H;
   FadrImport  = 0400H;  RvaImport  = 1000H;  (* Import directory table *)
-  FadrModules = 0A00H;  RvaModules = 2000H;  (* Oberon modules *)
+  FadrModules = 0C00H;  RvaModules = 2000H;  (* Oberon modules *)
 
   BootstrapVarBytes   = 24;  (* preloaded bootstrap VAR size preceeding imported proc addresses *)
-  Kernel32ImportCount = 33;
-  User32ImportCount   =  2;
-  Shell32ImportCount  =  1;
+  Kernel32ImportCount = 34;
+  Gdi32ImportCount    =  6;
+  User32ImportCount   = 24;
 
 TYPE
   ObjectFile = POINTER TO ObjectFileDesc;
@@ -96,6 +96,13 @@ TYPE
     Kernel32Dllnameadr:   U32;   (* 12: RVA of dll name                   *)
     Kernel32Target:       U32;   (* 16: Where to write imported addresses *)
 
+    (* Import directory table entry for Gdi32 *)
+    Gdi32LookupTable:     U32;   (*  0: RVA of table of import hint RVAs  *)
+    Gdi32Datestamp:       U32;   (*  4: 0                                 *)
+    Gdi32FwdChain:        U32;   (*  8: 0                                 *)
+    Gdi32Dllnameadr:      U32;   (* 12: RVA of dll name                   *)
+    Gdi32Target:          U32;   (* 16: Where to write imported addresses *)
+
     (* Import directory table entry for User32 *)
     User32LookupTable:    U32;   (*  0: RVA of table of import hint RVAs  *)
     User32Datestamp:      U32;   (*  4: 0                                 *)
@@ -103,22 +110,15 @@ TYPE
     User32Dllnameadr:     U32;   (* 12: RVA of dll name                   *)
     User32Target:         U32;   (* 16: Where to write imported addresses *)
 
-    (* Import directory table entry for Shell32 *)
-    Shell32LookupTable:   U32;   (*  0: RVA of table of import hint RVAs  *)
-    Shell32Datestamp:     U32;   (*  4: 0                                 *)
-    Shell32FwdChain:      U32;   (*  8: 0                                 *)
-    Shell32Dllnameadr:    U32;   (* 12: RVA of dll name                   *)
-    Shell32Target:        U32;   (* 16: Where to write imported addresses *)
-
     DirectoryEnd: ARRAY 5 OF U32;  (* Sentinel 0 filled directory table entry *)
 
     Kernel32Lookups: ARRAY Kernel32ImportCount + 1 OF I64; (* RVAs of Hints[] entry below *)
+    Gdi32Lookups:    ARRAY Gdi32ImportCount    + 1 OF I64; (* RVAs of Hints[] entry below *)
     User32Lookups:   ARRAY User32ImportCount   + 1 OF I64; (* RVAs of Hints[] entry below *)
-    Shell32Lookups:  ARRAY Shell32ImportCount  + 1 OF I64; (* RVAs of Hints[] entry below *)
 
-    Kernel32Dllname: ARRAY 14 OF CHAR;  (*  80: "kernel32.dll" *)
-    User32Dllname:   ARRAY 12 OF CHAR;  (*  80: "user32.dll"   *)
-    Shell32Dllname:  ARRAY 12 OF CHAR;  (*  80: "shell32.dll"  *)
+    Kernel32Dllname: ARRAY 14 OF CHAR;  (*  "kernel32.dll" *)
+    Gdi32Dllname:    ARRAY 12 OF CHAR;  (*  "gdi32.dll"    *)
+    User32Dllname:   ARRAY 12 OF CHAR;  (*  "user32.dll"   *)
   END;
 
   BootstrapBuffer = RECORD
@@ -177,7 +177,7 @@ END FileAlign;
 PROCEDURE WriteImports;
 VAR
   i, n:        INTEGER;
-  importhints: ARRAY 1024 OF BYTE;
+  importhints: ARRAY 1500 OF BYTE;
   hintsize:    INTEGER;
 
   PROCEDURE FieldRVA(VAR field: ARRAY OF BYTE): U32;
@@ -192,9 +192,11 @@ VAR
   PROCEDURE AddImport(VAR lookups: ARRAY OF I64; VAR n, i: INTEGER;
                       dll: INTEGER; VAR hints: ARRAY OF BYTE; name: ARRAY OF CHAR);
   BEGIN
+    w.s("AddImport "); w.s(name); w.sl(".");
     lookups[n] := RvaImport + SYSTEM.SIZE(ImportDirectoryTable) + i;
     INC(n);
     ASSERT(dll < 256);
+    ASSERT(i + H.Length(name) + 3 < LEN(hints));
     hints[i] := dll;  hints[i+1] := 0;  INC(i, 2);
     AddProc(hints, i, name);
   END AddImport;
@@ -202,11 +204,10 @@ VAR
 BEGIN
   ZeroFill(Idt);
 
+  (* **NOTE** these imports must be in exactly the same order as the *)
+  (* corresponding procedure variable declarations in winshim.mode   *)
+
   Idt.Kernel32LookupTable := FieldRVA(Idt.Kernel32Lookups);
-  (*
-  w.s("Idt.Kernel32LookupTable: "); w.h(Idt.Kernel32LookupTable); w.sl("H.");
-  w.s("FieldRVA(Idt.Kernel32Lookups): "); w.h(FieldRVA(Idt.Kernel32Lookups)); w.sl("H.");
-  *)
   Idt.Kernel32Dllnameadr  := FieldRVA(Idt.Kernel32Dllname);
   Idt.Kernel32Dllname     := "KERNEL32.DLL";
   Idt.Kernel32Target      := RvaModules + Bootstrap.Header.imports + BootstrapVarBytes;
@@ -241,45 +242,72 @@ BEGIN
   AddImport(Idt.Kernel32Lookups, n, i, 0, importhints, "SetEndOfFile");
   AddImport(Idt.Kernel32Lookups, n, i, 0, importhints, "SetFileInformationByHandle");
   AddImport(Idt.Kernel32Lookups, n, i, 0, importhints, "SetFilePointerEx");
+  AddImport(Idt.Kernel32Lookups, n, i, 0, importhints, "Sleep");
   AddImport(Idt.Kernel32Lookups, n, i, 0, importhints, "UnmapViewOfFile");
   AddImport(Idt.Kernel32Lookups, n, i, 0, importhints, "VirtualAlloc");
   AddImport(Idt.Kernel32Lookups, n, i, 0, importhints, "WriteFile");
+  ASSERT(n = Kernel32ImportCount);
+
+  Idt.Gdi32LookupTable := FieldRVA(Idt.Gdi32Lookups);
+  Idt.Gdi32Dllnameadr  := FieldRVA(Idt.Gdi32Dllname);
+  Idt.Gdi32Dllname     := "GDI32.DLL";
+  Idt.Gdi32Target      := Idt.User32Target + 8 * User32ImportCount;
+  n := 0;
+  AddImport(Idt.Gdi32Lookups, n, i, 2, importhints, "BitBlt");
+  AddImport(Idt.Gdi32Lookups, n, i, 2, importhints, "CreateBitmap");
+  AddImport(Idt.Gdi32Lookups, n, i, 2, importhints, "CreateCompatibleDC");
+  AddImport(Idt.Gdi32Lookups, n, i, 2, importhints, "CreateDIBSection");
+  AddImport(Idt.Gdi32Lookups, n, i, 2, importhints, "DeleteObject");
+  AddImport(Idt.Gdi32Lookups, n, i, 2, importhints, "SelectObject");
+  ASSERT(n = Gdi32ImportCount);
 
   Idt.User32LookupTable := FieldRVA(Idt.User32Lookups);
   Idt.User32Dllnameadr  := FieldRVA(Idt.User32Dllname);
   Idt.User32Dllname     := "USER32.DLL";
   Idt.User32Target      := Idt.Kernel32Target + 8 * Kernel32ImportCount;
   n := 0;
+  AddImport(Idt.User32Lookups, n, i, 1, importhints, "BeginPaint");
+  AddImport(Idt.User32Lookups, n, i, 1, importhints, "CreateIconIndirect");
+  AddImport(Idt.User32Lookups, n, i, 1, importhints, "CreateWindowExW");
+  AddImport(Idt.User32Lookups, n, i, 1, importhints, "DefWindowProcW");
+  AddImport(Idt.User32Lookups, n, i, 1, importhints, "DispatchMessageW");
+  AddImport(Idt.User32Lookups, n, i, 1, importhints, "EndPaint");
+  AddImport(Idt.User32Lookups, n, i, 1, importhints, "GetDpiForWindow");
+  AddImport(Idt.User32Lookups, n, i, 1, importhints, "GetMessageW");
+  AddImport(Idt.User32Lookups, n, i, 1, importhints, "GetQueueStatus");
+  AddImport(Idt.User32Lookups, n, i, 1, importhints, "LoadCursorW");
   AddImport(Idt.User32Lookups, n, i, 1, importhints, "MessageBoxA");
   AddImport(Idt.User32Lookups, n, i, 1, importhints, "MessageBoxW");
-
-  Idt.Shell32LookupTable := FieldRVA(Idt.Shell32Lookups);
-  Idt.Shell32Dllnameadr  := FieldRVA(Idt.Shell32Dllname);
-  Idt.Shell32Dllname     := "SHELL32.DLL";
-  Idt.Shell32Target      := Idt.User32Target + 8 * User32ImportCount;
-  n := 0;
-  AddImport(Idt.Shell32Lookups, n, i, 2, importhints, "CommandLineToArgvW");
+  AddImport(Idt.User32Lookups, n, i, 1, importhints, "MoveWindow");
+  AddImport(Idt.User32Lookups, n, i, 1, importhints, "MsgWaitForMultipleObjects");
+  AddImport(Idt.User32Lookups, n, i, 1, importhints, "PeekMessageW");
+  AddImport(Idt.User32Lookups, n, i, 1, importhints, "PostQuitMessage");
+  AddImport(Idt.User32Lookups, n, i, 1, importhints, "RegisterClassExW");
+  AddImport(Idt.User32Lookups, n, i, 1, importhints, "ReleaseCapture");
+  AddImport(Idt.User32Lookups, n, i, 1, importhints, "SetCapture");
+  AddImport(Idt.User32Lookups, n, i, 1, importhints, "SetProcessDpiAwarenessContext");
+  AddImport(Idt.User32Lookups, n, i, 1, importhints, "ShowCursor");
+  AddImport(Idt.User32Lookups, n, i, 1, importhints, "ShowWindow");
+  AddImport(Idt.User32Lookups, n, i, 1, importhints, "TranslateMessage");
+  AddImport(Idt.User32Lookups, n, i, 1, importhints, "InvalidateRect");
+  ASSERT(n = User32ImportCount);
 
   hintsize := i;
 
   spos(FadrImport);
-
-  (*
-  w.sl("Import directory table:");
-  w.DumpMem(2, SYSTEM.ADR(Idt), 0, SYSTEM.SIZE(ImportDirectoryTable));
-  *)
   Files.WriteBytes(Exe, Idt, 0, SYSTEM.SIZE(ImportDirectoryTable));
-
-  (*
-  w.sl("Import hints:");
-  w.DumpMem(2, SYSTEM.ADR(importhints), SYSTEM.SIZE(ImportDirectoryTable), hintsize);
-  *)
   Files.WriteBytes(Exe, importhints, 0, hintsize);
 
   ImportSize := Align(Files.Pos(Exe), 16) - FadrImport;
   (*w.s("IDT size "); w.h(ImportSize); w.sl("H.");*)
-  ASSERT(FadrImport + ImportSize < FadrModules);  (* If fails, increase FadrModules *)
-  ASSERT(RvaImport  + ImportSize < RvaModules);   (* If fails, increase RvaModules *)
+  IF FadrImport + ImportSize >= FadrModules THEN
+    w.s("FadrImport + ImportSize: "); w.h(FadrImport + ImportSize); w.s("H - increase FadrModules");
+    ASSERT(FALSE)
+  END;
+  IF RvaImport  + ImportSize >= RvaModules THEN
+    w.s("RvaImport  + ImportSize: "); w.h(RvaImport  + ImportSize); w.s("H - increase RvaModules");
+    ASSERT(FALSE)
+  END;
 END WriteImports;
 
 
@@ -497,10 +525,10 @@ BEGIN
   (* Preset bootstrap VARs with WIndows proc addresses *)
   Files.WriteBytes(Exe, Idt.Kernel32Lookups, 0, Kernel32ImportCount * 8);
   Files.WriteBytes(Exe, Idt.User32Lookups,   0, User32ImportCount   * 8);
-  Files.WriteBytes(Exe, Idt.Shell32Lookups,  0, Shell32ImportCount  * 8);
+  Files.WriteBytes(Exe, Idt.Gdi32Lookups,  0, Gdi32ImportCount  * 8);
 
   WriteZeroes(Bootstrap.Header.varsize
-            - ((Kernel32ImportCount + User32ImportCount + Shell32ImportCount) * 8 + BootstrapVarBytes));
+            - ((Kernel32ImportCount + User32ImportCount + Gdi32ImportCount) * 8 + BootstrapVarBytes));
   FileAlign(Exe, 16)
 END WriteBootstrap;
 
@@ -515,15 +543,10 @@ BEGIN
   ExeFile := Files.New(filename);
 
   GetBootstrap;
-
   WriteImports;
-
   WriteBootstrap;
-
   WriteModules;
-
   WritePEHeader;
-
   Files.Register(ExeFile);
 
   w.s("WinPE generated "); w.s(filename); w.sl(".")
