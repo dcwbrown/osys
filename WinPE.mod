@@ -12,7 +12,7 @@ CONST
   FadrImport  = 0400H;  RvaImport  = 1000H;  (* Import directory table *)
   FadrModules = 0A00H;  RvaModules = 2000H;  (* Oberon modules *)
 
-  BootstrapVarBytes   = 16;  (* preloaded bootstrap VAR size preceeding imported proc addresses *)
+  BootstrapVarBytes   = 24;  (* preloaded bootstrap VAR size preceeding imported proc addresses *)
   Kernel32ImportCount = 33;
   User32ImportCount   =  2;
   Shell32ImportCount  =  1;
@@ -491,6 +491,7 @@ BEGIN
   (* Preset bootstrap modules global VARs *)
   Files.WriteInt(Exe, ImageBase);                                 (* EXE load address  *)
   Files.WriteInt(Exe, ImageBase + RvaModules);                    (* Header address    *)
+  Files.WriteInt(Exe, 0);
   ASSERT(Files.Pos(Exe) -  (FadrModules + Bootstrap.Header.imports) = BootstrapVarBytes);
 
   (* Preset bootstrap VARs with WIndows proc addresses *)

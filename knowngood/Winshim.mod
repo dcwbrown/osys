@@ -70,6 +70,7 @@ VAR
   (* WinPE.mod builds the executable with the following Winshim variables pre-loaded *)
   Exeadr: INTEGER;
   Header: CodeHeaderPtr;
+  Dummy:  INTEGER;
 
   (* Pre-loaded Kernel32 imports *)
   LoadLibraryA*:                   PROCEDURE-(libname: INTEGER): INTEGER;
