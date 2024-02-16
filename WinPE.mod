@@ -12,9 +12,8 @@ CONST
   FadrImport  = 0400H;  RvaImport  = 1000H;  (* Import directory table *)
   FadrModules = 0A00H;  RvaModules = 2000H;  (* Oberon modules *)
 
-  BootstrapVarBytes = 16;  (* preloaded bootstrap VAR size preceeding imported proc addresses *)
-
-  Kernel32ImportCount = 31;
+  BootstrapVarBytes   = 16;  (* preloaded bootstrap VAR size preceeding imported proc addresses *)
+  Kernel32ImportCount = 33;
   User32ImportCount   =  2;
   Shell32ImportCount  =  1;
 
@@ -91,25 +90,25 @@ TYPE
 
   ImportDirectoryTable = RECORD
     (* Import directory table entry for Kernel32 *)
-    Kernel32LookupTable:  U32;   (*  0: RVA of table of import hint RVAs              *)
-    Kernel32Datestamp:    U32;   (*  4: 0                                             *)
-    Kernel32FwdChain:     U32;   (*  8: 0                                             *)
-    Kernel32Dllnameadr:   U32;   (* 12: RVA of dll name                               *)
-    Kernel32Target:       U32;   (* 16: Where to write imported addresses             *)
+    Kernel32LookupTable:  U32;   (*  0: RVA of table of import hint RVAs  *)
+    Kernel32Datestamp:    U32;   (*  4: 0                                 *)
+    Kernel32FwdChain:     U32;   (*  8: 0                                 *)
+    Kernel32Dllnameadr:   U32;   (* 12: RVA of dll name                   *)
+    Kernel32Target:       U32;   (* 16: Where to write imported addresses *)
 
     (* Import directory table entry for User32 *)
-    User32LookupTable:  U32;   (*  0: RVA of table of import hint RVAs              *)
-    User32Datestamp:    U32;   (*  4: 0                                             *)
-    User32FwdChain:     U32;   (*  8: 0                                             *)
-    User32Dllnameadr:   U32;   (* 12: RVA of dll name                               *)
-    User32Target:       U32;   (* 16: Where to write imported addresses             *)
+    User32LookupTable:    U32;   (*  0: RVA of table of import hint RVAs  *)
+    User32Datestamp:      U32;   (*  4: 0                                 *)
+    User32FwdChain:       U32;   (*  8: 0                                 *)
+    User32Dllnameadr:     U32;   (* 12: RVA of dll name                   *)
+    User32Target:         U32;   (* 16: Where to write imported addresses *)
 
     (* Import directory table entry for Shell32 *)
-    Shell32LookupTable:  U32;   (*  0: RVA of table of import hint RVAs              *)
-    Shell32Datestamp:    U32;   (*  4: 0                                             *)
-    Shell32FwdChain:     U32;   (*  8: 0                                             *)
-    Shell32Dllnameadr:   U32;   (* 12: RVA of dll name                               *)
-    Shell32Target:       U32;   (* 16: Where to write imported addresses             *)
+    Shell32LookupTable:   U32;   (*  0: RVA of table of import hint RVAs  *)
+    Shell32Datestamp:     U32;   (*  4: 0                                 *)
+    Shell32FwdChain:      U32;   (*  8: 0                                 *)
+    Shell32Dllnameadr:    U32;   (* 12: RVA of dll name                   *)
+    Shell32Target:        U32;   (* 16: Where to write imported addresses *)
 
     DirectoryEnd: ARRAY 5 OF U32;  (* Sentinel 0 filled directory table entry *)
 
@@ -243,6 +242,8 @@ BEGIN
   AddImport(Idt.Kernel32Lookups, n, i, 0, importhints, "AddVectoredExceptionHandler");
   AddImport(Idt.Kernel32Lookups, n, i, 0, importhints, "GetSystemTimePreciseAsFileTime");
   AddImport(Idt.Kernel32Lookups, n, i, 0, importhints, "SetFileInformationByHandle");
+  AddImport(Idt.Kernel32Lookups, n, i, 0, importhints, "FileTimeToSystemTime");
+  AddImport(Idt.Kernel32Lookups, n, i, 0, importhints, "FileTimeToLocalFileTime");
 
   Idt.User32LookupTable := FieldRVA(Idt.User32Lookups);
   Idt.User32Dllnameadr  := FieldRVA(Idt.User32Dllname);

@@ -63,6 +63,31 @@ PROCEDURE in*(i, n: INTEGER);
 VAR num: ARRAY 24 OF CHAR;
 BEGIN P.IntToDecimal(i, num);  sn(num, n) END in;
 
+PROCEDURE izn*(i, n: INTEGER);
+VAR num: ARRAY 24 OF CHAR;
+BEGIN P.IntToDecimal(i, num);  zn(num, n) END izn;
+
+PROCEDURE Clock*(d: INTEGER);
+BEGIN
+  izn(d DIV 20000H MOD 20H,   -2);  (*day*)      c("/");
+  izn(d DIV 400000H MOD 10H,  -2);  (*month*)    c("/");
+  izn(d DIV 4000000H MOD 40H, -2);  (*year*)     c(" ");
+  izn(d DIV 1000H MOD 20H,    -2);  (*hour*)     c(":");
+  izn(d DIV 40H MOD 40H,      -2);  (*min*)      c(":");
+  izn(d MOD 40H,              -2)   (*sec*)
+END Clock;
+
+PROCEDURE LongClock*(d: INTEGER);
+BEGIN
+  izn(d DIV 1000000000H MOD 8000H, -4);  (*year*)     c("/");
+  izn(d DIV 100000000H MOD 10H,    -2);  (*month*)    c("/");
+  izn(d DIV 8000000H MOD 20H,      -2);  (*day*)      c(" ");
+  izn(d DIV 400000H MOD 20H,       -2);  (*hour*)     c(":");
+  izn(d DIV 10000H MOD 40H,        -2);  (*min*)      c(":");
+  izn(d DIV 400H MOD 40H,          -2);  (*sec*)      c(".");
+  izn(d MOD 400H,                  -3)
+END LongClock;
+
 PROCEDURE DumpMem*(indent, adr, start, len: INTEGER);
 BEGIN P.DumpMem(indent, adr, start, len) END DumpMem;
 

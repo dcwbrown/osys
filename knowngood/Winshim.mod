@@ -72,44 +72,45 @@ VAR
   Header: CodeHeaderPtr;
 
   (* Pre-loaded Kernel32 imports *)
-  LoadLibraryA*:            PROCEDURE-(libname: INTEGER): INTEGER;
-  GetProcAddress*:          PROCEDURE-(hmodule, procname: INTEGER): INTEGER;
-  VirtualAlloc*:            PROCEDURE-(address, size, type, protection: INTEGER): INTEGER;
-  ExitProcess*:             PROCEDURE-(exitcode: INTEGER);
-  GetStdHandle*:            PROCEDURE-(nStdHandle: SYSTEM.INT32): INTEGER;
-  SetConsoleOutputCP*:      PROCEDURE-(codepage: INTEGER) (* : INTEGER *);
-  GetCommandLineW*:         PROCEDURE-(): INTEGER;
-  GetModuleFileNameW*:      PROCEDURE-(hModule, lpFilename, nSize: INTEGER): INTEGER;
-  GetCurrentDirectoryW*:    PROCEDURE-(nsize, pbuffer: INTEGER): INTEGER;
-  GetFileAttributesW*:      PROCEDURE-(lpFileName: INTEGER): INTEGER;
-  DeleteFileW*:             PROCEDURE-(lpFilename: INTEGER): INTEGER;
-  CloseHandle*:             PROCEDURE-(hObject: INTEGER): INTEGER;
-  FlushFileBuffers*:        PROCEDURE-(hFile: INTEGER): INTEGER;
-  SetEndOfFile*:            PROCEDURE-(hFile: INTEGER): INTEGER;
-  GetFileSizeEx*:           PROCEDURE-(hFile, lpFileSize: INTEGER): INTEGER;
-  GetCurrentProcessId*:     PROCEDURE-(): INTEGER;
-  MoveFileExW*:             PROCEDURE-(lpExistingFileName, lpNewFileName, dwFlags: INTEGER): INTEGER;
-  CreateFileW*:             PROCEDURE-(lpFileName, dwDesiredAccess, dwShareMode,
-                                       lpSecurityAttributes, dwCreationDisposition,
-                                       dwFlagsAndAttributes, hTemplateFile: INTEGER): INTEGER;
-  ReadFile*:                PROCEDURE-(hFile, lpBuffer, nNumberOfBytesToRead,
-                                       lpNumberOfBytesRead, lpOverlapped: INTEGER): INTEGER;
-  WriteFile*:               PROCEDURE-(hFile, lpBuffer, nNumberOfBytesToWrite,
-                                       lpNumberOfBytesWritten, lpOverlapped: INTEGER): INTEGER;
-  SetFilePointerEx*:        PROCEDURE-(hFile, liDistanceToMove,
-                                       lpNewFilePointer, dwMoveMethod: INTEGER): INTEGER;
-  GetEnvironmentVariableW*: PROCEDURE-(lpName, lpBuffer, nSize: INTEGER): INTEGER;
-  GetFileAttributesExW*:    PROCEDURE-(lpName, fInfoLevelId, lpFileInformation: INTEGER): INTEGER;
-                            (* fInfoLevelId Must be 0 (GetFileExInfoStandard) *)
-  GetTempPathA*:            PROCEDURE-(buflen, bufadr: INTEGER): INTEGER;
-  GetTempFileNameA*:        PROCEDURE-(pathadr, prefixadr, unique, tempfilenameadr: INTEGER): INTEGER;
-  GetLastError*:            PROCEDURE-(): INTEGER;
-  UnmapViewOfFile:          PROCEDURE-(adr: INTEGER): INTEGER;
-  FormatMessageW:           PROCEDURE-(flags, source, mid, lid, buf, size, args: INTEGER): INTEGER;
-
-  AddVectoredExceptionHandler*:    PROCEDURE-(first, filter: INTEGER);
-  GetSystemTimePreciseAsFileTime*: PROCEDURE-(tickAdr: INTEGER): INTEGER;
+  LoadLibraryA*:                   PROCEDURE-(libname: INTEGER): INTEGER;
+  GetProcAddress*:                 PROCEDURE-(hmodule, procname: INTEGER): INTEGER;
+  VirtualAlloc*:                   PROCEDURE-(address, size, type, protection: INTEGER): INTEGER;
+  ExitProcess*:                    PROCEDURE-(exitcode: INTEGER);
+  GetStdHandle*:                   PROCEDURE-(nStdHandle: SYSTEM.INT32): INTEGER;
+  SetConsoleOutputCP*:             PROCEDURE-(codepage: INTEGER) (* : INTEGER *);
+  GetCommandLineW*:                PROCEDURE-(): INTEGER;
+  GetModuleFileNameW*:             PROCEDURE-(hModule, lpFilename, nSize: INTEGER): INTEGER;
+  GetCurrentDirectoryW*:           PROCEDURE-(nsize, pbuffer: INTEGER): INTEGER;
+  GetFileAttributesW*:             PROCEDURE-(lpFileName: INTEGER): INTEGER;
+  DeleteFileW*:                    PROCEDURE-(lpFilename: INTEGER): INTEGER;
+  CloseHandle*:                    PROCEDURE-(hObject: INTEGER): INTEGER;
+  FlushFileBuffers*:               PROCEDURE-(hFile: INTEGER): INTEGER;
+  SetEndOfFile*:                   PROCEDURE-(hFile: INTEGER): INTEGER;
+  GetFileSizeEx*:                  PROCEDURE-(hFile, lpFileSize: INTEGER): INTEGER;
+  GetCurrentProcessId*:            PROCEDURE-(): INTEGER;
+  MoveFileExW*:                    PROCEDURE-(lpExistingFileName, lpNewFileName, dwFlags: INTEGER): INTEGER;
+  CreateFileW*:                    PROCEDURE-(lpFileName, dwDesiredAccess, dwShareMode,
+                                              lpSecurityAttributes, dwCreationDisposition,
+                                              dwFlagsAndAttributes, hTemplateFile: INTEGER): INTEGER;
+  ReadFile*:                       PROCEDURE-(hFile, lpBuffer, nNumberOfBytesToRead,
+                                              lpNumberOfBytesRead, lpOverlapped: INTEGER): INTEGER;
+  WriteFile*:                      PROCEDURE-(hFile, lpBuffer, nNumberOfBytesToWrite,
+                                              lpNumberOfBytesWritten, lpOverlapped: INTEGER): INTEGER;
+  SetFilePointerEx*:               PROCEDURE-(hFile, liDistanceToMove,
+                                              lpNewFilePointer, dwMoveMethod: INTEGER): INTEGER;
+  GetEnvironmentVariableW*:        PROCEDURE-(lpName, lpBuffer, nSize: INTEGER): INTEGER;
+  GetFileAttributesExW*:           PROCEDURE-(lpName, fInfoLevelId, lpFileInformation: INTEGER): INTEGER;
+                                   (* fInfoLevelId Must be 0 (GetFileExInfoStandard) *)
+  GetTempPathA*:                   PROCEDURE-(buflen, bufadr: INTEGER): INTEGER;
+  GetTempFileNameA*:               PROCEDURE-(pathadr, prefixadr, unique, tempfilenameadr: INTEGER): INTEGER;
+  GetLastError*:                   PROCEDURE-(): INTEGER;
+  UnmapViewOfFile:                 PROCEDURE-(adr: INTEGER): INTEGER;
+  FormatMessageW:                  PROCEDURE-(flags, source, mid, lid, buf, size, args: INTEGER): INTEGER;
+  AddVectoredExceptionHandler*:    PROCEDURE-(first, filter: INTEGER): INTEGER;
+  GetSystemTimePreciseAsFileTime*: PROCEDURE-(tickAdr: INTEGER);
   SetFileInformationByHandle*:     PROCEDURE-(hFile, infoClass, info, bufsize: INTEGER): INTEGER;
+  FileTimeToSystemTime*:           PROCEDURE-(filetime, systemtime: INTEGER): INTEGER;
+  FileTimeToLocalFileTime*:        PROCEDURE-(filetime, localfiletime: INTEGER): INTEGER;
 
   (* Pre-loaded User32 imports *)
   MessageBoxA: PROCEDURE-(hWnd, lpText, lpCaption, uType: INTEGER)(*: INTEGER*);
@@ -139,6 +140,7 @@ VAR
 
 
 PROCEDURE NoLog(s: ARRAY OF BYTE); BEGIN END NoLog;
+
 
 (* -------------------------------------------------------------------------- *)
 (* ---------------------- Very basic string functions ----------------------- *)
@@ -212,6 +214,71 @@ END whw;
 
 PROCEDURE wb(n: INTEGER);
 BEGIN WHILE n > 0 DO wc(" "); DEC(n) END END wb;
+
+
+(* -------------------------------------------------------------------------- *)
+(* ----------------------------- Time functions ----------------------------- *)
+(* -------------------------------------------------------------------------- *)
+
+PROCEDURE Nanotime*(): INTEGER;  (* In 100 nanosecond ticks since 1601 UTC *)
+VAR tick: INTEGER;
+BEGIN GetSystemTimePreciseAsFileTime(SYSTEM.ADR(tick));
+RETURN tick END Nanotime;
+
+PROCEDURE Time*(): INTEGER;  (* In millisecond ticks since 1601 UTC *)
+VAR tick: INTEGER;
+BEGIN GetSystemTimePreciseAsFileTime(SYSTEM.ADR(tick));
+RETURN tick DIV 10000 END Time;
+
+PROCEDURE Clock*(): INTEGER;
+(* Returns 6/year,4/month,5/day,5/hour,6/minute,6/second local time*)
+VAR
+  tick, local, res: INTEGER;
+  st: RECORD  (* Windows system time format *)
+    year:         SYSTEM.CARD16;
+    month:        SYSTEM.CARD16;
+    dayofweek:    SYSTEM.CARD16;
+    day:          SYSTEM.CARD16;
+    hour:         SYSTEM.CARD16;
+    minute:       SYSTEM.CARD16;
+    second:       SYSTEM.CARD16;
+    milliseconds: SYSTEM.CARD16;
+  END;
+  clock: INTEGER;
+BEGIN
+  clock := 0;
+  GetSystemTimePreciseAsFileTime(SYSTEM.ADR(tick));
+  res := FileTimeToLocalFileTime(SYSTEM.ADR(tick), SYSTEM.ADR(local));
+  IF FileTimeToSystemTime(SYSTEM.ADR(local), SYSTEM.ADR(st)) # 0 THEN
+    clock := ((  (((st.year MOD 100)*16 + st.month)*32 + st.day)*32
+               + st.hour)*64 + st.minute)*64 + st.second;
+  END
+RETURN clock END Clock;
+
+PROCEDURE LongClock*(): INTEGER;
+(* Returns 13/0,15/year,4/month,5/day,5/hour,6/minute,6/second,10/millisecond *)
+VAR
+  tick, local, res: INTEGER;
+  st: RECORD  (* Windows system time format *)
+    year:         SYSTEM.CARD16;
+    month:        SYSTEM.CARD16;
+    dayofweek:    SYSTEM.CARD16;
+    day:          SYSTEM.CARD16;
+    hour:         SYSTEM.CARD16;
+    minute:       SYSTEM.CARD16;
+    second:       SYSTEM.CARD16;
+    milliseconds: SYSTEM.CARD16;
+  END;
+  clock: INTEGER;
+BEGIN
+  clock := 0;
+  GetSystemTimePreciseAsFileTime(SYSTEM.ADR(tick));
+  res := FileTimeToLocalFileTime(SYSTEM.ADR(tick), SYSTEM.ADR(local));
+  IF FileTimeToSystemTime(SYSTEM.ADR(local), SYSTEM.ADR(st)) # 0 THEN
+    clock := (((  ((st.year*16 + st.month)*32 + st.day)*32
+                + st.hour)*64 + st.minute)*64 + st.second)*1024 + st.milliseconds;
+  END
+RETURN clock END LongClock;
 
 
 (* -------------------------------------------------------------------------- *)
@@ -671,14 +738,15 @@ BEGIN
   IF res = 0 THEN res := GetLastError() ELSE res := 0 END
 RETURN res END MoveFile;
 
-(* -------------------------------------------------------------------------- *)
 
+(* -------------------------------------------------------------------------- *)
 
 PROCEDURE WriteStdout(s: ARRAY OF BYTE);
 VAR written, result: INTEGER;
 BEGIN
   result := WriteFile(Stdout, SYSTEM.ADR(s), Length(s), SYSTEM.ADR(written), 0);
 END WriteStdout;
+
 
 (* -------------------------------------------------------------------------- *)
 
@@ -909,9 +977,8 @@ BEGIN
   SYSTEM.COPY(SYSTEM.VAL(INTEGER, Header), OberonAdr, Header.imports + Header.varsize);
   (*ws("Transferring PC from original load at ");  wh(GetPC());  wsl("H.");*)
   IncPC(OberonAdr - SYSTEM.VAL(INTEGER, Header));  (* Transfer to copied code *)
+  Log := WriteStdout;  (* Correct Log fn address following move *)
   ws("Transferred PC to code copied to Oberon memory at ");  wh(GetPC());  wsl("H.");
-
-  Log        := WriteStdout;  (* Correct Log fn address following move *)
 
   (* Initialise system fuction handlers *)
   NewPointer         := NewPointerHandler;
@@ -920,7 +987,8 @@ BEGIN
   UnterminatedString := UnterminatedStringHandler;
 
   (* Trap OS exceptions *)
-  AddVectoredExceptionHandler(1, SYSTEM.ADR(ExceptionHandler));
+  (*res := AddVectoredExceptionHandler(1, SYSTEM.ADR(ExceptionHandler));*)
+  (*IF res = 0 THEN AssertWinErr(GetLastError()) END;*)
 
   LoadAdr := (OberonAdr + Header.imports + Header.varsize + 15) DIV 16 * 16;
 

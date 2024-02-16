@@ -603,7 +603,6 @@ END WriteRealFix;
 ---*)
 
 
-(*
 PROCEDURE WritePair(VAR W: Writer; ch: CHAR; x: INTEGER);
 BEGIN Write(W, ch);
   Write(W, CHR(x DIV 10 + 30H)); Write(W, CHR(x MOD 10 + 30H))
@@ -618,7 +617,6 @@ BEGIN
   WritePair(W, ":", d DIV 40H MOD 40H);       (*min*)
   WritePair(W, ":", d MOD 40H)                (*sec*)
 END WriteClock;
-*)
 
 
 BEGIN TrailerFile := Files.New("")

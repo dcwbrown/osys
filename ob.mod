@@ -259,6 +259,7 @@ VAR
   *)
 
 BEGIN
+  w.s("OB - Oberon Windows EXE builder: building "); w.s(Modulename); w.s(" at "); w.LongClock(H.LongClock()); w.sl(".");
   AddModule(Modulename);
 
   (* Keep scanning and adding modules until all dependencies have been scanned *)

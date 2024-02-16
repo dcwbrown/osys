@@ -13,7 +13,7 @@ MODULE ORG;  (* DCWB June 2023; Code generator for X64 *)
     applied.
 *)
 
-IMPORT SYSTEM, Files, ORS, ORB, X64, l := Listing, K := Kernel, w := Writer;
+IMPORT SYSTEM, H := Winshim, Files, ORS, ORB, X64, l := Listing, K := Kernel, w := Writer;
 
 CONST
   WordSize* = ORB.WordSize;
@@ -2893,7 +2893,7 @@ BEGIN
   l.s("  VAR size:      ", Tr);  l.h(Hdr.varsize,  Tr);  l.sl("H.", Tr);
 
   (* Write compiled module *)
-  fname := "";  K.Append(modid, fname);  K.Append(".code", fname);
+  fname := "";  H.Append(modid, fname);  H.Append(".code", fname);
   F := Files.New(fname);  Files.Set(R, F, 0);
   Files.WriteBytes(R, Hdr, 0, SYSTEM.SIZE(X64.CodeHeader));
   Files.WriteBytes(R, X64.Text, SYSTEM.SIZE(X64.CodeHeader), X64.PC - SYSTEM.SIZE(X64.CodeHeader));

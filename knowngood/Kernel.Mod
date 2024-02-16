@@ -182,36 +182,24 @@ BEGIN p := HeapOrg;
 END Scan;
 *)
 
-
-(* ------------------------ Miscellaneous procedures ------------------------ *)
-
-PROCEDURE Ticks*(): INTEGER;  (* In 100ns ticks *)
-VAR res, tick: INTEGER;
-BEGIN res := P.GetSystemTimePreciseAsFileTime(SYSTEM.ADR(tick));
-RETURN tick END Ticks;
-
-PROCEDURE Time*(): INTEGER;   (* In milliseconds *)
-RETURN Ticks() DIV 10000 END Time;
-
-(* ----- Temporarily expose functions that belong in the platform shim ------ *)
-
-PROCEDURE Append*(s: ARRAY OF CHAR; VAR d: ARRAY OF CHAR);
-BEGIN P.Append(s, d) END Append;
-
 PROCEDURE Halt*(exitCode: INTEGER);
 BEGIN (*Heap.Finalise;*)  P.ExitProcess(exitCode) END Halt;
 
 
-(*
-PROCEDURE Clock*(): INTEGER;  (* Packed date and time *)
-BEGIN RETURN clock
-END Clock;
+(* ------------------------ Miscellaneous procedures ------------------------ *)
 
-PROCEDURE SetClock*(dt: INTEGER);
-BEGIN clock := dt
-END SetClock;
+PROCEDURE Time*(): INTEGER;   (* In milliseconds since system-dependent origin *)
+BEGIN RETURN P.Time() END Time;
+
+PROCEDURE Clock*(): INTEGER;  (* 32 bit packed date and time *)
+BEGIN RETURN P.Clock() END Clock;
+
+
+(* ----- Temporarily expose functions that belong in the platform shim ------ *)
+
+(*PROCEDURE Append*(s: ARRAY OF CHAR; VAR d: ARRAY OF CHAR);
+BEGIN P.Append(s, d) END Append;
 *)
-
 
 (* -------------------------------------------------------------------------- *)
 

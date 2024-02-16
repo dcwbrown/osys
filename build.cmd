@@ -15,6 +15,11 @@
 @cd build2
 ..\build1\ob ob
 @if errorlevel 1 goto end
+@if exist ob.exe goto ok
+@echo.
+@echo Build failed. ob.exe not created.
+@goto end
+:ok
 @cd ..
 @echo.
 @echo Build successful. Run snapgood.cmd to snapshot as known good.
