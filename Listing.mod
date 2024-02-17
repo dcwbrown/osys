@@ -1,5 +1,5 @@
 MODULE Listing;
-IMPORT SYSTEM, ORS, ORB, X64, Files, w := Writer;
+IMPORT SYSTEM, H := Winshim, ORS, ORB, X64, Files;
 
 CONST
   RCX = X64.RCX;
@@ -27,6 +27,32 @@ VAR
   SourceBol:  INTEGER;      (* pos at beginiing of line *)
   SourceLine: INTEGER;      (* Line number *)
   Sourcechar: CHAR;
+  Skip:       BOOLEAN;
+
+
+(* -------- Local implementation of write fns with line suppression --------- *)
+
+PROCEDURE wc*(c: CHAR); BEGIN IF ~Skip THEN H.Log(c) END END wc;
+
+PROCEDURE wn*; BEGIN IF Skip THEN Skip := FALSE ELSE H.Log(H.crlf) END END wn;
+
+PROCEDURE ws*(s: ARRAY OF CHAR); BEGIN IF ~Skip THEN H.Log(s) END END ws;
+
+PROCEDURE wsr*(s: ARRAY OF CHAR; w: INTEGER);  (* Right justified with leading spaces *)
+BEGIN DEC(w, H.Length(s)); WHILE w > 0 DO wc(" "); DEC(w) END; ws(s) END wsr;
+
+PROCEDURE wsn*(s: ARRAY OF CHAR); BEGIN ws(s); ws(H.crlf) END wsn;
+
+PROCEDURE wi*(n: INTEGER);
+VAR dec: ARRAY 32 OF CHAR;
+BEGIN H.IntToDecimal(n, dec); ws(dec) END wi;
+
+PROCEDURE wir*(n, w: INTEGER);  (* Right justified with leading spaces *)
+VAR dec: ARRAY 32 OF CHAR;
+BEGIN H.IntToDecimal(n, dec); wsr(dec, w) END wir;
+
+PROCEDURE wb*(n: INTEGER);
+BEGIN WHILE n > 0 DO wc(" "); DEC(n) END END wb;
 
 
 (* ----------------------------- Source display ----------------------------- *)
@@ -52,23 +78,23 @@ END GetChar;
 PROCEDURE DisplaySourceToPos(pos: INTEGER);
 VAR ch: CHAR;
 BEGIN
-  w.in(SourceLine, 4); w.s(": ");
-  w.b(Pos() - SourceBol);  (* Space to current column *)
+  wir(SourceLine, 4); ws(": ");
+  wb(Pos() - SourceBol);  (* Space to current column *)
 
   (* Copy Source text to pos *)
   WHILE ~Source.eof & (Pos() < pos) DO
     IF (Sourcechar = 0DX) OR (Sourcechar = 0AX) THEN
-      GetChar; w.l; w.in(SourceLine, 4); w.s(": ")
+      GetChar; wn; wir(SourceLine, 4); ws(": ")
     ELSE
-      w.c(Sourcechar); GetChar
+      wc(Sourcechar); GetChar
     END
   END;
 
   (* Space to RightCol allowing for 6 columns already used by linenumber *)
   IF Pos() - SourceBol < (RightCol - 6) THEN
-    w.b((RightCol - 6) - (Pos() - SourceBol));
+    wb((RightCol - 6) - (Pos() - SourceBol));
   ELSE
-    w.l;  w.b(RightCol)
+    wn;  wb(RightCol)
   END
 END DisplaySourceToPos;
 
@@ -77,12 +103,12 @@ BEGIN
   IF Pos() < ORS.Pos() THEN
     DisplaySourceToPos(ORS.Pos())
   ELSE
-    w.b(RightCol)
+    wb(RightCol)
   END
 END StartRightCol;
 
 PROCEDURE CatchupSource*;
-BEGIN IF Pos() < ORS.Pos() THEN DisplaySourceToPos(ORS.Pos()); w.l END
+BEGIN IF Pos() < ORS.Pos() THEN DisplaySourceToPos(ORS.Pos()); wn END
 END CatchupSource;
 
 
@@ -98,7 +124,7 @@ END InitBufs;
 PROCEDURE WriteBuf(VAR b: Buffer; wid: INTEGER);
 BEGIN
   IF b.p < LEN(b.c) THEN b.c[b.p] := 0X END;
-  w.s(b.c);  w.b(wid - b.p)
+  ws(b.c);  wb(wid - b.p)
 END WriteBuf;
 
 PROCEDURE c*(c: CHAR; VAR b: Buffer);
@@ -110,33 +136,26 @@ BEGIN  i := 0;
   WHILE s[i] # 0X DO c(s[i], b); INC(i) END
 END s;
 
-PROCEDURE l*(VAR b: Buffer);
+PROCEDURE n*(VAR b: Buffer);
 BEGIN
   IF b.p <= LEN(b.c) THEN
     IF b.p <  LEN(b.c) THEN b.c[b.p] := 0X END;
-    w.sl(b.c);
+    wsn(b.c);
     b.p := 0
   END
-END l;
+END n;
 
-PROCEDURE sl*(str: ARRAY OF CHAR; VAR buf: Buffer);
-BEGIN s(str, buf);  l(buf) END sl;
+PROCEDURE sn*(str: ARRAY OF CHAR; VAR buf: Buffer);
+BEGIN s(str, buf);  n(buf) END sn;
 
 PROCEDURE b*(n: INTEGER; VAR buf: Buffer);
 BEGIN WHILE n > 0 DO c(" ", buf);  DEC(n) END END b;
 
-PROCEDURE sn*(s: ARRAY OF CHAR; n: INTEGER; VAR buf: Buffer);
-(* n<0: spaces to left; n>0: spaces to right *)
-VAR i, l, w: INTEGER;
-BEGIN l := 0;
-  IF n < 0 THEN w := -n ELSE w := n END;
-  WHILE (l < LEN(s)) & (l < w) & (s[l] # 0X) DO INC(l) END;
-  IF n < 0 THEN
-    b(w-l, buf);  FOR i := 0 TO l-1 DO c(s[i], buf) END
-  ELSE
-    FOR i := 0 TO l-1 DO c(s[i], buf) END;  b(w-l, buf)
-  END
-END sn;
+PROCEDURE sl*(str: ARRAY OF CHAR; w: INTEGER; VAR buf: Buffer);  (* left aligned in spaces *)
+BEGIN s(str, buf);  DEC(w, H.Length(str));  b(w, buf) END sl;
+
+PROCEDURE sr*(str: ARRAY OF CHAR; w: INTEGER; VAR buf: Buffer);  (* right aligned in spaces *)
+BEGIN DEC(w, H.Length(str));  b(w, buf);  s(str, buf) END sr;
 
 PROCEDURE i*(v: INTEGER; VAR b: Buffer);
 BEGIN
@@ -165,19 +184,19 @@ BEGIN
   END
 END h;
 
-PROCEDURE hn*(h, n: INTEGER; VAR b: Buffer);  (* Hex in fixed number of columns *)
+PROCEDURE hz*(h, n: INTEGER; VAR b: Buffer);  (* Hex right aligned with leading zeroes *)
 BEGIN
-  (*w.s("<hn("); w.i(h); w.s(", "); w.i(n); w.sl(", buf)");*)
-  IF n > 1 THEN hn(h DIV 16, n-1, b) END;  c(hexdigit(h MOD 16), b)
-END hn;
+  (*ws("<hz("); wi(h); ws(", "); wi(n); wsn(", buf)");*)
+  IF n > 1 THEN hz(h DIV 16, n-1, b) END;  c(hexdigit(h MOD 16), b)
+END hz;
 
 PROCEDURE hb(h, n: INTEGER; VAR b: Buffer);  (* n as byte count of 1, 2, 4 or 8 *)
 BEGIN
   ASSERT(n IN {1, 2, 4, 8});
-  IF n > 4 THEN hn(h DIV 100000000H MOD 100000000H, 8, b) END;
-  IF n > 2 THEN hn(h DIV 10000H     MOD 10000H,     4, b) END;
-  IF n > 1 THEN hn(h DIV 100H,                      2, b) END;
-  hn(h, 2, b)
+  IF n > 4 THEN hz(h DIV 100000000H MOD 100000000H, 8, b) END;
+  IF n > 2 THEN hz(h DIV 10000H     MOD 10000H,     4, b) END;
+  IF n > 1 THEN hz(h DIV 100H,                      2, b) END;
+  hz(h, 2, b)
 END hb;
 
 
@@ -228,11 +247,11 @@ BEGIN
     ELSIF r = 14 THEN s("r14", b)
     ELSIF r = 15 THEN s("r15", b)
     ELSE
-      w.s("** r "); w.i(r);  w.sl(" **");
+      ws("** r "); wi(r);  wsn(" **");
       WriteBuf(Binary,  35);
       WriteBuf(Inst,     7);
       WriteBuf(Args,    26);
-      WriteBuf(Comment,  0); w.l;
+      WriteBuf(Comment,  0); wn;
       ASSERT(FALSE)
     END
   ELSIF size = 4 THEN
@@ -371,7 +390,7 @@ END CondOp;
 PROCEDURE AddHex(size, val: INTEGER);
 BEGIN
   ASSERT(size IN {1, 2, 4, 8});
-  hn(val, size * 2, Binary);
+  hz(val, size * 2, Binary);
   c(" ", Binary);
 END AddHex;
 
@@ -445,10 +464,10 @@ BEGIN
     GetSigned(4, pc, disp)
   ELSE  (* Mode = 3 *)
     IF (size = 1) & (rm >= 4) THEN (* ah/bh/ch/dh *)
-      IF    rm = 4 THEN w.s(" <ah> ")
-      ELSIF rm = 5 THEN w.s(" <ch> ")
-      ELSIF rm = 5 THEN w.s(" <dh> ")
-      ELSIF rm = 5 THEN w.s(" <bh> ")
+      IF    rm = 4 THEN ws(" <ah> ")
+      ELSIF rm = 5 THEN ws(" <ch> ")
+      ELSIF rm = 5 THEN ws(" <dh> ")
+      ELSIF rm = 5 THEN ws(" <bh> ")
       END;
       base := 16 + rm-4
     ELSE
@@ -477,7 +496,7 @@ BEGIN
   disp     := 0;      mode      := 0;      scale    := 0;
   indirect := FALSE;  tofirst   := FALSE;
 
-  hn(pc, 6, Binary);  s(":  ", Binary);
+  hz(pc, 6, Binary);  s(":  ", Binary);
 
   IF X64.Text[pc] = 66H THEN
     AddHex(1, X64.Text[pc]);
@@ -924,12 +943,12 @@ BEGIN
   IF comment # "" THEN s("; ", Comment);  s(comment, Comment) END;
 
   IF ~Source.eof & (Pos() < ORS.Pos()) THEN
-    DisplaySourceToPos(ORS.Pos());  w.l
+    DisplaySourceToPos(ORS.Pos());  wn
   END;
   WriteBuf(Binary,  37);
   WriteBuf(Inst,     7);
   WriteBuf(Args,    26);
-  WriteBuf(Comment,  0); w.l;
+  WriteBuf(Comment,  0); wn;
   InitBufs
 END DisassembleInstruction;
 
@@ -939,11 +958,11 @@ PROCEDURE DisassembleString*(VAR pc: INTEGER);
 VAR lim, ch, state: INTEGER;  (* state: 0 init, 1 string, 2 numeric *)
 BEGIN
   IF ~Source.eof & (Pos() < ORS.Pos()) THEN
-    DisplaySourceToPos(ORS.Pos());  w.l
+    DisplaySourceToPos(ORS.Pos());  wn
   END;
   ASSERT(pc < X64.PC);
   WHILE pc < X64.PC DO
-    hn(pc, 6, Binary);  s(":  ", Binary);
+    hz(pc, 6, Binary);  s(":  ", Binary);
     lim := pc + 8;  IF lim > X64.PC THEN lim := X64.PC END;
     s("db", Inst);
     state := 0;  (* init *)
@@ -968,7 +987,7 @@ BEGIN
     IF state = 1 THEN c(22X, Args) END;
     WriteBuf(Binary,  35);
     WriteBuf(Inst,     7);
-    WriteBuf(Args,    26); w.l;
+    WriteBuf(Args,    26); wn;
     InitBufs
   END
 END DisassembleString;
@@ -978,19 +997,19 @@ PROCEDURE DisassembleInt*(VAR pc: INTEGER; comment: ARRAY OF CHAR);
 VAR v: INTEGER;
 BEGIN
   IF ~Source.eof & (Pos() < ORS.Pos()) THEN
-    DisplaySourceToPos(ORS.Pos());  w.l
+    DisplaySourceToPos(ORS.Pos());  wn
   END;
   ASSERT(pc + 8 <= X64.PC);
-  hn(pc, 6, Binary);  s(":  ", Binary);
+  hz(pc, 6, Binary);  s(":  ", Binary);
   s("dq", Inst);
   SYSTEM.GET(SYSTEM.ADR(X64.Text[pc]), v);  INC(pc, 8);
-  hn(v, 16, Binary);
+  hz(v, 16, Binary);
   i(v, Args);
   IF comment # "" THEN s("; ", Comment);  s(comment, Comment) END;
   WriteBuf(Binary,  35);
   WriteBuf(Inst,     7);
   WriteBuf(Args,    26);
-  WriteBuf(Comment,  0); w.l;
+  WriteBuf(Comment,  0); wn;
   InitBufs
 END DisassembleInt;
 
@@ -1247,14 +1266,14 @@ BEGIN
     (* Skip source to first non-blank *)
     WHILE ~Source.eof & (Sourcechar <= " ") & (Pos() < ORS.Pos()) DO GetChar END;
     IF Pos() < ORS.Pos() THEN
-      w.in(SourceLine, 4); w.s(": ");
-      w.b(Pos() - SourceBol);  (* Space to current column *)
+      wir(SourceLine, 4); ws(": ");
+      wb(Pos() - SourceBol);  (* Space to current column *)
       (* Copy Source text to pos *)
       WHILE ~Source.eof & (Pos() < ORS.Pos()) DO
         IF (Sourcechar = 0DX) OR (Sourcechar = 0AX) THEN
-          GetChar; w.l; w.in(SourceLine, 4); w.s(": ")
+          GetChar; wn; wir(SourceLine, 4); ws(": ")
         ELSE
-          w.c(Sourcechar); GetChar
+          wc(Sourcechar); GetChar
         END
       END;
       wn
@@ -1279,5 +1298,5 @@ BEGIN
 END Init;
 
 
-BEGIN
+BEGIN Skip := FALSE
 END Listing.

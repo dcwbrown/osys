@@ -224,7 +224,7 @@ END CompTypes;
 PROCEDURE Parameter(par: ORB.Object; native: BOOLEAN);
 VAR x: X64.Item;  varpar: BOOLEAN;  stkoff: INTEGER;
 BEGIN
-  IF ORS.ListCodegen THEN l.StartRightCol; l.s("Parameter: ", Tr); l.Object(par, Tr); l.sl(".", Tr) END;
+  IF ORS.ListCodegen THEN l.StartRightCol; l.s("Parameter: ", Tr); l.Object(par, Tr); l.sn(".", Tr) END;
   expression(x);
   IF par # NIL THEN
     varpar := par.class = ORB.Par;
@@ -254,12 +254,12 @@ BEGIN
       IF ~par.rdo THEN CheckReadOnly(x) END;
       ORG.ArrayOfByteParam(x, stkoff)  (* Can pass anything to a dynamic array of byte *)
     ELSE ORS.Mark("incompatible parameters");
-      l.l(Tr);
+      l.n(Tr);
       l.s("par.type ", Tr);         l.Type(par.type, Tr);
       l.s(", par.type.base ", Tr);  l.Type(par.type.base, Tr);
       l.s(", x.type ", Tr);         l.Type(x.type, Tr);
       l.s(", x.type.base ", Tr);    l.Type(x.type.base, Tr);
-      l.l(Tr);
+      l.n(Tr);
     END
   END
 END Parameter;
@@ -358,7 +358,7 @@ VAR obj: ORB.Object;  saved: SET;
 BEGIN (*sync*)
   IF (sym < ORS.char) OR (sym > ORS.ident) THEN
     ORS.Mark("expression expected");
-    l.s(": sym = ", Tr); l.i(sym, Tr); l.sl(".", Tr);
+    l.s(": sym = ", Tr); l.i(sym, Tr); l.sn(".", Tr);
     REPEAT ORS.Get(sym) UNTIL (sym >= ORS.char) & (sym <= ORS.for) OR (sym >= ORS.then)
   END;
   IF sym = ORS.ident THEN
@@ -552,7 +552,7 @@ VAR obj:         ORB.Object;
   END SkipCase;
 
 BEGIN (* StatSequence *)
-  IF X64.SPO # 0 THEN l.s("StatSequence, SPO ", Tr); l.i(X64.SPO, Tr); l.l(Tr) END;
+  IF X64.SPO # 0 THEN l.s("StatSequence, SPO ", Tr); l.i(X64.SPO, Tr); l.n(Tr) END;
   REPEAT (*sync*) obj := NIL;
     IF ~((sym >= ORS.ident)  & (sym <= ORS.for) OR (sym >= ORS.semicolon)) THEN
       ORS.Mark("statement expected");
@@ -577,9 +577,9 @@ BEGIN (* StatSequence *)
             ORG.StrToChar(y);  ORG.Store(x, y)
           ELSE
             l.s("StatSequence - illegal assignment: x.type ", Tr); l.Type(x.type, Tr);
-            l.s(", y.type ", Tr);      l.Type(y.type, Tr);                    l.l(Tr);
+            l.s(", y.type ", Tr);      l.Type(y.type, Tr);                    l.n(Tr);
             l.s("x.type at ", Tr);     l.h(SYSTEM.VAL(INTEGER, x.type), Tr);
-            l.s("H, y.type at ", Tr);  l.h(SYSTEM.VAL(INTEGER, y.type), Tr);  l.sl("H.", Tr);
+            l.s("H, y.type at ", Tr);  l.h(SYSTEM.VAL(INTEGER, y.type), Tr);  l.sn("H.", Tr);
             ORS.Mark("illegal assignment")
           END
         ELSIF sym = ORS.eql THEN ORS.Mark("should be :=");  ORS.Get(sym);  expression(y)
@@ -1099,11 +1099,11 @@ BEGIN ORS.Get(sym);  CheckNative(native);
 
     IF ORS.ListCodegen THEN
       l.CatchupSource;
-      l.s("Procedure declaration '", Tr);  l.s(procid, Tr);  l.sl("'.", Tr);
+      l.s("Procedure declaration '", Tr);  l.s(procid, Tr);  l.sn("'.", Tr);
       (* --- dump objects --- *)
       l.s("parmsize: $",    Tr); l.h(parmsize, Tr);
       l.s(", locsize: $",   Tr); l.h(locsize, Tr);
-      l.s(", framesize: $", Tr); l.h(framesize, Tr); l.l(Tr);
+      l.s(", framesize: $", Tr); l.h(framesize, Tr); l.n(Tr);
       longestname := 0;  obj := type.dsc;  WHILE obj # NIL DO
         IF slen(obj.name) > longestname THEN longestname := slen(obj.name) END;
         obj := obj.next
@@ -1121,13 +1121,13 @@ BEGIN ORS.Get(sym);  CheckNative(native);
           END
         END;
         IF ORS.ListCodegen THEN
-          l.Class(obj.class, Tr);  l.s(" ", Tr);  l.sn(obj.name, longestname, Tr);
-          l.s(" adr $", Tr);       l.hn(obj.val, 6, Tr)
+          l.Class(obj.class, Tr);  l.s(" ", Tr);  l.sl(obj.name, longestname, Tr);
+          l.s(" adr $", Tr);       l.hz(obj.val, 6, Tr)
         END
       END;
       IF ORS.ListCodegen THEN
         l.s(" type ", Tr);  l.Type(obj.type, Tr);
-        l.l(Tr)
+        l.n(Tr)
       END;
       obj := obj.next
     END;
@@ -1231,7 +1231,7 @@ BEGIN Texts.WriteString(W, "  compiling ");  ORS.Get(sym);
         IF ORS.ListCodegen & (obj.type.base.typobj.exno = 0) THEN
           l.s("Adding type descriptor table export for ", Tr);
           l.s(obj.name, Tr);  l.s(" -> ", Tr);
-          l.s(obj.type.base.typobj.name, Tr);  l.l(Tr);
+          l.s(obj.type.base.typobj.name, Tr);  l.n(Tr);
         END;
         obj.type.base.typobj.exno := 1;
       END;

@@ -264,8 +264,8 @@ BEGIN
   AddModule(Modulename);
 
   H.ws("Building MODULE "); H.ws(Modulename);
-  IF SourcePath # "./;" THEN H.ws(", source path: '");  H.ws(SourcePath); H.ws("'") END;
-  IF BuildPath  # ""    THEN H.ws(", build path: '");   H.ws(BuildPath); H.ws("'") END;
+  IF SourcePath # "./" THEN H.ws(", source path: '");  H.ws(SourcePath); H.ws("'") END;
+  IF BuildPath  # ""   THEN H.ws(", build path: '");   H.ws(BuildPath); H.ws("'") END;
   H.wsn(".");
 
   (* Keep scanning and adding modules until all dependencies have been scanned *)
@@ -415,7 +415,7 @@ END ScanArguments;
 
 
 BEGIN
-  H.WriteClock; H.wsn(". OB - Oberon builder.");
+  H.WriteClock; H.wsn(". OB - Oberon command line builder.");
   Verbose         := FALSE;
   LoadFlags       := {};
   LongestModname  := 0;

@@ -9,7 +9,9 @@
 :: to build once with just winshim updated, then again with functionality
 :: dependent on winshim.
 ::
-@rd /s /q buildpre build1 build2 2>NUL
+@rd /s /q buildpre 2>NUL
+@rd /s /q build1 2>NUL
+@rd /s /q build2 2>NUL
 ::
 :: If WinPE has changed a prebuild will be required
 @sed -n '/Start of/,/End of/p' knowngood\Winshim.mod >t1
@@ -31,7 +33,7 @@
 @echo.
 @echo ----------------- Build new compiler using known good compiler -----------------
 @del t1 t2 >NUL
-@mkdir build1 >NUL
+@mkdir build1 >NUL 2>NUL
 @copy *.mod build1 >NUL
 @cd build1
 if exist ..\buildpre\ob.exe (..\buildpre\ob ob) else (..\knowngood\ob ob)
@@ -40,7 +42,7 @@ if exist ..\buildpre\ob.exe (..\buildpre\ob ob) else (..\knowngood\ob ob)
 ::
 @echo.
 @echo ---------------- Build new compiler using newly built compiler -----------------
-@mkdir build2 >NUL
+@mkdir build2 >NUL 2>NUL
 @copy *.mod build2 >NUL
 @cd build2
 ..\build1\ob ob
