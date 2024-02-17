@@ -1,6 +1,6 @@
 MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
 
-IMPORT SYSTEM, P := Winshim;
+IMPORT SYSTEM, H := Winshim;
 
 VAR
   HeapOrg*:   INTEGER;
@@ -90,18 +90,18 @@ BEGIN
 END GetBlock64;
 
 PROCEDURE New*(VAR ptr: INTEGER;  tag: INTEGER);
-(* called by NEW via P.NewPointer;  ptr and tag are pointers*)
+(* called by NEW via H.NewPointer;  ptr and tag are pointers*)
 VAR p, size, lim: INTEGER;
 BEGIN
   (*
-  P.ws("NewPtr. ptr @");  P.wh(SYSTEM.ADR(ptr));
-  P.ws("H, tag ");  P.wh(tag);  P.wc("H");
-  P.WriteModuleOffset(tag);
+  H.ws("NewPtr. ptr @");  H.wh(SYSTEM.ADR(ptr));
+  H.ws("H, tag ");  H.wh(tag);  H.wc("H");
+  H.WriteModuleOffset(tag);
   *)
   SYSTEM.GET(tag, size);  (* Size includes header *)
   (*
-  P.ws(", tag.size "); P.wh(size);
-  P.ws("H.");
+  H.ws(", tag.size "); H.wh(size);
+  H.ws("H.");
   *)
   IF    size = 64  THEN GetBlock64(p)
   ELSIF size = 128 THEN GetBlock128(p)
@@ -117,7 +117,7 @@ BEGIN
     INC(Allocated, size);
     WHILE p < lim DO SYSTEM.PUT(p, 0);  INC(p, 8) END
   END;
-  (*P.ws(" Allocated at "); P.wh(ptr); P.wsl("H.");*)
+  (*H.ws(" Allocated at "); H.wh(ptr); H.wsn("H.");*)
 END New;
 
 
@@ -183,22 +183,22 @@ END Scan;
 *)
 
 PROCEDURE Halt*(exitCode: INTEGER);
-BEGIN (*Heap.Finalise;*)  P.ExitProcess(exitCode) END Halt;
+BEGIN (*Heap.Finalise;*)  H.ExitProcess(exitCode) END Halt;
 
 
 (* ------------------------ Miscellaneous procedures ------------------------ *)
 
 PROCEDURE Time*(): INTEGER;   (* In milliseconds since system-dependent origin *)
-BEGIN RETURN P.Time() END Time;
+BEGIN RETURN H.Time() END Time;
 
 PROCEDURE Clock*(): INTEGER;  (* 32 bit packed date and time *)
-BEGIN RETURN P.Clock() END Clock;
+BEGIN RETURN H.Clock() END Clock;
 
 
 (* ----- Temporarily expose functions that belong in the platform shim ------ *)
 
 (*PROCEDURE Append*(s: ARRAY OF CHAR; VAR d: ARRAY OF CHAR);
-BEGIN P.Append(s, d) END Append;
+BEGIN H.Append(s, d) END Append;
 *)
 
 (* -------------------------------------------------------------------------- *)
@@ -210,16 +210,16 @@ CONST
   commit  = 2000000H;   (* Initially commit 32MB  *)
 BEGIN
   (*
-  P.wsl("Kernel initialising.");
-  P.ws("P.VirtualAlloc at ");  P.wh(SYSTEM.VAL(INTEGER, P.VirtualAlloc));  P.wsl("H.");
+  H.wsn("Kernel initialising.");
+  H.ws("H.VirtualAlloc at ");  H.wh(SYSTEM.VAL(INTEGER, H.VirtualAlloc));  H.wsn("H.");
   *)
 
   (* Initialize heap *)
-  HeapOrg := P.VirtualAlloc(80000000H, reserve, MEMRESERVE, PAGEREADWRITE);
-  (*P.ws("Virtual alloc reservation returned ");  P.wh(HeapOrg);  P.wsl("H.");*)
+  HeapOrg := H.VirtualAlloc(80000000H, reserve, MEMRESERVE, PAGEREADWRITE);
+  (*H.ws("Virtual alloc reservation returned ");  H.wh(HeapOrg);  H.wsn("H.");*)
   ASSERT(HeapOrg # 0);
-  HeapOrg := P.VirtualAlloc(HeapOrg, commit, MEMCOMMIT, PAGEREADWRITE);
-  (*P.ws("Virtual alloc commit returned ");  P.wh(HeapOrg);  P.wsl("H.");*)
+  HeapOrg := H.VirtualAlloc(HeapOrg, commit, MEMCOMMIT, PAGEREADWRITE);
+  (*H.ws("Virtual alloc commit returned ");  H.wh(HeapOrg);  H.wsn("H.");*)
   ASSERT(HeapOrg # 0);
 
   HeapLimit := HeapOrg + commit;
@@ -232,11 +232,13 @@ BEGIN
   SYSTEM.PUT(List0 + 16, 0);
   Allocated := 0;
 
-  SYSTEM.PUT(SYSTEM.ADR(P.NewPointer), SYSTEM.ADR(New));
+  SYSTEM.PUT(SYSTEM.ADR(H.NewPointer), SYSTEM.ADR(New));
 
-  P.ws("Heap allocated at "); P.wh(HeapOrg);
-  P.ws("H, commited to ");    P.wh(HeapOrg + commit);
-  P.ws("H, reserved to ");    P.wh(HeapOrg + reserve);  P.wsl("H.");
+  IF H.Verbose IN H.LoadFlags THEN
+    H.ws("Heap allocated at "); H.wh(HeapOrg);
+    H.ws("H, commited to ");    H.wh(HeapOrg + commit);
+    H.ws("H, reserved to ");    H.wh(HeapOrg + reserve);  H.wsn("H.")
+  END;
 END Init;
 
 BEGIN Init END Kernel.

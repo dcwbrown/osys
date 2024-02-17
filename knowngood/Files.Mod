@@ -125,7 +125,7 @@ BEGIN
       err := P.GetLastError();
       res := P.Utf8ToUtf16(f.tempname, nameW);  (* Couldn't move temp file, so delete it *)
       res := P.DeleteFileW(SYSTEM.ADR(nameW));
-      P.wl; P.ws("** Cannot register "); P.ws(f.name); P.ws(" as it is already in use: **");
+      P.wn; P.ws("** Cannot register "); P.ws(f.name); P.ws(" as it is already in use: **");
       P.AssertWinErr(err);
     END;
     ASSERT(P.FileOpen(f.name, P.OpenRW, f.handle) = 0);
@@ -145,7 +145,7 @@ RETURN size END Length;
 PROCEDURE Set*(VAR r: Rider; f: File; pos: INTEGER);
 VAR res: INTEGER;
 BEGIN
-  (*P.ws("Files.Set, r: Rider at "); P.wh(SYSTEM.ADR(r)); P.wsl("H.");*)
+  (*P.ws("Files.Set, r: Rider at "); P.wh(SYSTEM.ADR(r)); P.wsn("H.");*)
   r.eof   := FALSE;
   r.res   := 0;
   r.file  := f;
@@ -247,7 +247,7 @@ BEGIN
   IF n < 57 THEN
     y := ASR(LSL(y, 57-n), 57-n)  (* Sign extend *)
   END;
-  (*P.ws(" -> ");  P.wh(y);  P.wsl("H.");  ASSERT(FALSE);*)
+  (*P.ws(" -> ");  P.wh(y);  P.wsn("H.");  ASSERT(FALSE);*)
   x := y;
 END ReadNum;
 
@@ -268,9 +268,9 @@ BEGIN
   IF length > 0 THEN
     ASSERT(offset + length <= LEN(x));
     SyncFilePos(r);
-    (*P.ws("WriteBytes. offset "); P.wh(offset); P.ws("H, length "); P.wh(length); P.wsl("H.");*)
+    (*P.ws("WriteBytes. offset "); P.wh(offset); P.ws("H, length "); P.wh(length); P.wsn("H.");*)
     res := P.WriteFile(r.file.handle, SYSTEM.ADR(x) + offset, length, SYSTEM.ADR(byteswritten), 0);
-    (*P.ws("  byteswritten "); P.wh(byteswritten); P.wsl("H.");*)
+    (*P.ws("  byteswritten "); P.wh(byteswritten); P.wsn("H.");*)
     ASSERT(byteswritten = length);
     INC(r.pos, length);  r.file.pos := r.pos
   END
@@ -279,7 +279,7 @@ END WriteBytes;
 PROCEDURE Write*(VAR r: Rider; ch: CHAR);
 VAR res, byteswritten: INTEGER;
 BEGIN
-  (*P.ws("Files.Write('"); P.wc(ch); P.wsl("'.");*)
+  (*P.ws("Files.Write('"); P.wc(ch); P.wsn("'.");*)
   SyncFilePos(r);
   res := P.WriteFile(r.file.handle, SYSTEM.ADR(ch), 1, SYSTEM.ADR(byteswritten), 0);
   ASSERT(byteswritten = 1);
@@ -320,9 +320,9 @@ BEGIN
     P.ws("File '"); P.ws(f.name);  P.ws("' ");  P.wh(f.handle);
     P.ws("H ");
     IF ~f.registered THEN
-      P.ws("temp name "); P.ws(f.tempname); P.wsl(".")
+      P.ws("temp name "); P.ws(f.tempname); P.wsn(".")
     ELSE
-      P.wsl("registered.");
+      P.wsn("registered.");
     END;
     f := f.next
   END;

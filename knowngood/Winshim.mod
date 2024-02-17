@@ -69,13 +69,10 @@ TYPE
 
 
 VAR
-  (* WinPE.mod builds the executable with the following Winshim variables pre-loaded *)
-
-
-  (* Start of pre-loaded variables *)
-  Exeadr:    INTEGER;
-  Header:    CodeHeaderPtr;
-  LoadFlags: SET;
+  (* Start of pre-loaded variables (initialised by WinPE.mod) *)
+  Exeadr:     INTEGER;
+  Header:     CodeHeaderPtr;
+  LoadFlags*: SET;
 
   (* Pre-loaded Kernel32 imports *)
   AddVectoredExceptionHandler*:    PROCEDURE-(first, filter: INTEGER): INTEGER;
@@ -218,34 +215,6 @@ END IntToDecimal;
 
 
 (* -------------------------------------------------------------------------- *)
-(* ---------------- Simple logging/debugging console output ----------------- *)
-(* -------------------------------------------------------------------------- *)
-
-PROCEDURE ws*(s: ARRAY OF CHAR); BEGIN Log(s) END ws;
-
-PROCEDURE wc*(c: CHAR); BEGIN Log(c) END wc;
-
-PROCEDURE wl*; BEGIN Log(crlf) END wl;
-
-PROCEDURE wsl*(s: ARRAY OF CHAR); BEGIN Log(s);  Log(crlf) END wsl;
-
-PROCEDURE wh*(n: INTEGER);
-VAR hex: ARRAY 32 OF CHAR;
-BEGIN IntToHex(n, hex);  Log(hex) END wh;
-
-PROCEDURE whw*(n, w: INTEGER);
-VAR hex: ARRAY 32 OF CHAR;  i: INTEGER;
-BEGIN
-  IntToHex(n, hex);  i := w - Length(hex);
-  WHILE i > 0 DO wc("0"); DEC(i) END;
-  Log(hex)
-END whw;
-
-PROCEDURE wb(n: INTEGER);
-BEGIN WHILE n > 0 DO wc(" "); DEC(n) END END wb;
-
-
-(* -------------------------------------------------------------------------- *)
 (* ----------------------------- Time functions ----------------------------- *)
 (* -------------------------------------------------------------------------- *)
 
@@ -311,6 +280,78 @@ RETURN clock END LongClock;
 
 
 (* -------------------------------------------------------------------------- *)
+(* ---------------- Simple logging/debugging console output ----------------- *)
+(* -------------------------------------------------------------------------- *)
+
+PROCEDURE wc*(c: CHAR); BEGIN Log(c) END wc;
+
+PROCEDURE wn*; BEGIN Log(crlf) END wn;
+
+PROCEDURE ws*(s: ARRAY OF CHAR); BEGIN Log(s) END ws;
+
+PROCEDURE wsl*(s: ARRAY OF CHAR; w: INTEGER);  (* Left justified with trailing spaces *)
+BEGIN Log(s);  DEC(w, Length(s));  WHILE w > 0 DO wc(" "); DEC(w) END END wsl;
+
+PROCEDURE wsr*(s: ARRAY OF CHAR; w: INTEGER);  (* Right justified with leading spaces *)
+BEGIN DEC(w, Length(s));  WHILE w > 0 DO wc(" "); DEC(w) END; Log(s) END wsr;
+
+PROCEDURE wsz*(s: ARRAY OF CHAR; w: INTEGER);  (* Right justified with leading zeroes *)
+BEGIN DEC(w, Length(s));  WHILE w > 0 DO wc("0"); DEC(w) END; Log(s) END wsz;
+
+PROCEDURE wsn*(s: ARRAY OF CHAR); BEGIN Log(s); Log(crlf) END wsn;
+
+
+PROCEDURE wh*(n: INTEGER);
+VAR hex: ARRAY 32 OF CHAR;
+BEGIN IntToHex(n, hex); Log(hex) END wh;
+
+PROCEDURE whl*(n, w: INTEGER);  (* Left justified with trailing spaces *)
+VAR hex: ARRAY 32 OF CHAR;
+BEGIN IntToHex(n, hex); wsl(hex, w) END whl;
+
+PROCEDURE whr*(n, w: INTEGER);  (* Right justified with leading spaces *)
+VAR hex: ARRAY 32 OF CHAR;
+BEGIN IntToHex(n, hex); wsr(hex, w) END whr;
+
+PROCEDURE whz*(n, w: INTEGER);  (* Right justified with leading zeroes *)
+VAR hex: ARRAY 32 OF CHAR;
+BEGIN IntToHex(n, hex); wsz(hex, w) END whz;
+
+
+PROCEDURE wi*(n: INTEGER);
+VAR dec: ARRAY 32 OF CHAR;
+BEGIN IntToDecimal(n, dec); Log(dec) END wi;
+
+PROCEDURE wil*(n, w: INTEGER);  (* Left justified with trailing spaces *)
+VAR dec: ARRAY 32 OF CHAR;
+BEGIN IntToDecimal(n, dec); wsl(dec, w) END wil;
+
+PROCEDURE wir*(n, w: INTEGER);  (* Right justified with leading spaces *)
+VAR dec: ARRAY 32 OF CHAR;
+BEGIN IntToDecimal(n, dec); wsr(dec, w) END wir;
+
+PROCEDURE wiz*(n, w: INTEGER);  (* Right justified with leading zeroes *)
+VAR dec: ARRAY 32 OF CHAR;
+BEGIN IntToDecimal(n, dec); wsz(dec, w) END wiz;
+
+
+PROCEDURE wb*(n: INTEGER);
+BEGIN WHILE n > 0 DO wc(" "); DEC(n) END END wb;
+
+PROCEDURE WriteClock*;
+VAR clock: INTEGER;
+BEGIN
+  clock := LongClock();
+  wiz(clock DIV 1000000000H MOD 8000H, 4);  (*year*)     wc("-");
+  wiz(clock DIV 100000000H MOD 10H,    2);  (*month*)    wc("-");
+  wiz(clock DIV 8000000H MOD 20H,      2);  (*day*)      wc(" ");
+  wiz(clock DIV 400000H MOD 20H,       2);  (*hour*)     wc(":");
+  wiz(clock DIV 10000H MOD 40H,        2);  (*min*)      wc(":");
+  wiz(clock DIV 400H MOD 40H,          2);  (*sec*)
+END WriteClock;
+
+
+(* -------------------------------------------------------------------------- *)
 
 PROCEDURE DumpMem*(indent, adr, start, len: INTEGER);
 VAR
@@ -323,7 +364,7 @@ BEGIN
   rowstart  := (       start       DIV 16) * 16;
   dumplimit := ((start + len + 15) DIV 16) * 16;
   WHILE rowstart < dumplimit DO
-    wb(indent); whw(rowstart, 12); ws("  ");
+    wb(indent); whz(rowstart, 12); ws("  ");
     i := 0;
     WHILE i < 16 DO  (* Load a row of bytes *)
       IF (rowstart+i >= start) & (rowstart+i < start+len) THEN
@@ -336,7 +377,7 @@ BEGIN
     i := 0;
     WHILE i < 16 DO  (* One row of hex Dump *)
       IF i MOD 8 = 0 THEN wc(" ") END;
-      IF bytes[i] >= 0 THEN whw(bytes[i], 2);  wc(" ") ELSE ws("   ") END;
+      IF bytes[i] >= 0 THEN whz(bytes[i], 2);  wc(" ") ELSE ws("   ") END;
       INC(i)
     END;
     ws("  ");
@@ -349,7 +390,7 @@ BEGIN
       END;
       INC(i)
     END;
-    wl;  INC(rowstart, 16);
+    wn;  INC(rowstart, 16);
   END
 END DumpMem;
 
@@ -384,26 +425,26 @@ BEGIN
   (* Reserve 2GB memory for the Oberon machine + 2GB for Jcc trap targets *)
   reserveadr := VirtualAlloc(100000000H, 100000000H, MEMRESERVE, PAGEEXECUTEREADWRITE);
   IF reserveadr = 0 THEN
-    wsl("Could not reserve Oberon machine memory.");  ExitProcess(9);
+    wsn("Could not reserve Oberon machine memory.");  ExitProcess(9);
   ELSIF Verbose IN LoadFlags THEN
-    ws("Reserved 4GB Oberon machine memory at ");  wh(reserveadr);  wsl("H.")
+    ws("Reserved 4GB Oberon machine memory at ");  wh(reserveadr);  wsn("H.")
   END;
 
   (* Determine loaded size of all modules *)
   bootsize   := Header.imports + Header.varsize;
-  (*ws("bootsize "); wh(bootsize); wsl("H.");*)
+  (*ws("bootsize "); wh(bootsize); wsn("H.");*)
   modulesize := bootsize;
-  (*ws("modulesize "); wh(modulesize); wsl("H.");*)
+  (*ws("modulesize "); wh(modulesize); wsn("H.");*)
   moduleadr  := (SYSTEM.VAL(INTEGER, Header) + bootsize + 15) DIV 16 * 16;  (* Address of first module for Oberon machine *)
   (*
-  ws("Looking for modules to load starting at "); wh(moduleadr); wsl("H.");
+  ws("Looking for modules to load starting at "); wh(moduleadr); wsn("H.");
   WriteModuleHeader(moduleadr);
   *)
   hdr        := SYSTEM.VAL(CodeHeaderPtr, moduleadr);
-  (*ws("Potential first module length "); wh(hdr.length); wsl("H.");*)
+  (*ws("Potential first module length "); wh(hdr.length); wsn("H.");*)
   WHILE hdr.length > 0 DO
     (*
-    ws("Module at "); wh(moduleadr); ws("H, length "); wh(hdr.length); wsl("H.");
+    ws("Module at "); wh(moduleadr); ws("H, length "); wh(hdr.length); wsn("H.");
     WriteModuleHeader(moduleadr);
     *)
     INC(modulesize, (hdr.imports + hdr.varsize + 15) DIV 16 * 16);
@@ -415,7 +456,7 @@ BEGIN
   INC(modulesize, 16);  (* Allow 16 bytes ofr a sentinel *)
   OberonAdr := VirtualAlloc(reserveadr, modulesize, MEMCOMMIT, PAGEEXECUTEREADWRITE);
   IF Verbose IN LoadFlags THEN
-    ws("Committed ");  wh(modulesize);  ws("H bytes at ");  wh(OberonAdr);  wsl("H.")
+    ws("Committed ");  wh(modulesize);  ws("H bytes at ");  wh(OberonAdr);  wsn("H.")
   END
 END PrepareOberonMachine;
 
@@ -438,25 +479,25 @@ BEGIN
   INC(adr, SYSTEM.SIZE(CodeHeader));
   SYSTEM.GET(adr, ch);
   WHILE ch # 0X DO wc(ch);  INC(adr);  SYSTEM.GET(adr, ch) END;
-  ws(" header at ");  wh(SYSTEM.VAL(INTEGER, hdr));  wsl("H:");
-  ws("  length:   ");  wh(hdr.length);    wsl("H.");
-  ws("  initcode: ");  wh(hdr.initcode);  wsl("H.");
-  ws("  pointers: ");  wh(hdr.pointers);  wsl("H.");
-  ws("  commands: ");  wh(hdr.commands);  wsl("H.");
-  ws("  exports:  ");  wh(hdr.exports);   wsl("H.");
-  ws("  imports:  ");  wh(hdr.imports);   wsl("H.");
-  ws("  varsize:  ");  wh(hdr.varsize);   wsl("H.");
-  ws("  key:      ");  wh(hdr.key);       wsl("H.");
+  ws(" header at ");  wh(SYSTEM.VAL(INTEGER, hdr));  wsn("H:");
+  ws("  length:   ");  wh(hdr.length);    wsn("H.");
+  ws("  initcode: ");  wh(hdr.initcode);  wsn("H.");
+  ws("  pointers: ");  wh(hdr.pointers);  wsn("H.");
+  ws("  commands: ");  wh(hdr.commands);  wsn("H.");
+  ws("  exports:  ");  wh(hdr.exports);   wsn("H.");
+  ws("  imports:  ");  wh(hdr.imports);   wsn("H.");
+  ws("  varsize:  ");  wh(hdr.varsize);   wsn("H.");
+  ws("  key:      ");  wh(hdr.key);       wsn("H.");
 END WriteModuleHeader;
 
 PROCEDURE WriteExports(modadr: INTEGER);
 VAR hdr: CodeHeaderPtr; adr: INTEGER; export: SYSTEM.CARD32;
 BEGIN
-  ws("Export table at "); wh(modadr); wsl("H.");
+  ws("Export table at "); wh(modadr); wsn("H.");
   adr := modadr;
   SYSTEM.GET(adr, export);  INC(adr, 4);
   WHILE export # 0FFFFFFFFH DO
-    ws("  export "); wh(export); wsl("H.");
+    ws("  export "); wh(export); wsn("H.");
     SYSTEM.GET(adr, export);  INC(adr, 4);
   END
 END WriteExports;
@@ -490,7 +531,7 @@ VAR modadr, excpadr, excpcode: INTEGER;
 BEGIN
   excpcode := p.exception.ExceptionCode;
   excpadr  := p.exception.ExceptionAddress;
-  wl;
+  wn;
 
   IF    excpcode = 080000003H THEN ws("** Breakpoint (INT 3)");
   ELSIF excpcode = 080000004H THEN ws("** Single step (0F1H instr)");
@@ -507,20 +548,20 @@ BEGIN
     ws(" in module "); WriteModuleName(modadr);
     ws(" at offset "); wh(excpadr - modadr); wc("H")
   END;
-  wsl(". **");
+  wsn(". **");
 
   IF (modadr # 0) & (PostMortemDump # NIL) & (ExceptionDepth < 2) THEN
     INC(ExceptionDepth);
     PostMortemDump(modadr, excpadr - modadr, excpcode)
   ELSE
-    ws("  rax "); whw(p.context.rax, 16);  ws("  rbx "); whw(p.context.rbx, 16);
-    ws("  rcx "); whw(p.context.rcx, 16);  ws("  rdx "); whw(p.context.rdx, 16);  wl;
-    ws("  rsp "); whw(p.context.rsp, 16);  ws("  rbp "); whw(p.context.rbp, 16);
-    ws("  rsi "); whw(p.context.rsi, 16);  ws("  rdi "); whw(p.context.rdi, 16);  wl;
-    ws("  r8  "); whw(p.context.r8,  16);  ws("  r9  "); whw(p.context.r9,  16);
-    ws("  r10 "); whw(p.context.r10, 16);  ws("  r11 "); whw(p.context.r11, 16);  wl;
-    ws("  r12 "); whw(p.context.r12, 16);  ws("  r13 "); whw(p.context.r13, 16);
-    ws("  r14 "); whw(p.context.r14, 16);  ws("  r15 "); whw(p.context.r15, 16);  wl;
+    ws("  rax "); whz(p.context.rax, 16);  ws("  rbx "); whz(p.context.rbx, 16);
+    ws("  rcx "); whz(p.context.rcx, 16);  ws("  rdx "); whz(p.context.rdx, 16);  wn;
+    ws("  rsp "); whz(p.context.rsp, 16);  ws("  rbp "); whz(p.context.rbp, 16);
+    ws("  rsi "); whz(p.context.rsi, 16);  ws("  rdi "); whz(p.context.rdi, 16);  wn;
+    ws("  r8  "); whz(p.context.r8,  16);  ws("  r9  "); whz(p.context.r9,  16);
+    ws("  r10 "); whz(p.context.r10, 16);  ws("  r11 "); whz(p.context.r11, 16);  wn;
+    ws("  r12 "); whz(p.context.r12, 16);  ws("  r13 "); whz(p.context.r13, 16);
+    ws("  r14 "); whz(p.context.r14, 16);  ws("  r15 "); whz(p.context.r15, 16);  wn;
     (* Dump top of stack (i.e. lowest addresses) *)
     DumpMem(2, p.context.rsp, p.context.rsp, 128)
   END;
@@ -534,7 +575,7 @@ END ExceptionHandler;
 PROCEDURE Trap(desc: ARRAY OF CHAR);
 VAR adr, modadr: INTEGER;
 BEGIN
-  wsl(desc);
+  wsn(desc);
   SYSTEM.GET(SYSTEM.ADR(LEN(desc)) + 8, adr);  (* Get caller address of trap caller *)
   ws("At address ");  wh(adr);  ws("H");
   modadr := LocateModule(adr);
@@ -542,7 +583,7 @@ BEGIN
     ws(" in module "); WriteModuleName(modadr);
     ws(" at offset "); wh(adr - modadr); wc("H")
   END;
-  wsl(".");
+  wsn(".");
   IF (modadr # 0) & (PostMortemDump # NIL) & (ExceptionDepth < 2) THEN
     INC(ExceptionDepth);
     PostMortemDump(modadr, adr - modadr, -1)
@@ -551,13 +592,13 @@ BEGIN
 END Trap;
 
 PROCEDURE AssertionFailureHandler();
-BEGIN wl; Trap("** Assertion failure **") END AssertionFailureHandler;
+BEGIN wn; Trap("** Assertion failure **") END AssertionFailureHandler;
 
 PROCEDURE ArraySizeMismatchHandler();
-BEGIN wl; Trap("** Array size mismatch **") END ArraySizeMismatchHandler;
+BEGIN wn; Trap("** Array size mismatch **") END ArraySizeMismatchHandler;
 
 PROCEDURE UnterminatedStringHandler();
-BEGIN wl; Trap("** Unterminated string **") END UnterminatedStringHandler;
+BEGIN wn; Trap("** Unterminated string **") END UnterminatedStringHandler;
 
 PROCEDURE NewPointerHandler(ptr, len: INTEGER);
 BEGIN
@@ -572,7 +613,7 @@ PROCEDURE assertmsg(expectation: BOOLEAN; msg: ARRAY OF CHAR);
 VAR res: INTEGER;
 BEGIN
   IF ~expectation THEN
-    ws(" * "); ws(msg); wsl(" *");
+    ws(" * "); ws(msg); wsn(" *");
     res := CloseHandle(Stdout);
     ExitProcess(99)
   END
@@ -705,7 +746,7 @@ END WriteWindowsErrorMessage;
 PROCEDURE AssertWinErr*(err: INTEGER);
 BEGIN
   IF err # 0 THEN
-    wl; ws("** "); WriteWindowsErrorMessage(err); Trap(" **")
+    wn; ws("** "); WriteWindowsErrorMessage(err); Trap(" **")
   END
 END AssertWinErr;
 
@@ -787,7 +828,7 @@ BEGIN i := 0;
   (*ws("GetString -> '");*)
   REPEAT SYSTEM.GET(adr, s[i]); INC(adr); INC(i) UNTIL s[i-1] = 0X;
   len := i;
-  (*ws(s); wsl("'.")*)
+  (*ws(s); wsn("'.")*)
 END GetString;
 
 
@@ -806,20 +847,20 @@ VAR
   modname: ARRAY 32 OF CHAR;
   len:     INTEGER;
 BEGIN
-  (*ws("Findmodule "); ws(name); wsl(".");*)
+  (*ws("Findmodule "); ws(name); wsn(".");*)
   modadr := OberonAdr;
   hdr := SYSTEM.VAL(CodeHeaderPtr, modadr);
   GetString(modadr + SYSTEM.SIZE(CodeHeader), modname, len);
   WHILE (hdr.length # 0) & (modname # name) DO
     modadr := (modadr + hdr.imports + hdr.varsize + 15) DIV 16 * 16;
-    (*ws(".. considering ");  WriteModuleName(modadr); wl;*)
+    (*ws(".. considering ");  WriteModuleName(modadr); wn;*)
     hdr := SYSTEM.VAL(CodeHeaderPtr, modadr);
     IF hdr.length > 0 THEN
       GetString(modadr + SYSTEM.SIZE(CodeHeader), modname, len)
     END
   END;
   assert(hdr.length # 0); (*, "FindModule hdr.length is 0.");*)
-  (*ws("Requested key "); wh(hdr.key); ws("H, found key "); wh(hdr.key); wsl("H.");*)
+  (*ws("Requested key "); wh(hdr.key); ws("H, found key "); wh(hdr.key); wsn("H.");*)
 RETURN modadr END FindModule;
 
 
@@ -846,7 +887,7 @@ BEGIN
   (*
   ws("Loading ");  WriteModuleName(modadr);
   ws(" from ");    wh(modadr);
-  ws("H to ");     wh(LoadAdr);  wsl("H.");
+  ws("H to ");     wh(LoadAdr);  wsn("H.");
   WriteModuleHeader(modadr);
   *)
 
@@ -854,9 +895,9 @@ BEGIN
   SYSTEM.COPY(modadr, LoadAdr, hdr.imports);  (* Copy up to but excluding import table *)
 
   loadedsize := (hdr.imports + hdr.varsize + 15) DIV 16 * 16;
-  (*ws("Loaded size "); wh(loadedsize); wsl("H.");*)
+  (*ws("Loaded size "); wh(loadedsize); wsn("H.");*)
   SYSTEM.PUT(LoadAdr, loadedsize);      (* Update length in header to loaded size *)
-  (*ws("Writing sentinel at "); wh(LoadAdr + loadedsize); wsl("H.");*)
+  (*ws("Writing sentinel at "); wh(LoadAdr + loadedsize); wsn("H.");*)
   SYSTEM.PUT(LoadAdr + loadedsize, 0);  (* Add sentinel zero length module *)
 
   IF Verbose IN LoadFlags THEN
@@ -864,7 +905,7 @@ BEGIN
     ws(" at ");             wh(LoadAdr);
     ws("H, code ");         wh(hdr.imports);
     ws("H bytes, data ");   wh(hdr.varsize);
-    ws("H bytes, limit ");  wh(LoadAdr + loadedsize);  wsl("H.")
+    ws("H bytes, limit ");  wh(LoadAdr + loadedsize);  wsn("H.")
   END;
 
   (* Build list of imported module header addresses *)
@@ -879,11 +920,11 @@ BEGIN
   END;
   modules[i] := 0;
 
-  (*wsl("Built list of imported module header addresses.");*)
+  (*wsn("Built list of imported module header addresses.");*)
 
   adr := (adr + 15) DIV 16 * 16;
   SYSTEM.GET(adr, importcount);  INC(adr, 4);
-  (*ws("Import count "); wh(importcount); wsl("H.");*)
+  (*ws("Import count "); wh(importcount); wsn("H.");*)
   i := 0;
   WHILE i < importcount DO
     SYSTEM.GET(adr, offset); INC(adr, 4);
@@ -892,32 +933,32 @@ BEGIN
     (*
     ws("  import from module "); wh(modno);
     ws("H, impno "); wh(impno);
-    ws("H, to offset "); wh(offset); wsl("H.");
+    ws("H, to offset "); wh(offset); wsn("H.");
     *)
     IF modno = 0 THEN  (* system function *)
       SYSTEM.GET(LoadAdr + offset, disp);
-      (*ws("disp    -"); wh(-disp); wsl("H.");*)
+      (*ws("disp    -"); wh(-disp); wsn("H.");*)
       IF    impno = NewProc                THEN disp := SYSTEM.ADR(NewPointer)         + disp - LoadAdr
       ELSIF impno = AssertionFailureProc   THEN disp := SYSTEM.ADR(AssertionFailure)   + disp - LoadAdr
       ELSIF impno = ArraySizeMismatchProc  THEN disp := SYSTEM.ADR(ArraySizeMismatch)  + disp - LoadAdr
       ELSIF impno = UnterminatedStringProc THEN disp := SYSTEM.ADR(UnterminatedString) + disp - LoadAdr
       ELSE  assert(FALSE) (*, "LoadModule: Unexpected system function import number.")*)
       END;
-      (*ws("disp'   -"); wh(-disp); wsl("H.");*)
+      (*ws("disp'   -"); wh(-disp); wsn("H.");*)
       SYSTEM.PUT(LoadAdr + offset, disp)
     ELSE
       assert(modno > 0); (*, "LoadModule: modno is < 0.");*)
       impmodadr := modules[modno-1];
       expadr := ExportedAddress(SYSTEM.VAL(CodeHeaderPtr, impmodadr), impno-1);
       (*
-      ws("expadr  "); wh(expadr); wsl("H.");
-      ws("LoadAdr "); wh(LoadAdr); wsl("H.");
-      ws("offset  "); wh(offset); wsl("H.");
+      ws("expadr  "); wh(expadr); wsn("H.");
+      ws("LoadAdr "); wh(LoadAdr); wsn("H.");
+      ws("offset  "); wh(offset); wsn("H.");
       *)
       SYSTEM.GET(LoadAdr + offset, disp);
-      (*ws("disp    -"); wh(-disp); wsl("H.");*)
+      (*ws("disp    -"); wh(-disp); wsn("H.");*)
       disp := expadr + disp - LoadAdr;
-      (*ws("disp'   -"); wh(-disp); wsl("H.");*)
+      (*ws("disp'   -"); wh(-disp); wsn("H.");*)
       SYSTEM.PUT(LoadAdr + offset, disp)
     END;
     INC(i)
@@ -955,8 +996,8 @@ BEGIN
 
   IF Verbose IN LoadFlags THEN
     ws("Load remaining modules starting from "); wh(moduleadr);
-    ws("H, RvaModules + "); wh(moduleadr - SYSTEM.VAL(INTEGER, Header)); wsl("H.");
-    ws("First remaining module: '"); WriteModuleName(moduleadr); wsl("'.")
+    ws("H, RvaModules + "); wh(moduleadr - SYSTEM.VAL(INTEGER, Header)); wsn("H.");
+    ws("First remaining module: '"); WriteModuleName(moduleadr); wsn("'.")
   END;
 
   SYSTEM.GET(moduleadr, modulelength);
@@ -974,7 +1015,7 @@ BEGIN
   END;
 
   SYSTEM.PUT(LoadAdr, 0);  (* Mark end of loaded modules *)
-  (*wsl("LoadRemainingModules complete.")*)
+  (*wsn("LoadRemainingModules complete.")*)
 END LoadRemainingModules;
 
 (* -------------------------------------------------------------------------- *)
@@ -999,12 +1040,12 @@ BEGIN
   Log := WriteStdout;
 
   IF Verbose IN LoadFlags THEN
-    ws("Winshim starting, Header at "); wh(SYSTEM.VAL(INTEGER, Header)); wsl("H.")
+    ws("Winshim starting, Header at "); wh(SYSTEM.VAL(INTEGER, Header)); wsn("H.")
   END;
   (*
-  ws("Stdout handle "); wh(Stdout);            wsl("H.");
-  ws("NoLog at ");      wh(SYSTEM.ADR(NoLog)); wsl("H.");
-  ws("Log at ");        wh(SYSTEM.ADR(Log));   wsl("H.");
+  ws("Stdout handle "); wh(Stdout);            wsn("H.");
+  ws("NoLog at ");      wh(SYSTEM.ADR(NoLog)); wsn("H.");
+  ws("Log at ");        wh(SYSTEM.ADR(Log));   wsn("H.");
   WriteModuleHeader(SYSTEM.VAL(INTEGER, Header));
   *)
 
@@ -1012,11 +1053,11 @@ BEGIN
 
   (* Copy boot module into newly committed memory and switch PC to the new code. *)
   SYSTEM.COPY(SYSTEM.VAL(INTEGER, Header), OberonAdr, Header.imports + Header.varsize);
-  (*ws("Transferring PC from original load at ");  wh(GetPC());  wsl("H.");*)
+  (*ws("Transferring PC from original load at ");  wh(GetPC());  wsn("H.");*)
   IncPC(OberonAdr - SYSTEM.VAL(INTEGER, Header));  (* Transfer to copied code *)
   Log := WriteStdout;  (* Correct Log fn address following move *)
   IF Verbose IN LoadFlags THEN
-    ws("Transferred PC to code copied to Oberon memory at ");  wh(GetPC());  wsl("H.")
+    ws("Transferred PC to code copied to Oberon memory at ");  wh(GetPC());  wsn("H.")
   END;
 
   (* Initialise system fuction handlers *)
@@ -1032,12 +1073,12 @@ BEGIN
 
   LoadAdr := (OberonAdr + Header.imports + Header.varsize + 15) DIV 16 * 16;
 
-  (*ws("crlf at "); wh(SYSTEM.ADR(crlf)); wsl("H.");*)
+  (*ws("crlf at "); wh(SYSTEM.ADR(crlf)); wsn("H.");*)
 
   LoadRemainingModules;
 
   (*MessageBoxA(0, SYSTEM.ADR("Complete."), SYSTEM.ADR("Winshim"), 0);*)
-  (*wsl("Winshim complete.");*)
+  (*wsn("Winshim complete.");*)
   (*MessageBox("Winshim", "Complete");*)
 
   ExitProcess(0);

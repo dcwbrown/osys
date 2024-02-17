@@ -1,6 +1,6 @@
 MODULE WinPE;  (* Create exe from a list of compiled Oberon modules *)
 (* DCWB 14.04.2023..10.02.2024 *)
-IMPORT SYSTEM, H := Winshim, K := Kernel, X64, Files, w := Writer;
+IMPORT SYSTEM, H := Winshim, K := Kernel, X64, Files;
 
 
 CONST
@@ -304,13 +304,13 @@ BEGIN
   Files.WriteBytes(Exe, importhints, 0, hintsize);
 
   ImportSize := Align(Files.Pos(Exe), 16) - FadrImport;
-  (*w.s("IDT size "); w.h(ImportSize); w.sl("H.");*)
+  (*H.ws("IDT size "); H.wh(ImportSize); H.wsn("H.");*)
   IF FadrImport + ImportSize >= FadrModules THEN
-    w.s("FadrImport + ImportSize: "); w.h(FadrImport + ImportSize); w.s("H - increase FadrModules");
+    H.ws("FadrImport + ImportSize: "); H.wh(FadrImport + ImportSize); H.ws("H - increase FadrModules");
     ASSERT(FALSE)
   END;
   IF RvaImport  + ImportSize >= RvaModules THEN
-    w.s("RvaImport  + ImportSize: "); w.h(RvaImport  + ImportSize); w.s("H - increase RvaModules");
+    H.ws("RvaImport  + ImportSize: "); H.wh(RvaImport  + ImportSize); H.ws("H - increase RvaModules");
     ASSERT(FALSE)
   END;
 END WriteImports;
@@ -323,13 +323,13 @@ PROCEDURE CopyFile(name: ARRAY OF CHAR);
 VAR  f: Files.File;  r: Files.Rider;  buf: ARRAY 1000H OF BYTE;
 BEGIN
   IF Verbose THEN
-    w.s("Adding "); w.s(name); w.s(" at file offset "); w.h(Files.Pos(Exe));
-    w.s("H, FadrModules + "); w.h(Files.Pos(Exe) - FadrModules); w.sl("H.")
+    H.ws("Adding "); H.ws(name); H.ws(" at file offset "); H.wh(Files.Pos(Exe));
+    H.ws("H, FadrModules + "); H.wh(Files.Pos(Exe) - FadrModules); H.wsn("H.")
   END;
   ASSERT(Files.Pos(Exe) MOD 16 = 0);
   f := Files.Old(name);
   IF f = NIL THEN
-    w.s("Couldn't copy '"); w.s(name); w.sl("'."); K.Halt(99)
+    H.ws("Couldn't copy '"); H.ws(name); H.wsn("'."); K.Halt(99)
   END;
   Files.Set(r, f, 0);
   WHILE ~r.eof DO
@@ -407,13 +407,13 @@ VAR
 
 BEGIN
   (*
-  w.s("Size of eMagic:     "); w.h(SYSTEM.ADR(hdr.zeroes)     - SYSTEM.ADR(hdr.eMagic));     w.sl("H.");
-  w.s("Size of zeroes:     "); w.h(SYSTEM.ADR(hdr.eLfanew)    - SYSTEM.ADR(hdr.zeroes));     w.sl("H.");
-  w.s("Size of eLfanew:    "); w.h(SYSTEM.ADR(hdr.dosProgram) - SYSTEM.ADR(hdr.eLfanew));    w.sl("H.");
-  w.s("Size of dosProgram: "); w.h(SYSTEM.ADR(hdr.signature)  - SYSTEM.ADR(hdr.dosProgram)); w.sl("H.");
-  w.s("Size of signature:  "); w.h(SYSTEM.ADR(hdr.machine)    - SYSTEM.ADR(hdr.signature));  w.sl("H.");
-  w.s("Size of Zeroes58:   "); w.h(SYSTEM.SIZE(Zeroes58));                                   w.sl("H.");
-  w.s("Size of PEheader:   "); w.h(SYSTEM.SIZE(PEheader));                                   w.sl("H.");
+  H.ws("Size of eMagic:     "); H.wh(SYSTEM.ADR(hdr.zeroes)     - SYSTEM.ADR(hdr.eMagic));     H.wsn("H.");
+  H.ws("Size of zeroes:     "); H.wh(SYSTEM.ADR(hdr.eLfanew)    - SYSTEM.ADR(hdr.zeroes));     H.wsn("H.");
+  H.ws("Size of eLfanew:    "); H.wh(SYSTEM.ADR(hdr.dosProgram) - SYSTEM.ADR(hdr.eLfanew));    H.wsn("H.");
+  H.ws("Size of dosProgram: "); H.wh(SYSTEM.ADR(hdr.signature)  - SYSTEM.ADR(hdr.dosProgram)); H.wsn("H.");
+  H.ws("Size of signature:  "); H.wh(SYSTEM.ADR(hdr.machine)    - SYSTEM.ADR(hdr.signature));  H.wsn("H.");
+  H.ws("Size of Zeroes58:   "); H.wh(SYSTEM.SIZE(Zeroes58));                                   H.wsn("H.");
+  H.ws("Size of PEheader:   "); H.wh(SYSTEM.SIZE(PEheader));                                   H.wsn("H.");
   *)
   ZeroFill(hdr);
 
@@ -506,10 +506,10 @@ VAR
   r: Files.Rider;
 BEGIN
   f := Files.Old("Winshim.code");
-  IF f = NIL THEN w.sl("Couldn't open Winshim.code."); K.Halt(99) END;
+  IF f = NIL THEN H.wsn("Couldn't open Winshim.code."); K.Halt(99) END;
   Files.Set(r, f, 0);
   Files.ReadBytes(r, Bootstrap,  SYSTEM.SIZE(BootstrapBuffer));
-  (*w.s("Bootstrap bytes read: "); w.i(Files.Pos(r)); w.sl(".");*)
+  (*H.ws("Bootstrap bytes read: "); w.i(Files.Pos(r)); H.wsn(".");*)
   ASSERT(r.res >= 0);
   Files.Close(f)
 END GetBootstrap;
@@ -546,8 +546,8 @@ BEGIN
   Verbose := H.Verbose IN LoadFlags;
 
   IF Verbose THEN
-    w.s("WinPE.Generate. SIZE(CodeHeader) "); w.h(SYSTEM.SIZE(X64.CodeHeader));
-    w.s("H, SIZE(PEheader) "); w.h(SYSTEM.SIZE(PEheader)); w.sl("H.")
+    H.ws("WinPE.Generate. SIZE(CodeHeader) "); H.wh(SYSTEM.SIZE(X64.CodeHeader));
+    H.ws("H, SIZE(PEheader) "); H.wh(SYSTEM.SIZE(PEheader)); H.wsn("H.")
   END;
 
   ExeFile := Files.New(filename);
@@ -559,7 +559,7 @@ BEGIN
   WritePEHeader;
   Files.Register(ExeFile);
 
-  IF Verbose THEN w.s("WinPE generated "); w.s(filename); w.sl(".") END
+  IF Verbose THEN H.ws("WinPE generated "); H.ws(filename); H.wsn(".") END
 END Generate;
 
 PROCEDURE Init*;

@@ -1,6 +1,6 @@
 MODULE X64;  (* DCWB August 2023; X64 constants *)
 
-IMPORT SYSTEM, ORS, ORB, w := Writer;
+IMPORT SYSTEM, H := Winshim, ORS, ORB;
 
 CONST
   MaxPC* = 20000H;  (* Text generation buffer size (128KB) *)
@@ -150,7 +150,7 @@ RETURN result END Peek;
 PROCEDURE Patch*(adr, size, value: INTEGER);
 BEGIN
   IF (adr < 0) OR (adr + size >= MaxPC) THEN
-    w.s("** Patch address $"); w.h(adr); w.sl(" out of range **");
+    H.ws("** Patch address $"); H.wh(adr); H.wsn(" out of range **");
     ASSERT(FALSE)
   END;
   ASSERT(size IN {1, 2, 4, 8});

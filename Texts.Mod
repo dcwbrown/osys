@@ -148,17 +148,17 @@ VAR
   tag:  CHAR;
   len:  INTEGER;
 BEGIN
-  (*P.ws("Texts.Open('"); P.ws(name); P.wsl("').");*)
+  (*P.ws("Texts.Open('"); P.ws(name); P.wsn("').");*)
   f := Files.Old(name);
-  (*P.ws("  opened, f = "); P.wh(SYSTEM.VAL(INTEGER, f)); P.wsl("H.");*)
+  (*P.ws("  opened, f = "); P.wh(SYSTEM.VAL(INTEGER, f)); P.wsn("H.");*)
   IF f # NIL THEN
     Files.Set(R, f, 0); Files.Read(R, tag);
-    (*P.ws("  read tag: "); P.wh(ORD(tag)); P.wsl("H.");*)
+    (*P.ws("  read tag: "); P.wh(ORD(tag)); P.wsn("H.");*)
     IF tag = TextTag THEN
-      (*P.wsl("  Tag matches - this is an Oberon formatted text file.");*)
+      (*P.wsn("  Tag matches - this is an Oberon formatted text file.");*)
       Load(R, T)
     ELSE (*Ascii file*)
-      (*P.wsl("  Ascii text file.");*)
+      (*P.wsn("  Ascii text file.");*)
       len := Files.Length(f); Q := Trailer();
       NEW(q); q.fnt := Fonts.Default; q.col := 1; q.voff := 0; q.f := f; q.off := 0; q.len := len;
       Q.next := q; q.prev := Q; q.next := Q; Q.prev := q; T.trailer := Q; T.len := len
@@ -216,10 +216,10 @@ END Close;
 
 PROCEDURE OpenBuf* (B: Buffer);
 BEGIN
-  (*P.ws("OpenBuf(B): "); DumpBuffer(B); P.wl;*)
+  (*P.ws("OpenBuf(B): "); DumpBuffer(B); P.wn;*)
   NEW(B.header); (*null piece*)
   B.last := B.header;  B.len := 0;
-  (*P.ws("OpenBuf returning: ");  DumpBuffer(B); P.wl;*)
+  (*P.ws("OpenBuf returning: ");  DumpBuffer(B); P.wn;*)
 END OpenBuf;
 
 PROCEDURE FindPiece (T: Text; pos: INTEGER; VAR org: INTEGER; VAR pce: Piece);
@@ -304,7 +304,7 @@ BEGIN
   P.ws("H by adr), B.len ");     P.wh(B.len);
   P.ws("H, B.header ");          P.wh(SYSTEM.VAL(INTEGER, B.header));
   P.ws("H, B.last ");            P.wh(SYSTEM.VAL(INTEGER, B.last));
-  P.wsl("H.");
+  P.wsn("H.");
   *)
   Insert(T, T.len, B)
 END Append;
@@ -468,16 +468,16 @@ END Scan;
 
 PROCEDURE OpenWriter* (VAR W: Writer);
 BEGIN
-  (*P.wsl("Texts.OpenWriter creating W.buf.");*)
+  (*P.wsn("Texts.OpenWriter creating W.buf.");*)
   NEW(W.buf);
   OpenBuf(W.buf);
-  (*P.ws("OpenBuf returned buffer "); DumpBuffer(W.buf); P.wsl(".");*)
+  (*P.ws("OpenBuf returned buffer "); DumpBuffer(W.buf); P.wsn(".");*)
   W.fnt := Fonts.Default;
   W.col := 15;
   W.voff := 0;
-  (*P.ws("After W.voff :=, W "); DumpWriter(W); P.wsl(".");*)
+  (*P.ws("After W.voff :=, W "); DumpWriter(W); P.wsn(".");*)
   Files.Set(W.rider, Files.New(""), 0);
-  (*P.ws("OpenWriter returning W "); DumpWriter(W); P.wsl(".");*)
+  (*P.ws("OpenWriter returning W "); DumpWriter(W); P.wsn(".");*)
 END OpenWriter;
 
 PROCEDURE SetFont* (VAR W: Writer; fnt: Fonts.Font);
@@ -495,7 +495,7 @@ END SetOffset;
 PROCEDURE Write* (VAR W: Writer; ch: CHAR);
 VAR p: Piece;
 BEGIN
-  (*P.ws("Texts.Write(W, '"); P.wc(ch); P.ws("'). W.buf: "); DumpBuffer(W.buf); P.wl;*)
+  (*P.ws("Texts.Write(W, '"); P.wc(ch); P.ws("'). W.buf: "); DumpBuffer(W.buf); P.wn;*)
   IF (W.buf.last.fnt # W.fnt) OR (W.buf.last.col # W.col) OR (W.buf.last.voff # W.voff) THEN
     NEW(p);
     p.f   := Files.Base(W.rider);
@@ -519,8 +519,8 @@ PROCEDURE WriteString* (VAR W: Writer; s: ARRAY OF CHAR);
 VAR i: INTEGER;
 BEGIN
   (*
-  P.ws("Texts.WriteString(W, '"); P.ws(s); P.wsl("').");
-  P.ws("W: "); DumpWriter(W); P.wl;
+  P.ws("Texts.WriteString(W, '"); P.ws(s); P.wsn("').");
+  P.ws("W: "); DumpWriter(W); P.wn;
   *)
   i := 0;
   WHILE s[i] >= " " DO Write(W, s[i]); INC(i) END

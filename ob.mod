@@ -7,7 +7,7 @@ MODULE ob;
 
 
 IMPORT
-  SYSTEM, H := Winshim, Files, Texts, w := Writer, ORS, X64, ORG, ORP, WinPE, WinArgs;
+  SYSTEM, H := Winshim, Files, Texts, ORS, X64, ORG, ORP, WinPE, WinArgs;
 
 TYPE
   ModuleName = ARRAY 1024 OF CHAR;
@@ -68,7 +68,7 @@ BEGIN
   END;
   IF file # NIL THEN
     filename := path;
-    (*w.s("Found "); w.s(name); w.s(" at "); w.s(path); w.sl(".")*)
+    (*H.ws("Found "); H.ws(name); H.ws(" at "); H.ws(path); H.wsn(".")*)
   END
 END FindFile;
 
@@ -84,7 +84,7 @@ BEGIN NEW(mod);
   filename := modname;  H.Append(".mod", filename);
   FindFile(filename, SourcePath, mod.file, mod.filename);
   IF mod.file = NIL THEN
-    w.s("Could not find source file "); w.s(filename); w.s(" for module '"); w.s(modname); w.sl("'.");
+    H.ws("Could not find source file "); H.ws(filename); H.ws(" for module '"); H.ws(modname); H.wsn("'.");
     H.ExitProcess(99)
   END;
   mod.codename := "";  H.Append(modname, mod.codename);  H.Append(".code", mod.codename);
@@ -108,12 +108,12 @@ END AddImport;
 
 PROCEDURE WriteFilepos;
 BEGIN
-  w.c("["); w.i(ORS.linenum); w.c(":"); w.i(ORS.Pos() - ORS.linebeg); w.c("]")
+  H.wc("["); H.wi(ORS.linenum); H.wc(":"); H.wi(ORS.Pos() - ORS.linebeg); H.wc("]")
 END WriteFilepos;
 
 PROCEDURE Expected(filename, message: ARRAY OF CHAR);
 BEGIN
-  w.s("File '"); w.s(filename); WriteFilepos; w.s("': "); w.sl(message); H.ExitProcess(99)
+  H.ws("File '"); H.ws(filename); WriteFilepos; H.ws("': "); H.wsn(message); H.ExitProcess(99)
 END Expected;
 
 
@@ -128,9 +128,9 @@ BEGIN
   ORS.Get(sym);
   IF sym # ORS.ident THEN Expected(module.filename, "expected module id."); END;
   IF ORS.id # module.modname THEN
-    w.s("File "); w.s(module.filename); WriteFilepos; w.s(" module id '");
-    w.s(ORS.id); w.s("' does not match expected id '");
-    w.s(module.modname); w.sl("'.");
+    H.ws("File "); H.ws(module.filename); WriteFilepos; H.ws(" module id '");
+    H.ws(ORS.id); H.ws("' does not match expected id '");
+    H.ws(module.modname); H.wsn("'.");
     H.ExitProcess(99)
   END;
   (*B.Init(S.id);*)
@@ -174,18 +174,18 @@ BEGIN
    IF n < 0 THEN n := 0 END;
    IF i < 1000 THEN w.in(i, -n)
    ELSE
-      humanInt(i DIV 1000, n-4);  w.c(",");
+      humanInt(i DIV 1000, n-4);  H.wc(",");
       i := i MOD 1000;
-      w.c(CHR(ORD("0") + i DIV 100));  i := i MOD 100;
-      w.c(CHR(ORD("0") + i DIV 10));   i := i MOD 10;
-      w.c(CHR(ORD("0") + i));
+      H.wc(CHR(ORD("0") + i DIV 100));  i := i MOD 100;
+      H.wc(CHR(ORD("0") + i DIV 10));   i := i MOD 10;
+      H.wc(CHR(ORD("0") + i));
    END
 END humanInt;
 
 PROCEDURE Compile(module: Module);
 VAR sym, startTime, endTime: INTEGER;  modinit: B.Node;
 BEGIN
-  w.sn(module.modname, LongestModname+1); w.sn(module.filename, LongestFilename+1);
+  H.wsl(module.modname, LongestModname+1); H.wsl(module.filename, LongestFilename+1);
   B.SetSourcePath(SourcePath);
   B.SetBuildPath(BuildPath);
   S.Init(module.file);  ORS.Get(sym);
@@ -198,7 +198,7 @@ BEGIN
     G.Cleanup;  endTime := K.Time();
     humanInt(G.pc,      10);   humanInt(G.staticSize,  10);
     humanInt(ORG.Varsize, 10);   humanInt(endTime - startTime, 5);
-    w.s("ms");  w.l
+    H.ws("ms");  w.l
   END
 END Compile;
 *)
@@ -211,7 +211,7 @@ END Compile;
 PROCEDURE RemoveDependencies(remove: Module);
 VAR mod: Module;  dep, prev: Dependency;
 BEGIN
-  (*w.s("RemoveDependencies("); w.s(remove.modname); w.sl(")");*)
+  (*H.ws("RemoveDependencies("); H.ws(remove.modname); H.wsn(")");*)
   mod := Modules;
   WHILE mod # NIL DO
     dep := mod.dependencies;  prev := NIL;
@@ -236,13 +236,13 @@ VAR mod: Module;  dep: Dependency;
 BEGIN
   mod := Modules;
   WHILE mod # NIL DO
-    w.s("Module "); w.sn(mod.modname, LongestModname);
+    H.ws("Module "); H.wsl(mod.modname, LongestModname);
     dep := mod.dependencies;
     IF dep = NIL THEN
-      w.sl(" (none).")
+      H.wsn(" (none).")
     ELSE
-      WHILE dep # NIL DO w.c(" ");  w.s(dep.mod.modname);  dep := dep.next END;
-      w.sl(".")
+      WHILE dep # NIL DO H.wc(" ");  H.ws(dep.mod.modname);  dep := dep.next END;
+      H.wsn(".")
     END;
     mod := mod.next
   END
@@ -261,8 +261,12 @@ VAR
   *)
 
 BEGIN
-  w.s("OB - Oberon Windows EXE builder: building "); w.s(Modulename); w.s(" at "); w.LongClock(H.LongClock()); w.sl(".");
   AddModule(Modulename);
+
+  H.ws("Building MODULE "); H.ws(Modulename);
+  IF SourcePath # "./;" THEN H.ws(", source path: '");  H.ws(SourcePath); H.ws("'") END;
+  IF BuildPath  # ""    THEN H.ws(", build path: '");   H.ws(BuildPath); H.ws("'") END;
+  H.wsn(".");
 
   (* Keep scanning and adding modules until all dependencies have been scanned *)
   REPEAT
@@ -275,11 +279,11 @@ BEGIN
     END;
   UNTIL allscanned;
 
-  IF Verbose THEN w.sl("Modules and dependencies:");  ReportDependencies END;
+  IF Verbose THEN H.wsn("Modules and dependencies:");  ReportDependencies END;
 
   (* Compile dependentless modules until all modules compiled. *)
-  w.sn("Module", LongestModname+1);  w.sn("File", LongestFilename+1);
-  w.sl("      code    static       VAR   time");
+  H.wsl("Module", LongestModname+1);  H.wsl("File", LongestFilename+1);
+  H.wsn("      code    static       VAR   time");
   codesize := 0;  varsize := 0;  (*start := K.Time();*)
   REPEAT
     mod := Modules;  prev := NIL;
@@ -297,7 +301,7 @@ BEGIN
       RemoveDependencies(mod);
       IF prev = NIL THEN Modules := mod.next ELSE prev.next := mod.next END
     ELSE
-      w.sl("Cannot resolve circular dependency order in:");
+      H.wsn("Cannot resolve circular dependency order in:");
       ReportDependencies; H.ExitProcess(99)
     END
   UNTIL Modules = NIL;
@@ -307,10 +311,10 @@ BEGIN
 
   (*
   end := K.Time();
-  w.sn("Total", LongestModname + LongestFilename + 2);
+  H.wsl("Total", LongestModname + LongestFilename + 2);
   humanInt(codesize, 10);   humanInt(staticsize,  10);
   humanInt(varsize,  10);   humanInt(end - start,  5);
-  w.sl("ms")
+  H.wsn("ms")
   *)
 END Build;
 
@@ -320,8 +324,8 @@ PROCEDURE AddExecutableDirToSourceSearchpath;
 VAR i, j, k: INTEGER;
 BEGIN
   (*
-  w.s("Initial directory: '"); w.s(K.InitialDirectory); w.sl("'.");
-  w.s("Executable file:   '"); w.s(K.ExecutablePath);   w.sl("'.");
+  H.ws("Initial directory: '"); H.ws(K.InitialDirectory); H.wsn("'.");
+  H.ws("Executable file:   '"); H.ws(K.ExecutablePath);   H.wsn("'.");
   *)
   (* See if executable path starts with current working directory and omit if so *)
   i := 0;
@@ -370,7 +374,7 @@ END AddExecutableDirToSourceSearchpath;
 
 PROCEDURE ArgError(n: INTEGER; arg, msg: ARRAY OF CHAR);
 BEGIN
-  w.s("Argument "); w.i(n); w.s(" '"); w.s(arg); w.s("': "); w.sl(msg);
+  H.ws("Argument "); H.wi(n); H.ws(" '"); H.ws(arg); H.ws("': "); H.wsn(msg);
   H.ExitProcess(99);
 END ArgError;
 
@@ -404,21 +408,20 @@ BEGIN
   END;
 
   IF Modulename = "" THEN
-    w.sl("Build - Oberon recursive builder.");
-    w.sl("No parameters. Expected name of module to build.");
+    H.wsn("No parameters. Expected name of module to build.");
     H.ExitProcess(99);
   END
 END ScanArguments;
 
 
 BEGIN
+  H.WriteClock; H.wsn(". OB - Oberon builder.");
   Verbose         := FALSE;
   LoadFlags       := {};
   LongestModname  := 0;
   LongestFilename := 0;
   ScanArguments;
+
   (*AddExecutableDirToSourceSearchpath;*)
-  w.s("SourcePath: '");    w.s(SourcePath);
-  w.s("', BuildPath: '");  w.s(BuildPath);  w.sl("'.");
   Build
 END ob.

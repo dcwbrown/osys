@@ -1257,7 +1257,7 @@ BEGIN
           w.c(Sourcechar); GetChar
         END
       END;
-      wl
+      wn
     END;
     IF disasmpc < X64.PC THEN
 ---*)

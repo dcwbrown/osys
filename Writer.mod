@@ -12,11 +12,11 @@ PROCEDURE SkipLine*; BEGIN skipline := TRUE  END SkipLine;
 PROCEDURE Noskip*;   BEGIN skipline := FALSE END Noskip;
 
 PROCEDURE l*();
-BEGIN IF skipline THEN skipline := FALSE ELSE P.wl END END l;
+BEGIN IF skipline THEN skipline := FALSE ELSE P.wn END END l;
 
 PROCEDURE c*(c: CHAR);           BEGIN IF ~skipline THEN P.Log(c) END END c;
 PROCEDURE s*(s: ARRAY OF CHAR);  BEGIN IF ~skipline THEN P.Log(s) END END s;
-PROCEDURE sl*(t: ARRAY OF CHAR); BEGIN IF ~skipline THEN P.wsl(t) END END sl;
+PROCEDURE sl*(t: ARRAY OF CHAR); BEGIN IF ~skipline THEN P.wsn(t) END END sl;
 
 PROCEDURE b*(n: INTEGER);
 BEGIN IF ~skipline THEN WHILE n > 0 DO P.wc(" "); DEC(n) END END END b;

@@ -1,6 +1,6 @@
 MODULE ORB;   (*NW 25.6.2014  / 17.9.2018  in Oberon-07*)
 
-IMPORT SYSTEM, Files, ORS, w := Writer;
+IMPORT SYSTEM, H := Winshim, Files, ORS;
 
 (*  Definition of data types Object and Type, which together form the data
     structure called "symbol table".
@@ -334,7 +334,7 @@ BEGIN
         obj.next := thismod.dsc; thismod.dsc := obj; Read(R, class)
       END;
     ELSE
-      w.Noskip; w.s("Import("); w.s(modid); w.s(", "); w.s(modid1); w.sl("):");
+      H.ws("Import("); H.ws(modid); H.ws(", "); H.ws(modid1); H.wsn("):");
       ORS.Mark("import not available")
     END
   END;
