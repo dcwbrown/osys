@@ -14,6 +14,8 @@ CONST
 
   MaxPath* = 780;  (* Enough UTF-8 bytes for for 260 wide chars *)
 
+  Verbose* = 0;  (* flag in LoadFlags *)
+
 
 TYPE
   CodeHeaderPtr = POINTER TO CodeHeader;
@@ -68,9 +70,12 @@ TYPE
 
 VAR
   (* WinPE.mod builds the executable with the following Winshim variables pre-loaded *)
-  Exeadr: INTEGER;
-  Header: CodeHeaderPtr;
-  Dummy:  INTEGER;
+
+
+  (* Start of pre-loaded variables *)
+  Exeadr:    INTEGER;
+  Header:    CodeHeaderPtr;
+  LoadFlags: INTEGER;
 
   (* Pre-loaded Kernel32 imports *)
   AddVectoredExceptionHandler*:    PROCEDURE-(first, filter: INTEGER): INTEGER;
@@ -103,18 +108,47 @@ VAR
   SetEndOfFile*:                   PROCEDURE-(hFile: INTEGER): INTEGER;
   SetFileInformationByHandle*:     PROCEDURE-(hFile, infoClass, info, bufsize: INTEGER): INTEGER;
   SetFilePointerEx*:               PROCEDURE-(hFile, liDistanceToMove, lpNewFilePointer, dwMoveMethod: INTEGER): INTEGER;
+  Sleep*:                          PROCEDURE-(ms: INTEGER);
   UnmapViewOfFile:                 PROCEDURE-(adr: INTEGER): INTEGER;
   VirtualAlloc*:                   PROCEDURE-(address, size, type, protection: INTEGER): INTEGER;
   WriteFile*:                      PROCEDURE-(hFile, lpBuffer, nNumberOfBytesToWrite, lpNumberOfBytesWritten, lpOverlapped: INTEGER): INTEGER;
 
-  (* Pre-loaded User32 imports *)
-  MessageBoxA: PROCEDURE-(hWnd, lpText, lpCaption, uType: INTEGER)(*: INTEGER*);
-  MessageBoxW: PROCEDURE-(hWnd, lpText, lpCaption, uType: INTEGER): INTEGER;
+  (* Pre-loaded Gdi32 imports *)
+  BitBlt:                          PROCEDURE-(dc, x, y, cx, cy, sc, x1, y1, op: INTEGER): INTEGER;
+  CreateBitmap:                    PROCEDURE-(w, h, pl, de, bs: INTEGER): INTEGER;
+  CreateCompatibleDC:              PROCEDURE-(dc: INTEGER): INTEGER;
+  CreateDIBSection:                PROCEDURE-(dc, bi, us, bs, sc, of: INTEGER): INTEGER;
+  DeleteObject:                    PROCEDURE-(ob: INTEGER): INTEGER;
+  SelectObject:                    PROCEDURE-(dc, ob: INTEGER): INTEGER;
 
-  (* Pre-loaded Shell32 imports *)
-  CommandLineToArgvW: PROCEDURE-(lpCmdLine, pNumArgs: INTEGER): INTEGER;
+  (* Pre-loaded User32 imports *)
+  BeginPaint:                      PROCEDURE-(wn, ps: INTEGER): INTEGER;
+  CreateIconIndirect:              PROCEDURE-(ic: INTEGER): INTEGER;
+  CreateWindowExW:                 PROCEDURE-(es, cn, wn, st, x, y, w, h, pa, me, in, lp: INTEGER): INTEGER;
+  DefWindowProcW:                  PROCEDURE-(wn, ms, wp, lp: INTEGER): INTEGER;
+  DispatchMessageW:                PROCEDURE-(ms: INTEGER): INTEGER;
+  EndPaint:                        PROCEDURE-(wn, ps: INTEGER): INTEGER;
+  GetDpiForWindow:                 PROCEDURE-(wn: INTEGER): INTEGER;
+  GetMessageW:                     PROCEDURE-(lm, wn, mn, mx: INTEGER): INTEGER;
+  GetQueueStatus:                  PROCEDURE-(fl: INTEGER): INTEGER;
+  LoadCursorW:                     PROCEDURE-(in, cn: INTEGER): INTEGER;
+  MessageBoxA:                     PROCEDURE-(w, t, c, u: INTEGER)(*: INTEGER*);
+  MessageBoxW:                     PROCEDURE-(w, t, c, u: INTEGER): INTEGER;
+  MoveWindow:                      PROCEDURE-(wn, x, y, w, h, repaint: INTEGER);
+  MsgWaitForMultipleObjects:       PROCEDURE-(cn, hs, wa, ms, wm: INTEGER);
+  PeekMessageW:                    PROCEDURE-(lm, wn, mn, mx, rm: INTEGER): INTEGER;
+  PostQuitMessage:                 PROCEDURE-(rc: INTEGER);
+  RegisterClassExW:                PROCEDURE-(wc: INTEGER): INTEGER;
+  ReleaseCapture:                  PROCEDURE-;
+  SetCapture:                      PROCEDURE-(wn: INTEGER);
+  SetProcessDpiAwarenessContext:   PROCEDURE-(cx: INTEGER): INTEGER;
+  ShowCursor:                      PROCEDURE-(sh: INTEGER);
+  ShowWindow:                      PROCEDURE-(wn, cm: INTEGER);
+  TranslateMessage:                PROCEDURE-(ms: INTEGER): INTEGER;
+  InvalidateRect:                  PROCEDURE-(wn, rc, er: INTEGER): INTEGER;
 
   (* End of pre-loaded variables *)
+
 
   Stdin:      INTEGER;
   Stdout:     INTEGER;
@@ -982,8 +1016,11 @@ BEGIN
   UnterminatedString := UnterminatedStringHandler;
 
   (* Trap OS exceptions *)
-  (*res := AddVectoredExceptionHandler(1, SYSTEM.ADR(ExceptionHandler));*)
-  (*IF res = 0 THEN AssertWinErr(GetLastError()) END;*)
+  (*
+  IF AddVectoredExceptionHandler(1, SYSTEM.ADR(ExceptionHandler)) = 0 THEN
+    AssertWinErr(GetLastError())
+  END;
+  *)
 
   LoadAdr := (OberonAdr + Header.imports + Header.varsize + 15) DIV 16 * 16;
 

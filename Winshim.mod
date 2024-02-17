@@ -14,6 +14,8 @@ CONST
 
   MaxPath* = 780;  (* Enough UTF-8 bytes for for 260 wide chars *)
 
+  Verbose* = 0;  (* flag in LoadFlags *)
+
 
 TYPE
   CodeHeaderPtr = POINTER TO CodeHeader;
@@ -68,9 +70,12 @@ TYPE
 
 VAR
   (* WinPE.mod builds the executable with the following Winshim variables pre-loaded *)
-  Exeadr: INTEGER;
-  Header: CodeHeaderPtr;
-  Dummy:  INTEGER;
+
+
+  (* Start of pre-loaded variables *)
+  Exeadr:    INTEGER;
+  Header:    CodeHeaderPtr;
+  LoadFlags: INTEGER;
 
   (* Pre-loaded Kernel32 imports *)
   AddVectoredExceptionHandler*:    PROCEDURE-(first, filter: INTEGER): INTEGER;
@@ -142,8 +147,8 @@ VAR
   TranslateMessage:                PROCEDURE-(ms: INTEGER): INTEGER;
   InvalidateRect:                  PROCEDURE-(wn, rc, er: INTEGER): INTEGER;
 
-
   (* End of pre-loaded variables *)
+
 
   Stdin:      INTEGER;
   Stdout:     INTEGER;
@@ -1011,8 +1016,11 @@ BEGIN
   UnterminatedString := UnterminatedStringHandler;
 
   (* Trap OS exceptions *)
-  (*res := AddVectoredExceptionHandler(1, SYSTEM.ADR(ExceptionHandler));*)
-  (*IF res = 0 THEN AssertWinErr(GetLastError()) END;*)
+  (*
+  IF AddVectoredExceptionHandler(1, SYSTEM.ADR(ExceptionHandler)) = 0 THEN
+    AssertWinErr(GetLastError())
+  END;
+  *)
 
   LoadAdr := (OberonAdr + Header.imports + Header.varsize + 15) DIV 16 * 16;
 

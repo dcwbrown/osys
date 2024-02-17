@@ -39,6 +39,8 @@ VAR
   Modules:         Module;
   LongestModname:  INTEGER;
   LongestFilename: INTEGER;
+  LoadFlags:       SET;
+
 
 
 (* -------------------------------------------------------------------------- *)
@@ -301,7 +303,7 @@ BEGIN
   UNTIL Modules = NIL;
 
   PEname := ""; H.Append(Modulename, PEname);  H.Append(".exe", PEname);
-  WinPE.Generate(PEname);
+  WinPE.Generate(PEname(*, LoadFlags*));
 
   (*
   end := K.Time();
@@ -387,7 +389,7 @@ BEGIN
       ELSIF arg = "/s"      THEN INC(i);  WinArgs.GetArg(i, SourcePath)
       ELSIF arg = "/build"  THEN INC(i);  WinArgs.GetArg(i, BuildPath)
       ELSIF arg = "/b"      THEN INC(i);  WinArgs.GetArg(i, BuildPath)
-      ELSIF arg = "/v"      THEN Verbose := TRUE
+      ELSIF arg = "/v"      THEN Verbose := TRUE; INCL(LoadFlags, H.Verbose)
       ELSE
         ArgError(i, arg, "unrecognised option.")
       END
@@ -411,6 +413,7 @@ END ScanArguments;
 
 BEGIN
   Verbose         := FALSE;
+  LoadFlags       := {};
   LongestModname  := 0;
   LongestFilename := 0;
   ScanArguments;
