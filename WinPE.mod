@@ -135,6 +135,7 @@ VAR
   ImportSize: INTEGER;
   Objects:    ObjectFile;
   LastObject: ObjectFile;
+  Verbose:    BOOLEAN;
 
   Bootstrap:  BootstrapBuffer;
 
@@ -321,8 +322,10 @@ END WriteImports;
 PROCEDURE CopyFile(name: ARRAY OF CHAR);
 VAR  f: Files.File;  r: Files.Rider;  buf: ARRAY 1000H OF BYTE;
 BEGIN
-  w.s("Adding "); w.s(name); w.s(" at file offset "); w.h(Files.Pos(Exe));
-  w.s("H, FadrModules + "); w.h(Files.Pos(Exe) - FadrModules); w.sl("H.");
+  IF Verbose THEN
+    w.s("Adding "); w.s(name); w.s(" at file offset "); w.h(Files.Pos(Exe));
+    w.s("H, FadrModules + "); w.h(Files.Pos(Exe) - FadrModules); w.sl("H.")
+  END;
   ASSERT(Files.Pos(Exe) MOD 16 = 0);
   f := Files.Old(name);
   IF f = NIL THEN
@@ -515,7 +518,7 @@ PROCEDURE WriteZeroes(n: INTEGER);
 VAR i: INTEGER;
 BEGIN FOR i := 1 TO n DO Files.WriteByte(Exe, 0) END END WriteZeroes;
 
-PROCEDURE WriteBootstrap(*(LoadFlags: SET)*);
+PROCEDURE WriteBootstrap(LoadFlags: SET);
 BEGIN
   spos(FadrModules);
   Files.WriteBytes(Exe, Bootstrap, 0, Bootstrap.Header.imports);  (* Code and tables   *)
@@ -523,8 +526,7 @@ BEGIN
   (* Preset bootstrap modules global VARs *)
   Files.WriteInt(Exe, ImageBase);                                 (* EXE load address  *)
   Files.WriteInt(Exe, ImageBase + RvaModules);                    (* Header address    *)
-  (*Files.WriteSet(Exe, LoadFlags);*)
-  Files.WriteInt(Exe, 0);
+  Files.WriteSet(Exe, LoadFlags);
   ASSERT(Files.Pos(Exe) -  (FadrModules + Bootstrap.Header.imports) = BootstrapVarBytes);
 
   (* Preset bootstrap VARs with WIndows proc addresses *)
@@ -538,21 +540,26 @@ BEGIN
 END WriteBootstrap;
 
 
-PROCEDURE Generate*(filename: ARRAY OF CHAR(*; LoadFlags: SET*));
+PROCEDURE Generate*(filename: ARRAY OF CHAR; LoadFlags: SET);
 VAR fpos: INTEGER;
 BEGIN
-  w.s("WinPE.Generate. SIZE(CodeHeader) "); w.h(SYSTEM.SIZE(X64.CodeHeader));
-  w.s("H, SIZE(PEheader) "); w.h(SYSTEM.SIZE(PEheader)); w.sl("H.");
+  Verbose := H.Verbose IN LoadFlags;
+
+  IF Verbose THEN
+    w.s("WinPE.Generate. SIZE(CodeHeader) "); w.h(SYSTEM.SIZE(X64.CodeHeader));
+    w.s("H, SIZE(PEheader) "); w.h(SYSTEM.SIZE(PEheader)); w.sl("H.")
+  END;
+
   ExeFile := Files.New(filename);
 
   GetBootstrap;
   WriteImports;
-  WriteBootstrap(*(LoadFlags)*);
+  WriteBootstrap(LoadFlags);
   WriteModules;
   WritePEHeader;
   Files.Register(ExeFile);
 
-  w.s("WinPE generated "); w.s(filename); w.sl(".")
+  IF Verbose THEN w.s("WinPE generated "); w.s(filename); w.sl(".") END
 END Generate;
 
 PROCEDURE Init*;

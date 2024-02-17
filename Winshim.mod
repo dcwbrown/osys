@@ -75,7 +75,7 @@ VAR
   (* Start of pre-loaded variables *)
   Exeadr:    INTEGER;
   Header:    CodeHeaderPtr;
-  LoadFlags: INTEGER;
+  LoadFlags: SET;
 
   (* Pre-loaded Kernel32 imports *)
   AddVectoredExceptionHandler*:    PROCEDURE-(first, filter: INTEGER): INTEGER;
@@ -385,7 +385,7 @@ BEGIN
   reserveadr := VirtualAlloc(100000000H, 100000000H, MEMRESERVE, PAGEEXECUTEREADWRITE);
   IF reserveadr = 0 THEN
     wsl("Could not reserve Oberon machine memory.");  ExitProcess(9);
-  ELSE
+  ELSIF Verbose IN LoadFlags THEN
     ws("Reserved 4GB Oberon machine memory at ");  wh(reserveadr);  wsl("H.")
   END;
 
@@ -414,7 +414,9 @@ BEGIN
   (* Commit enough for the modules being loaded plus a sentinel. *)
   INC(modulesize, 16);  (* Allow 16 bytes ofr a sentinel *)
   OberonAdr := VirtualAlloc(reserveadr, modulesize, MEMCOMMIT, PAGEEXECUTEREADWRITE);
-  ws("Committed ");  wh(modulesize);  ws("H bytes at ");  wh(OberonAdr);  wsl("H.");
+  IF Verbose IN LoadFlags THEN
+    ws("Committed ");  wh(modulesize);  ws("H bytes at ");  wh(OberonAdr);  wsl("H.")
+  END
 END PrepareOberonMachine;
 
 
@@ -857,11 +859,13 @@ BEGIN
   (*ws("Writing sentinel at "); wh(LoadAdr + loadedsize); wsl("H.");*)
   SYSTEM.PUT(LoadAdr + loadedsize, 0);  (* Add sentinel zero length module *)
 
-  ws("Loaded ");          WriteModuleName(modadr);
-  ws(" at ");             wh(LoadAdr);
-  ws("H, code ");         wh(hdr.imports);
-  ws("H bytes, data ");   wh(hdr.varsize);
-  ws("H bytes, limit ");  wh(LoadAdr + loadedsize);  wsl("H.");
+  IF Verbose IN LoadFlags THEN
+    ws("Loaded ");          WriteModuleName(modadr);
+    ws(" at ");             wh(LoadAdr);
+    ws("H, code ");         wh(hdr.imports);
+    ws("H bytes, data ");   wh(hdr.varsize);
+    ws("H bytes, limit ");  wh(LoadAdr + loadedsize);  wsl("H.")
+  END;
 
   (* Build list of imported module header addresses *)
   i := 0;
@@ -949,9 +953,11 @@ BEGIN
   moduleadr := SYSTEM.VAL(INTEGER, Header) + Header.imports + Header.varsize;  (* Address of first module for Oberon machine *)
   moduleadr := (moduleadr + 15) DIV 16 * 16;
 
-  ws("Load remaining modules starting from "); wh(moduleadr);
-  ws("H, RvaModules + "); wh(moduleadr - SYSTEM.VAL(INTEGER, Header)); wsl("H.");
-  ws("First remaining module: '"); WriteModuleName(moduleadr); wsl("'.");
+  IF Verbose IN LoadFlags THEN
+    ws("Load remaining modules starting from "); wh(moduleadr);
+    ws("H, RvaModules + "); wh(moduleadr - SYSTEM.VAL(INTEGER, Header)); wsl("H.");
+    ws("First remaining module: '"); WriteModuleName(moduleadr); wsl("'.")
+  END;
 
   SYSTEM.GET(moduleadr, modulelength);
   WHILE modulelength # 0 DO
@@ -992,7 +998,9 @@ BEGIN
 
   Log := WriteStdout;
 
-  ws("Winshim starting, Header at "); wh(SYSTEM.VAL(INTEGER, Header)); wsl("H.");
+  IF Verbose IN LoadFlags THEN
+    ws("Winshim starting, Header at "); wh(SYSTEM.VAL(INTEGER, Header)); wsl("H.")
+  END;
   (*
   ws("Stdout handle "); wh(Stdout);            wsl("H.");
   ws("NoLog at ");      wh(SYSTEM.ADR(NoLog)); wsl("H.");
@@ -1007,7 +1015,9 @@ BEGIN
   (*ws("Transferring PC from original load at ");  wh(GetPC());  wsl("H.");*)
   IncPC(OberonAdr - SYSTEM.VAL(INTEGER, Header));  (* Transfer to copied code *)
   Log := WriteStdout;  (* Correct Log fn address following move *)
-  ws("Transferred PC to code copied to Oberon memory at ");  wh(GetPC());  wsl("H.");
+  IF Verbose IN LoadFlags THEN
+    ws("Transferred PC to code copied to Oberon memory at ");  wh(GetPC());  wsl("H.")
+  END;
 
   (* Initialise system fuction handlers *)
   NewPointer         := NewPointerHandler;
@@ -1016,11 +1026,9 @@ BEGIN
   UnterminatedString := UnterminatedStringHandler;
 
   (* Trap OS exceptions *)
-  (*
   IF AddVectoredExceptionHandler(1, SYSTEM.ADR(ExceptionHandler)) = 0 THEN
     AssertWinErr(GetLastError())
   END;
-  *)
 
   LoadAdr := (OberonAdr + Header.imports + Header.varsize + 15) DIV 16 * 16;
 

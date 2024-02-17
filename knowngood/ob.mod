@@ -303,7 +303,7 @@ BEGIN
   UNTIL Modules = NIL;
 
   PEname := ""; H.Append(Modulename, PEname);  H.Append(".exe", PEname);
-  WinPE.Generate(PEname(*, LoadFlags*));
+  WinPE.Generate(PEname, LoadFlags);
 
   (*
   end := K.Time();
