@@ -3,13 +3,16 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
 IMPORT SYSTEM, H := Winshim;
 
 VAR
+  (* Every allocated block on the heap starts 64/tag, 64/unset  *)
+  (* Every tag starts 64/size - rounded up to 64, 128, or 256*k *)
+  (* Every free block starts 64/length, 64/-1, 64/nextfree      *)
   HeapOrg*:   INTEGER;
   HeapLimit*: INTEGER;
   List0:      INTEGER;  (* List of large free blocks (>= 512 bytes *)
   List1:      INTEGER;  (* List of 256 byte free blocks *)
   List2:      INTEGER;  (* List of 128 byte free blocks *)
   List3:      INTEGER;  (* List of  64 byte free blocks *)
-  Allocated:  INTEGER;
+  Allocated*: INTEGER;
 
   (*
   stackOrg*,  stackSize*, MemLim*: INTEGER;
@@ -17,15 +20,15 @@ VAR
   *)
 
 
-(* -------------------------- New: heap allocation -------------------------- *)
 
+(* -------------------------- New: heap allocation -------------------------- *)
 
 PROCEDURE GetBlock(VAR p: INTEGER;  len: INTEGER);  (* len is multiple of 256 *)
 VAR
   q0, q1, q2, size: INTEGER;
   done: BOOLEAN;
 BEGIN
-  ASSERT(len > 256);
+  ASSERT(len > 256);  ASSERT(len MOD 256 = 0);
   q0   := 0;
   q1   := List0;
   done := FALSE;

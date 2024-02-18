@@ -7,7 +7,7 @@ MODULE ob;
 
 
 IMPORT
-  SYSTEM, H := Winshim, Files, Texts, ORS, X64, ORG, ORP, WinPE, WinArgs;
+  SYSTEM, H := Winshim, K := Kernel, Files, Texts, ORS, X64, ORG, ORP, WinPE, WinArgs;
 
 TYPE
   ModuleName = ARRAY 1024 OF CHAR;
@@ -21,7 +21,7 @@ TYPE
     modname:      ModuleName;
     filename:     PathName;
     codename:     PathName;
-    file:         Files.File;
+    text:         Texts.Text;
     dependencies: Dependency;
     scanned:      BOOLEAN
   END;
@@ -78,12 +78,12 @@ END FindFile;
 (* -------------------------------------------------------------------------- *)
 
 PROCEDURE AddModule(modname: ARRAY OF CHAR);
-VAR mod: Module;  filename: ModuleName;
+VAR mod: Module;  file: Files.File;  filename: ModuleName;
 BEGIN NEW(mod);
   mod.modname := modname;  mod.scanned := FALSE;
   filename := modname;  H.Append(".mod", filename);
-  FindFile(filename, SourcePath, mod.file, mod.filename);
-  IF mod.file = NIL THEN
+  FindFile(filename, SourcePath, file, mod.filename);
+  IF file = NIL THEN
     H.ws("Could not find source file "); H.ws(filename); H.ws(" for module '"); H.ws(modname); H.wsn("'.");
     H.ExitProcess(99)
   END;
@@ -119,11 +119,12 @@ END Expected;
 
 PROCEDURE ScanModuleFileImports(module: Module);
 VAR
-  T:       Texts.Text;
   sym:     INTEGER;
   impname: ORS.Ident;
 BEGIN
-  NEW(T);  Texts.Open(T, module.filename);  ORS.Init(T, 0);  ORS.Get(sym);
+  NEW(module.text);
+  Texts.Open(module.text, module.filename);
+  ORS.Init(module.text, 0);  ORS.Get(sym);
   IF sym # ORS.module THEN Expected(module.filename, "does not start with MODULE.") END;
   ORS.Get(sym);
   IF sym # ORS.ident THEN Expected(module.filename, "expected module id."); END;
@@ -169,39 +170,38 @@ END ScanModuleFileImports;
 (* ----------------------------- Compile module ----------------------------- *)
 (* -------------------------------------------------------------------------- *)
 
-(*PROCEDURE humanInt(i, n: INTEGER);
+PROCEDURE WriteHuman(n, w: INTEGER);
 BEGIN
-   IF n < 0 THEN n := 0 END;
-   IF i < 1000 THEN w.in(i, -n)
-   ELSE
-      humanInt(i DIV 1000, n-4);  H.wc(",");
-      i := i MOD 1000;
-      H.wc(CHR(ORD("0") + i DIV 100));  i := i MOD 100;
-      H.wc(CHR(ORD("0") + i DIV 10));   i := i MOD 10;
-      H.wc(CHR(ORD("0") + i));
-   END
-END humanInt;
+  IF n < 1000 THEN
+    H.wir(n, w)
+  ELSE
+    WriteHuman(n DIV 1000, w-4);  H.wc(",");  H.wiz(n MOD 1000, 3)
+  END
+END WriteHuman;
 
 PROCEDURE Compile(module: Module);
-VAR sym, startTime, endTime: INTEGER;  modinit: B.Node;
+VAR startTime, endTime: INTEGER;
 BEGIN
-  H.wsl(module.modname, LongestModname+1); H.wsl(module.filename, LongestFilename+1);
+  H.wsl(module.modname,  LongestModname  + 2);
+  H.wsl(module.filename, LongestFilename);
+  (*
   B.SetSourcePath(SourcePath);
   B.SetBuildPath(BuildPath);
-  S.Init(module.file);  ORS.Get(sym);
-  startTime := K.Time();
-  IF sym = S.module THEN modinit := P.Module() ELSE S.Mark("Expected 'MODULE'") END;
-  IF S.errcnt = 0 THEN
-    B.WriteSymfile;
-    G.Generate(modinit);
-    B.Cleanup;
-    G.Cleanup;  endTime := K.Time();
-    humanInt(G.pc,      10);   humanInt(G.staticSize,  10);
-    humanInt(ORG.Varsize, 10);   humanInt(endTime - startTime, 5);
-    H.ws("ms");  w.l
+  *)
+
+  startTime := H.Time();
+  ORS.Init(module.text, 0);  ORP.Module(module.filename);
+
+  IF ORS.errcnt = 0 THEN
+    endTime := H.Time();
+    WriteHuman(X64.PC, 12);   WriteHuman(ORG.Varsize, 12);
+    WriteHuman(endTime - startTime, 6);    H.ws(" ms");
+
+    (*H.ws("  allocated: "); WriteHuman(K.Allocated, 1);*)
+
+    H.wn
   END
 END Compile;
-*)
 
 
 (* -------------------------------------------------------------------------- *)
@@ -256,17 +256,13 @@ VAR
   PEname:     PathName;
   codesize:   INTEGER;
   varsize:    INTEGER;
-  (*
   start, end: INTEGER;  (* Times *)
-  *)
 
 BEGIN
   AddModule(Modulename);
 
-  H.ws("Building MODULE "); H.ws(Modulename);
-  IF SourcePath # "./" THEN H.ws(", source path: '");  H.ws(SourcePath); H.ws("'") END;
-  IF BuildPath  # ""   THEN H.ws(", build path: '");   H.ws(BuildPath); H.ws("'") END;
-  H.wsn(".");
+  IF SourcePath # "./" THEN H.ws(", source path: '");  H.ws(SourcePath); H.wsn("'") END;
+  IF BuildPath  # ""   THEN H.ws(", build path: '");   H.ws(BuildPath);  H.wsn("'") END;
 
   (* Keep scanning and adding modules until all dependencies have been scanned *)
   REPEAT
@@ -282,17 +278,18 @@ BEGIN
   IF Verbose THEN H.wsn("Modules and dependencies:");  ReportDependencies END;
 
   (* Compile dependentless modules until all modules compiled. *)
-  H.wsl("Module", LongestModname+1);  H.wsl("File", LongestFilename+1);
-  H.wsn("      code    static       VAR   time");
-  codesize := 0;  varsize := 0;  (*start := K.Time();*)
+  H.wsl("Module", LongestModname + 2);  H.wsl("File", LongestFilename);
+  H.wsn("        code         VAR     time");
+  codesize := 0;  varsize := 0;
+  start := H.Time();
+
   REPEAT
     mod := Modules;  prev := NIL;
     WHILE (mod # NIL) & (mod.dependencies # NIL) DO
       prev := mod;  mod := mod.next
     END;
     IF mod # NIL THEN
-      (*Compile(mod);*)
-      ORP.CompileFile(mod.filename);
+      Compile(mod);
       IF ORS.errcnt # 0 THEN H.ExitProcess(99) END;
 
       IF mod.modname # "Winshim" THEN WinPE.AddModule(mod.codename) END;
@@ -309,13 +306,10 @@ BEGIN
   PEname := ""; H.Append(Modulename, PEname);  H.Append(".exe", PEname);
   WinPE.Generate(PEname, LoadFlags);
 
-  (*
-  end := K.Time();
+  end := H.Time();
   H.wsl("Total", LongestModname + LongestFilename + 2);
-  humanInt(codesize, 10);   humanInt(staticsize,  10);
-  humanInt(varsize,  10);   humanInt(end - start,  5);
-  H.wsn("ms")
-  *)
+  WriteHuman(codesize, 12);     WriteHuman(varsize,  12);
+  WriteHuman(end - start, 6);   H.wsn(" ms")
 END Build;
 
 
@@ -368,6 +362,7 @@ BEGIN
 END AddExecutableDirToSourceSearchpath;
 *)
 
+
 (* -------------------------------------------------------------------------- *)
 (* ---------------------------- Argument parsing ---------------------------- *)
 (* -------------------------------------------------------------------------- *)
@@ -407,7 +402,11 @@ BEGIN
     INC(i)
   END;
 
-  IF Modulename = "" THEN
+  H.ws("OB - Oberon command line builder.");
+  IF Modulename # "" THEN
+    H.ws(" MODULE "); H.ws(Modulename); H.wsn(".");
+  ELSE
+    H.wn;
     H.wsn("No parameters. Expected name of module to build.");
     H.ExitProcess(99);
   END
@@ -415,7 +414,6 @@ END ScanArguments;
 
 
 BEGIN
-  H.WriteClock; H.wsn(". OB - Oberon command line builder.");
   Verbose         := FALSE;
   LoadFlags       := {};
   LongestModname  := 0;

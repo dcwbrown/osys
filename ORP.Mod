@@ -1161,13 +1161,15 @@ BEGIN ORS.Get(sym);  CheckNative(native);
   END
 END ProcedureDecl;
 
-PROCEDURE Module(sourcefn: ARRAY OF CHAR);
+PROCEDURE Module*(sourcefn: ARRAY OF CHAR);
 VAR key:    INTEGER;
     impid:  ORS.Ident;
     impid1: ORS.Ident;
     exno:   INTEGER;
     obj:    ORB.Object;
-BEGIN Texts.WriteString(W, "  compiling ");  ORS.Get(sym);
+BEGIN
+  (*Texts.WriteString(W, "  compiling ");*)
+  ORS.Get(sym);
   IF sym # ORS.module THEN
     ORS.Mark("must start with MODULE");
     H.wn; H.ws("Sym: "); H.wi(sym); H.ws(", '"); H.ws(ORS.id); H.wsn("'.");
@@ -1176,7 +1178,7 @@ BEGIN Texts.WriteString(W, "  compiling ");  ORS.Get(sym);
     ORB.Init;  ORB.OpenScope;
     IF sym = ORS.ident THEN
       ORS.CopyId(modid);  ORS.Get(sym);
-      Texts.WriteString(W, modid);  Texts.Append(Oberon.Log, W.buf)
+      (*Texts.WriteString(W, modid);  Texts.Append(Oberon.Log, W.buf)*)
     ELSE ORS.Mark("identifier expected")
     END;
     Check(ORS.semicolon, "no ;");
@@ -1185,7 +1187,6 @@ BEGIN Texts.WriteString(W, "  compiling ");  ORS.Get(sym);
     IF sym = ORS.import THEN
       ORS.Get(sym);
       WHILE sym = ORS.ident DO
-        (*H.ws("Importing "); H.ws(ORS.id); H.wsn(".");*)
         ORS.CopyId(impid);  ORS.Get(sym);
         IF sym = ORS.becomes THEN
           ORS.Get(sym);
@@ -1203,7 +1204,6 @@ BEGIN Texts.WriteString(W, "  compiling ");  ORS.Get(sym);
     END;
 
     ORG.Open(sourcefn, modid);
-    (*H.wsn("Parse declarations.");*)
     Declarations(dc);
     ORG.SetDataSize((dc + 7) DIV 8 * 8);
 
@@ -1252,17 +1252,18 @@ BEGIN Texts.WriteString(W, "  compiling ");  ORS.Get(sym);
       Texts.WriteString(W, modid); Texts.WriteLn(W);
       *)
       ORB.Export(modid, newSF, key);
-      IF newSF THEN Texts.WriteString(W, " new symbol file") END
+      (*IF newSF THEN Texts.WriteString(W, " new symbol file") END*)
     END;
 
     IF ORS.errcnt = 0 THEN
       ORG.Close(modid, key, exno);
       Texts.WriteInt(W, X64.PC, 8);  Texts.WriteInt(W, dc, 8);  Texts.WriteHex(W, key)
     ELSE
-      Texts.WriteLn(W);  Texts.WriteString(W, "compilation FAILED")
+      Texts.WriteLn(W);  Texts.WriteString(W, "compilation FAILED");
+      Texts.Append(Oberon.Log, W.buf);
     END;
 
-    Texts.WriteLn(W);  Texts.Append(Oberon.Log, W.buf);
+    (*Texts.WriteLn(W);  Texts.Append(Oberon.Log, W.buf);*)
     ORB.CloseScope;  pbsList := NIL
   END
 END Module;
@@ -1312,7 +1313,6 @@ END Compile;
 PROCEDURE CompileFile*(fn: ARRAY OF CHAR);
 VAR T: Texts.Text;
 BEGIN
-  (*H.ws("CompileFile('"); H.ws(fn); H.wsn("').");*)
   NEW(T);  Texts.Open(T, fn);  IF T.len > 0 THEN ORS.Init(T, 0);
   Module(fn) END;
 END CompileFile;
