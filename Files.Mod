@@ -350,7 +350,7 @@ VAR f, g: File;
     ASSERT(getmark(f) = 0);
     IF f.registered THEN
       res := P.CloseHandle(f.handle);
-      P.ws("Collection closed file "); P.ws(f.name); P.wn
+      (*P.ws("Collection closed file "); P.ws(f.name); P.wn*)
     END;
   END finalise;
 

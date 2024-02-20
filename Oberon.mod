@@ -28,14 +28,18 @@ PROCEDURE GC*;
 VAR
   modadr: INTEGER;
   hdr:    H.CodeHeaderPtr;
+  (*
   tick1:  INTEGER;
   tick2:  INTEGER;
   alloc1: INTEGER;
+  *)
 BEGIN
   modadr := H.OberonAdr;
   hdr    := SYSTEM.VAL(H.CodeHeaderPtr, modadr);
+  (*
   alloc1 := K.Allocated;
   tick1  := H.Nanotime();
+  *)
   REPEAT
     (*
     H.ws("  "); H.WriteModuleName(modadr);
@@ -45,18 +49,21 @@ BEGIN
     INC(modadr, hdr.length);
     hdr := SYSTEM.VAL(H.CodeHeaderPtr, modadr);
   UNTIL hdr.length = 0;
+  (*
   tick2 := H.Nanotime();
   H.ws("GC mark completed in "); H.wi((tick2 - tick1) DIV 10); H.wsn(" microseconds.");
-
+  *)
   Files.CloseCollectableFiles;
 
-  tick1 := H.Nanotime();
+  (*tick1 := H.Nanotime();*)
   K.Scan;
+  (*
   tick2 := H.Nanotime();
   H.ws("GC scan completed in "); H.wi((tick2 - tick1) DIV 10); H.wsn(" microseconds.");
   H.ws("GC recycled "); H.wh(alloc1 - K.Allocated);
   H.ws("H bytes leaving "); H.wh(K.Allocated);
   H.wsn("H allocated.")
+  *)
 END GC;
 
 

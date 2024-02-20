@@ -27,7 +27,7 @@ TYPE
   END;
 
 VAR
-  first: File;  (* list of open files *)
+  first: POINTER- TO FileDesc;  (* uncollected list of open files *)
 
 
 (* --------------------------------- Files ---------------------------------- *)
@@ -327,6 +327,45 @@ BEGIN
     f := f.next
   END;
 END DumpFiles;
+
+
+(* -------------- Files list cleanup during garbage collection -------------- *)
+
+PROCEDURE CloseCollectableFiles*;  (* Only for calling between GC mark and scan *)
+VAR f, g: File;
+
+  PROCEDURE getmark(f: File): INTEGER;
+  VAR mark: INTEGER;
+  BEGIN
+    IF f = NIL THEN
+      mark := -1
+    ELSE
+      SYSTEM.GET(SYSTEM.VAL(INTEGER, f) - 8, mark)
+    END
+  RETURN mark END getmark;
+
+  PROCEDURE finalise(f: File);
+  VAR res: INTEGER;
+  BEGIN
+    ASSERT(getmark(f) = 0);
+    IF f.registered THEN
+      res := P.CloseHandle(f.handle);
+      (*P.ws("Collection closed file "); P.ws(f.name); P.wn*)
+    END;
+  END finalise;
+
+BEGIN
+  (* Skip first to first still-live file *)
+  WHILE getmark(first) = 0 DO finalise(first); first := first.next END;
+  f := first;
+  WHILE f # NIL DO
+    g := f.next;
+    (* skip g to next live file or end (NIL) *)
+    WHILE getmark(g) = 0 DO finalise(g); g := g.next END;
+    f.next := g;
+    f := g
+  END
+END CloseCollectableFiles;
 
 BEGIN first := NIL
 END Files.

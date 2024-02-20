@@ -21,7 +21,7 @@ TYPE
   ObjectFile = POINTER TO ObjectFileDesc;
   ObjectFileDesc = RECORD
     next: ObjectFile;
-    name: ARRAY 1204 OF CHAR
+    name: ARRAY H.MaxPath OF CHAR
   END;
   Zeroes58 = ARRAY 3AH OF BYTE;
 

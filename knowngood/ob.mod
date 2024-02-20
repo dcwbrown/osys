@@ -209,6 +209,7 @@ END Compile;
 (* -------------------------------------------------------------------------- *)
 
 PROCEDURE RemoveDependencies(remove: Module);
+(* Remove module 'remove' from all dependency lists in 'Modules'. *)
 VAR mod: Module;  dep, prev: Dependency;
 BEGIN
   (*H.ws("RemoveDependencies("); H.ws(remove.modname); H.wsn(")");*)
@@ -249,6 +250,7 @@ BEGIN
 END ReportDependencies;
 
 
+(*
 PROCEDURE Build();
 VAR
   mod, prev:  Module;
@@ -311,6 +313,99 @@ BEGIN
   WriteHuman(codesize, 12);     WriteHuman(varsize,  12);
   WriteHuman(end - start, 6);   H.wsn(" ms")
 END Build;
+*)
+
+
+PROCEDURE SortModulesIntoBuildOrder;
+VAR
+  mod, prev:  Module;
+  allscanned: BOOLEAN;
+  buildfirst: Module;
+  buildlast:  Module;
+BEGIN
+  AddModule(Modulename);
+
+  IF SourcePath # "./" THEN H.ws(", source path: '");  H.ws(SourcePath); H.wsn("'") END;
+  IF BuildPath  # ""   THEN H.ws(", build path: '");   H.ws(BuildPath);  H.wsn("'") END;
+
+  (* Keep scanning and adding modules until all dependencies have been scanned *)
+  REPEAT
+    mod := Modules;  allscanned := TRUE;
+    WHILE mod # NIL DO
+      IF ~mod.scanned THEN
+        allscanned := FALSE;  ScanModuleFileImports(mod)
+      END;
+      mod := mod.next
+    END;
+  UNTIL allscanned;
+
+  IF Verbose THEN H.wsn("Modules and dependencies:");  ReportDependencies END;
+
+  (* Find and move dependentless modules to build list until full build order determined. *)
+  buildfirst := NIL;  buildlast := NIL;
+  WHILE Modules # NIL DO
+    prev := NIL;  mod := Modules;
+    (* Find first module with no dependencies *)
+    WHILE (mod # NIL) & (mod.dependencies # NIL) DO
+      prev := mod; mod := mod.next
+    END;
+    IF mod = NIL THEN
+      H.wsn("Cannot resolve circular dependency order in:");
+      ReportDependencies; H.ExitProcess(99)
+    END;
+    (* Move mod from Modules list to build list *)
+    (*H.ws("Moving module "); H.ws(mod.modname); H.wsn(" to build list.");*)
+    IF buildlast = NIL THEN buildfirst := mod ELSE buildlast.next := mod END;
+    buildlast := mod;
+    mod := mod.next;
+    buildlast.next := NIL;
+    IF prev = NIL THEN Modules := mod ELSE prev.next := mod END;
+    RemoveDependencies(buildlast);
+  END;
+  Modules := buildfirst;
+END SortModulesIntoBuildOrder;
+
+
+PROCEDURE Build;
+VAR
+  PEname:     PathName;
+  codesize:   INTEGER;
+  varsize:    INTEGER;
+  start, end: INTEGER;  (* Times *)
+  maxalloc:   INTEGER;
+BEGIN
+  SortModulesIntoBuildOrder;
+
+  H.wsl("Module", LongestModname + 2);  H.wsl("File", LongestFilename);
+  H.wsn("        code         VAR     time");
+  codesize := 0;
+  varsize  := 0;
+  maxalloc := 0;
+  start    := H.Time();
+
+  WHILE Modules # NIL DO
+    Compile(Modules);
+    IF ORS.errcnt # 0 THEN H.ExitProcess(99) END;
+    IF Modules.modname # "Winshim" THEN WinPE.AddModule(Modules.codename) END;
+    Modules := Modules.next;
+    IF K.Allocated > maxalloc THEN maxalloc := K.Allocated END;
+    Oberon.GC;
+    INC(codesize, X64.PC);  INC(varsize, ORG.Varsize)
+  END;
+
+  PEname := ""; H.Append(Modulename, PEname);  H.Append(".exe", PEname);
+  WinPE.Generate(PEname, LoadFlags);
+
+  end := H.Time();
+  H.wsl("Total", LongestModname + LongestFilename + 2);
+  WriteHuman(codesize, 12);     WriteHuman(varsize,  12);
+  WriteHuman(end - start, 6);   H.wsn(" ms");
+  IF K.Allocated > maxalloc THEN maxalloc := K.Allocated END;
+  H.ws("Max heap size : "); WriteHuman(maxalloc, 1); H.wsn(".");
+END Build;
+
+
+
 
 
 (*
@@ -423,6 +518,5 @@ BEGIN
   (*AddExecutableDirToSourceSearchpath;*)
   Build;
 
-  (*K.ShowHeap;*)
-  Oberon.GC;
+  Oberon.GC
 END ob.
