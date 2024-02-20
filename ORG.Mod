@@ -72,7 +72,7 @@ TYPE
   Item = X64.Item;
 
 VAR
-  Hdr*:    X64.CodeHeader;
+  Hdr*:     X64.CodeHeader;
 
   Str:      ARRAY 8192 OF CHAR;  (* Max bytes of string per module body *)
   Strx:     INTEGER;

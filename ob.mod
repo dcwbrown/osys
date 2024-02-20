@@ -423,6 +423,5 @@ BEGIN
   (*AddExecutableDirToSourceSearchpath;*)
   Build;
 
-  Oberon.GC;
-  Oberon.ShowHeap;
+  Oberon.GC
 END ob.
