@@ -421,5 +421,7 @@ BEGIN
   ScanArguments;
 
   (*AddExecutableDirToSourceSearchpath;*)
-  Build
+  Build;
+
+  K.ShowHeap;
 END ob.

@@ -112,6 +112,15 @@ BEGIN
   END
 END CheckNative;
 
+PROCEDURE CheckPointerNativeMatchesRecordNative(ptr, rec: ORB.Type);
+BEGIN
+  IF ptr.native # rec.native THEN
+    IF ptr.native THEN ORS.Mark("Native pointer cannot point to garbage collected record")
+    ELSE               ORS.Mark("Garbage collected pointer cannot point to native record")
+    END
+  END
+END CheckPointerNativeMatchesRecordNative;
+
 PROCEDURE IsExtension(t0, t1: ORB.Type): BOOLEAN;
 BEGIN (*t1 is an extension of t0*)
   RETURN (t0 = t1) OR (t1 # NIL) & IsExtension(t0, t1.base)
@@ -751,12 +760,18 @@ BEGIN
   END
 RETURN result END Alignment;
 
-PROCEDURE RecordType(VAR type: ORB.Type);
+PROCEDURE RecordType(VAR type: ORB.Type; native: BOOLEAN);
 VAR obj, obj0, new, bot, base: ORB.Object;
     typ, tp: ORB.Type;
     offset, off, align, n: INTEGER;
-BEGIN NEW(typ);  typ.form := ORB.NoTyp;  typ.base := NIL;  typ.mno := -level;  typ.nofpar := 0;
-  offset := 0;  bot := NIL;
+BEGIN NEW(typ);
+  typ.form   := ORB.NoTyp;
+  typ.base   := NIL;
+  typ.mno    := -level;
+  typ.nofpar := 0;
+  typ.native := native;
+  offset     := 0;
+  bot        := NIL;
   IF sym = ORS.lparen THEN
     ORS.Get(sym);  (*record extension*)
     IF level # 0 THEN ORS.Mark("extension of local types not implemented") END;
@@ -905,24 +920,35 @@ BEGIN type := ORB.intType;  (*sync*)
     END
   ELSIF sym = ORS.array THEN ORS.Get(sym);  ArrayType(type)
   ELSIF sym = ORS.record THEN
-    ORS.Get(sym);  CheckNative(native);  RecordType(type);  Check(ORS.end, "no END")
+    ORS.Get(sym);  CheckNative(native);  RecordType(type, native);  Check(ORS.end, "no END")
   ELSIF sym = ORS.pointer THEN
     ORS.Get(sym);  CheckNative(native);  Check(ORS.to, "no TO");
-    NEW(type);  type.form := ORB.Pointer;  type.size := ORG.WordSize;  type.base := ORB.intType;
+    NEW(type);
+    type.form   := ORB.Pointer;
+    type.size   := ORG.WordSize;
+    type.base   := ORB.intType;
+    type.native := native;
     IF sym = ORS.ident THEN
       obj := ORB.thisObj();
       IF obj # NIL THEN
         IF (obj.class = ORB.Typ) & (obj.type.form IN {ORB.Record, ORB.NoTyp}) THEN
-          CheckRecLevel(obj.lev);  type.base := obj.type
+          CheckRecLevel(obj.lev);
+          CheckPointerNativeMatchesRecordNative(type, obj.type);
+          type.base := obj.type
         ELSIF obj.class = ORB.Mod THEN ORS.Mark("external base type not implemented")
         ELSE ORS.Mark("no valid base type")
         END
       ELSE CheckRecLevel(level);  (*enter into list of forward references to be fixed in Declarations*)
-        NEW(ptbase);  ORS.CopyId(ptbase.name);  ptbase.type := type;  ptbase.next := pbsList;  pbsList := ptbase
+        NEW(ptbase);
+        ORS.CopyId(ptbase.name);
+        ptbase.type := type;
+        ptbase.next := pbsList;
+        pbsList     := ptbase
       END;
       ORS.Get(sym)
     ELSE Type(type.base);
       IF (type.base.form # ORB.Record) OR (type.base.typobj = NIL) THEN ORS.Mark("must point to named record") END;
+      CheckPointerNativeMatchesRecordNative(type, type.base);
       CheckRecLevel(level)
     END
   ELSIF sym = ORS.procedure THEN
@@ -999,7 +1025,10 @@ BEGIN (*sync*) pbsList := NIL;
       IF tp.form = ORB.Record THEN
         ptbase := pbsList;  (*check whether this is base of a pointer type;  search and fixup*)
         WHILE ptbase # NIL DO
-          IF obj.name = ptbase.name THEN ptbase.type.base := obj.type END;
+          IF obj.name = ptbase.name THEN
+            ptbase.type.base := obj.type;
+            CheckPointerNativeMatchesRecordNative(ptbase.type, ptbase.type.base)
+          END;
           ptbase := ptbase.next
         END;
         IF level = 0 THEN
@@ -1257,7 +1286,7 @@ BEGIN
 
     IF ORS.errcnt = 0 THEN
       ORG.Close(modid, key, exno);
-      Texts.WriteInt(W, X64.PC, 8);  Texts.WriteInt(W, dc, 8);  Texts.WriteHex(W, key)
+      (*Texts.WriteInt(W, X64.PC, 8);  Texts.WriteInt(W, dc, 8);  Texts.WriteHex(W, key)*)
     ELSE
       Texts.WriteLn(W);  Texts.WriteString(W, "compilation FAILED");
       Texts.Append(Oberon.Log, W.buf);

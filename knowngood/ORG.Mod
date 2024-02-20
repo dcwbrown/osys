@@ -2670,6 +2670,9 @@ BEGIN
   END;
   FindPtrFlds(T, 0);
   EmitInt(-1, "end of type");
+
+  (* Debug annotation: Emit type name *)
+  IF T.typobj = NIL THEN X64.Emit(0) ELSE X64.EmitString(T.typobj.name) END;
 END BuildTD;
 
 PROCEDURE TypeTest*(VAR x: X64.Item; T: ORB.Type; varpar, isguard: BOOLEAN);
@@ -2728,10 +2731,10 @@ END wsize;
 PROCEDURE EmitPtrs(typ: ORB.Type; adr: INTEGER);
 VAR fld: ORB.Object;  i, s: INTEGER;
 BEGIN
-  IF (typ.form = ORB.Pointer) OR (typ.form = ORB.NilTyp) THEN
-    l.s("  ptrec  ", Tr); l.h(adr, Tr); l.sn("H.", Tr);
+  IF (~typ.native) & ((typ.form = ORB.Pointer) OR (typ.form = ORB.NilTyp)) THEN
+    (*l.s("  ptrec  ", Tr); l.h(adr, Tr); l.sn("H.", Tr);*)
     X64.EmitBytes(8, adr)
-  ELSIF typ.form = ORB.Record THEN
+  ELSIF ~typ.native & (typ.form = ORB.Record) THEN
     fld := typ.dsc;
     WHILE fld # NIL DO EmitPtrs(fld.type, fld.val + adr); fld := fld.next END
   ELSIF typ.form = ORB.Array THEN
@@ -2844,10 +2847,10 @@ BEGIN
 
   X64.Align(16);
   IF X64.PC # reslen THEN
-    l.n(Tr); l.s("** PC ", Tr);       l.h(X64.PC, Tr);
-    l.s("H, reslen ", Tr);             l.h(reslen, Tr);
-    l.s("H, Hdr.exports ", Tr); l.h(Hdr.exports, Tr);
-    l.s("H, exno ", Tr);               l.h(exno, Tr);
+    l.n(Tr); l.s("** PC ", Tr);  l.h(X64.PC, Tr);
+    l.s("H, reslen ", Tr);       l.h(reslen, Tr);
+    l.s("H, Hdr.exports ", Tr);  l.h(Hdr.exports, Tr);
+    l.s("H, exno ", Tr);         l.h(exno, Tr);
     l.sn("H **", Tr)
   END;
   ASSERT(X64.PC = reslen);

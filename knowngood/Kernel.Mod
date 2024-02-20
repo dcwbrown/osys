@@ -126,6 +126,33 @@ END New;
 
 (* ---------------------------- Garbage collector ----------------------------*)
 
+PROCEDURE ShowHeap*;
+VAR modadr, ptradr, ptr: INTEGER;  hdr: H.CodeHeaderPtr;  modname: ARRAY 32 OF CHAR;
+BEGIN
+  H.wsn("Modules:     LoadAdr        Code     Vars     Ptrs");
+  modadr := H.OberonAdr;
+  hdr := SYSTEM.VAL(H.CodeHeaderPtr, modadr);
+  REPEAT
+    H.GetModuleName(modadr, modname);
+    H.ws("  "); H.wsl(modname, 10); H.whr(modadr, 10);
+    H.ws("H");  H.whr(hdr.imports,  8);
+    H.ws("H");  H.whr(hdr.varsize,  8);
+    H.ws("H");  H.whr(hdr.pointers, 8);
+
+    ptradr := modadr + hdr.pointers;
+    SYSTEM.GET(ptradr, ptr);
+    WHILE ptr # -1 DO
+      H.ws("H  "); H.wh(ptr);
+      INC(ptradr,8);
+      SYSTEM.GET(ptradr, ptr)
+    END;
+    H.wsn("H.");
+    INC(modadr, hdr.length);
+    hdr := SYSTEM.VAL(H.CodeHeaderPtr, modadr);
+  UNTIL hdr.length = 0;
+
+END ShowHeap;
+
 (*
 PROCEDURE Mark*(pref: INTEGER);
 VAR pvadr, offadr, offset, tag, p, q, r: INTEGER;

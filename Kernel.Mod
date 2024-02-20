@@ -124,66 +124,164 @@ BEGIN
 END New;
 
 
-(* ---------------------------- Garbage collector ----------------------------*)
+(* ------------------------------- Heap dump -------------------------------- *)
 
 (*
+PROCEDURE WriteTypeName(adr: INTEGER);  (* Pass tag address *)
+VAR ptr: INTEGER; ch: BYTE;
+BEGIN
+  INC(adr, 20H);  (* First ptr addr *)
+  SYSTEM.GET(adr, ptr);
+  WHILE ptr >= 0 DO INC(adr, 8); SYSTEM.GET(adr, ptr) END;
+  INC(adr, 8);
+  SYSTEM.GET(adr, ch);
+  WHILE ch # 0 DO H.wc(CHR(ch)); INC(adr); SYSTEM.GET(adr, ch) END
+END WriteTypeName;
+
+PROCEDURE ShowType(indent, ptr: INTEGER);
+VAR rec, tag, flag, len, adr: INTEGER;
+BEGIN
+  H.wb(indent); H.wh(ptr);
+  SYSTEM.GET(ptr, rec);  H.ws("H -> ");  H.wh(rec);
+  IF rec = 0 THEN
+    H.wsn("H.")
+  ELSE
+    SYSTEM.GET(rec - 16, tag);  H.ws(", tag ");    H.wh(tag);
+    SYSTEM.GET(rec - 8, flag);  H.ws("H, flag ");  H.wh(flag);
+    H.ws("H '"); WriteTypeName(tag);
+    IF flag = -1 THEN
+      H.wsn("' (already scanned).")
+    ELSE
+      SYSTEM.PUT(rec - 8, -1);  SYSTEM.GET(tag, len);
+      H.ws("', len ");  H.wh(len);  H.wsn("H.");
+      adr := tag + 20H;  (* Address of first ptr *)
+      SYSTEM.GET(adr, ptr);
+      WHILE ptr >= 0 DO
+        H.wb(indent); H.ws("ptr offset "); H.wh(ptr);
+        H.ws("H at "); H.wh(rec + ptr); H.wsn("H.");
+        ShowType(indent + 1, rec + ptr);
+        INC(adr,8); SYSTEM.GET(adr, ptr)
+      END
+    END
+  END;
+END ShowType;
+
+PROCEDURE ShowHeap*;
+VAR modadr, ptradr, ptr: INTEGER;  hdr: H.CodeHeaderPtr;  modname: ARRAY 32 OF CHAR;
+BEGIN
+  H.wsn("Modules:     LoadAdr        Code     Vars     Ptrs");
+  modadr := H.OberonAdr;
+  hdr := SYSTEM.VAL(H.CodeHeaderPtr, modadr);
+  REPEAT
+    H.GetModuleName(modadr, modname);
+    H.ws("  "); H.wsl(modname, 10); H.whr(modadr, 10);
+    H.ws("H");  H.whr(hdr.imports,  8);
+    H.ws("H");  H.whr(hdr.varsize,  8);
+    H.ws("H");  H.whr(hdr.pointers, 8);  H.wsn("H.");
+
+    ptradr := modadr + hdr.pointers;
+    SYSTEM.GET(ptradr, ptr);
+    WHILE ptr >= 0 DO
+      ShowType(0, ptr);
+      INC(ptradr, 8);  SYSTEM.GET(ptradr, ptr)
+    END;
+    INC(modadr, hdr.length);
+    hdr := SYSTEM.VAL(H.CodeHeaderPtr, modadr);
+  UNTIL hdr.length = 0;
+END ShowHeap;
+*)
+
+
+(* --------------------------- Garbage collector ---------------------------- *)
+(* ------------------------- Called from Oberon.GC -------------------------- *)
+
 PROCEDURE Mark*(pref: INTEGER);
 VAR pvadr, offadr, offset, tag, p, q, r: INTEGER;
 BEGIN
   SYSTEM.GET(pref, pvadr);  (* pointers < HeapOrg considered NIL *)
-  WHILE pvadr # 0 DO
+  WHILE pvadr >= 0 DO
     SYSTEM.GET(pvadr, p);
-    SYSTEM.GET(p-4, offadr);
-    IF (p >= HeapOrg) & (offadr = 0) THEN (* mark elements in data structure with root p *)
-      q := p;
-      REPEAT
-        SYSTEM.GET(p-4, offadr);
-        IF offadr = 0 THEN SYSTEM.GET(p-8, tag);  offadr := tag + 16 ELSE INC(offadr, 4) END;
-        SYSTEM.PUT(p-4, offadr);
-        SYSTEM.GET(offadr, offset);
-        IF offset # -1 THEN (* down *)
-          SYSTEM.GET(p+offset, r);
-          SYSTEM.GET(r-4, offadr);
-          IF (r >= HeapOrg) & (offadr = 0) THEN SYSTEM.PUT(p+offset, q);  q := p;  p := r END
-        ELSE (*up*)
-          SYSTEM.GET(q-4, offadr);
+    (*
+    H.ws("    pref ");   H.wh(pref);
+    H.ws("H -> pvadr "); H.wh(pvadr);
+    H.ws("H -> p ");     H.wh(p);     H.wsn("H.");
+    *)
+    IF p >= HeapOrg THEN
+      SYSTEM.GET(p - 8, offadr);
+      IF offadr <= 0 THEN (* mark elements in data structure with root p *)
+        q := p;
+        REPEAT
+          SYSTEM.GET(p - 8, offadr);
+          (*H.ws("Visit "); H.wh(p); H.ws("H, p.offadr "); H.wh(offadr); H.wc("H");*)
+          IF offadr <= 0 THEN
+            SYSTEM.GET(p - 10H, tag);
+            (*H.ws(", p.tag '"); WriteTypeName(tag); H.ws("'");*)
+            offadr := tag + 20H
+          ELSE
+            INC(offadr, 8)
+          END;
+          SYSTEM.PUT(p - 8, offadr);
+          (*H.ws("Mark "); H.wh(p); H.ws("H with "); H.wh(offadr); H.wsn("H.");*)
           SYSTEM.GET(offadr, offset);
-          IF p # q THEN SYSTEM.GET(q+offset, r);  SYSTEM.PUT(q+offset, p);  p := q;  q := r END
-        END
-      UNTIL (p = q) & (offset = -1)
+          (*H.ws(", offadr' "); H.wh(offadr); H.ws("H -> offset "); H.wh(offset); H.wsn("H.");*)
+          IF offset # -1 THEN (* down *)
+            SYSTEM.GET(p + offset, r);
+            IF r >= HeapOrg THEN
+              SYSTEM.GET(r - 8, offadr);
+              IF offadr <= 0 THEN
+                SYSTEM.PUT(p + offset, q);  q := p;  p := r
+              END
+            END
+          ELSE (*up*)
+            SYSTEM.GET(q - 8, offadr);
+            SYSTEM.GET(offadr, offset);
+            IF p # q THEN
+              SYSTEM.GET(q + offset, r);
+              SYSTEM.PUT(q + offset, p);  p := q;  q := r
+            END
+          END
+        UNTIL (p = q) & (offset = -1)
+      END
     END;
-    INC(pref, 4);  SYSTEM.GET(pref, pvadr)
+    INC(pref, 8);  SYSTEM.GET(pref, pvadr)
   END
 END Mark;
 
+
 PROCEDURE Scan*;
 VAR p, q, mark, tag, size: INTEGER;
-BEGIN p := HeapOrg;
-  REPEAT SYSTEM.GET(p+4, mark);  q := p;
+BEGIN
+  (*H.ws("Kernel.Scan starting, Allocated = "); H.wh(Allocated); H.wsn("H.");*)
+  p := HeapOrg;
+  REPEAT SYSTEM.GET(p+8, mark);  q := p;
     WHILE mark = 0 DO
-      SYSTEM.GET(p, tag);  SYSTEM.GET(tag, size);  INC(p, size);  SYSTEM.GET(p+4, mark)
+      SYSTEM.GET(p, tag);  SYSTEM.GET(tag, size);  INC(p, size);  SYSTEM.GET(p+8, mark)
     END;
     size := p - q;  DEC(Allocated, size);  (*size of free block*)
     IF size > 0 THEN
-      IF size MOD 64 # 0 THEN
-        SYSTEM.PUT(q, 32);  SYSTEM.PUT(q+4, -1);  SYSTEM.PUT(q+8, List3);  List3 := q;  INC(q, 32);  DEC(size, 32)
-      END;
+      (*H.ws("Recycled "); H.wh(size); H.wsn("H bytes.");*)
       IF size MOD 128 # 0 THEN
-        SYSTEM.PUT(q, 64);  SYSTEM.PUT(q+4, -1);  SYSTEM.PUT(q+8, List2);  List2 := q;  INC(q, 64);  DEC(size, 64)
+        SYSTEM.PUT(q, 64);  SYSTEM.PUT(q+8, -1);  SYSTEM.PUT(q+16, List3);  List3 := q;  INC(q, 64);  DEC(size, 64)
       END;
       IF size MOD 256 # 0 THEN
-        SYSTEM.PUT(q, 128);  SYSTEM.PUT(q+4, -1);  SYSTEM.PUT(q+8,  List1);  List1 := q;  INC(q, 128);  DEC(size, 128)
+        SYSTEM.PUT(q, 128);  SYSTEM.PUT(q+8, -1);  SYSTEM.PUT(q+16, List2);  List2 := q;  INC(q, 128);  DEC(size, 128)
+      END;
+      IF size MOD 512 # 0 THEN
+        SYSTEM.PUT(q, 256);  SYSTEM.PUT(q+8, -1);  SYSTEM.PUT(q+16,  List1);  List1 := q;  INC(q, 256);  DEC(size, 256)
       END;
       IF size > 0 THEN
-        SYSTEM.PUT(q, size);  SYSTEM.PUT(q+4, -1);  SYSTEM.PUT(q+8, List0);  List0 := q;  INC(q, size)
+        SYSTEM.PUT(q, size);  SYSTEM.PUT(q+8, -1);  SYSTEM.PUT(q+16, List0);  List0 := q;  INC(q, size)
       END
     END;
-    IF mark > 0 THEN SYSTEM.GET(p, tag);  SYSTEM.GET(tag, size);  SYSTEM.PUT(p+4, 0);  INC(p, size)
-    ELSE (*free*) SYSTEM.GET(p, size);  INC(p, size)
+    IF mark > 0 THEN
+      SYSTEM.GET(p, tag);  SYSTEM.GET(tag, size);  SYSTEM.PUT(p+8, 0);  INC(p, size)
+    ELSE (*free*)
+      SYSTEM.GET(p, size);  INC(p, size)
     END
-  UNTIL p >= HeapLimit
+  UNTIL p >= HeapLimit;
+  (*H.ws("Kernel.Scan complete, Allocated = "); H.wh(Allocated); H.wsn("H.");*)
 END Scan;
-*)
+
 
 PROCEDURE Halt*(exitCode: INTEGER);
 BEGIN (*Heap.Finalise;*)  H.ExitProcess(exitCode) END Halt;

@@ -18,8 +18,8 @@ CONST
 
 
 TYPE
-  CodeHeaderPtr = POINTER TO CodeHeader;
-  CodeHeader* = RECORD
+  CodeHeaderPtr* = POINTER- TO CodeHeader;
+  CodeHeader* = RECORD-
     length*:   SYSTEM.CARD32;  (* File length *)
     initcode*: SYSTEM.CARD32;
     pointers*: SYSTEM.CARD32;
@@ -151,7 +151,7 @@ VAR
   Stdout:     INTEGER;
   crlf*:      ARRAY 3 OF CHAR;
   Log*:       PROCEDURE(s: ARRAY OF BYTE);
-  OberonAdr:  INTEGER;   (* Address of first module (Winshim.mod) *)
+  OberonAdr*: INTEGER;   (* Address of first module (Winshim.mod) *)
   LoadAdr:    INTEGER;   (* Where to load next module *)
   HWnd:       INTEGER;   (* Set if a window has been created *)
 
@@ -463,7 +463,16 @@ END PrepareOberonMachine;
 
 (* -------------------------------------------------------------------------- *)
 
-PROCEDURE WriteModuleName(adr: INTEGER);
+PROCEDURE GetModuleName*(adr: INTEGER; VAR name: ARRAY OF CHAR);
+VAR hdr: CodeHeaderPtr;  ch: CHAR;  i: INTEGER;
+BEGIN
+  hdr := SYSTEM.VAL(CodeHeaderPtr, adr);
+  INC(adr, SYSTEM.SIZE(CodeHeader));
+  i := -1;
+  REPEAT INC(i); SYSTEM.GET(adr, name[i]); INC(adr) UNTIL name[i] = 0X
+END GetModuleName;
+
+PROCEDURE WriteModuleName*(adr: INTEGER);
 VAR hdr: CodeHeaderPtr;  ch: CHAR;
 BEGIN
   hdr := SYSTEM.VAL(CodeHeaderPtr, adr);
@@ -895,7 +904,7 @@ BEGIN
   SYSTEM.COPY(modadr, LoadAdr, hdr.imports);  (* Copy up to but excluding import table *)
 
   loadedsize := (hdr.imports + hdr.varsize + 15) DIV 16 * 16;
-  (*ws("Loaded size "); wh(loadedsize); wsn("H.");*)
+  (*ws("Write loaded size "); wh(loadedsize); ws("H at "); wh(LoadAdr); wsn("H.");*)
   SYSTEM.PUT(LoadAdr, loadedsize);      (* Update length in header to loaded size *)
   (*ws("Writing sentinel at "); wh(LoadAdr + loadedsize); wsn("H.");*)
   SYSTEM.PUT(LoadAdr + loadedsize, 0);  (* Add sentinel zero length module *)
@@ -1072,6 +1081,7 @@ BEGIN
   END;
 
   LoadAdr := (OberonAdr + Header.imports + Header.varsize + 15) DIV 16 * 16;
+  SYSTEM.PUT(OberonAdr, LoadAdr - OberonAdr);  (* Update initial hdr.length to loaded length *)
 
   (*ws("crlf at "); wh(SYSTEM.ADR(crlf)); wsn("H.");*)
 

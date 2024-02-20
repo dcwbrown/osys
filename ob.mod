@@ -7,7 +7,7 @@ MODULE ob;
 
 
 IMPORT
-  SYSTEM, H := Winshim, K := Kernel, Files, Texts, ORS, X64, ORG, ORP, WinPE, WinArgs;
+  SYSTEM, H := Winshim, K := Kernel, Files, Texts, Oberon, ORS, X64, ORG, ORP, WinPE, WinArgs;
 
 TYPE
   ModuleName = ARRAY 1024 OF CHAR;
@@ -421,5 +421,8 @@ BEGIN
   ScanArguments;
 
   (*AddExecutableDirToSourceSearchpath;*)
-  Build
+  Build;
+
+  (*K.ShowHeap;*)
+  Oberon.GC;
 END ob.

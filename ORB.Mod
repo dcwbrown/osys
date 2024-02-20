@@ -73,18 +73,18 @@ TYPE
   (* Mod      key                            *)
 
   ObjDesc* = RECORD
-    class*: BYTE;
-    exno*:  BYTE;      (* export number in object file              *)
-    expo*:  BOOLEAN;   (* whether exported as a symbol              *)
-    rdo*:   BOOLEAN;   (* exported / read-only                      *)
-    lev*:   INTEGER;   (* >0: local stack frame, lev = proc nesting *)
-                       (*  0: module globals                        *)
-                       (* <0: -imported module num (-1 .. -16)      *)
-    next*:   Object;
-    dsc*:    Object;
-    type*:   Type;
-    name*:   ORS.Ident;
-    val*:    INTEGER
+    class*:  BYTE;
+    exno*:   BYTE;      (* export number in object file              *)
+    expo*:   BOOLEAN;   (* whether exported as a symbol              *)
+    rdo*:    BOOLEAN;   (* exported / read-only                      *)
+    lev*:    INTEGER;   (* >0: local stack frame, lev = proc nesting *)
+                        (*  0: module globals                        *)
+                        (* <0: -imported module num (-1 .. -16)      *)
+    next*:    Object;
+    dsc*:     Object;
+    type*:    Type;
+    name*:    ORS.Ident;
+    val*:     INTEGER
   END;
 
   ModDesc* = RECORD (ObjDesc) orgname*: ORS.Ident END;
@@ -113,7 +113,7 @@ TYPE
     typobj*: Object;   (* For Typ:        object representing type         *)
     base*:   Type;     (* For arrays, records, pointers, fn procedures     *)
     size*:   INTEGER;  (* In bytes. For procedures: 8                      *)
-    native*: BOOLEAN   (* procedure using native abi                       *)
+    native*: BOOLEAN   (* procedure using native abi or record without GC  *)
   END;
 
 
