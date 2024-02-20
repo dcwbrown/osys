@@ -18,7 +18,7 @@ TYPE
   END;
 
   FileDesc = RECORD
-    next:       File;       (* list of open files *)
+    next:       POINTER- TO FileDesc;  (* Non-collecting list of open files *)
     tempname:   FileName;
     registered: BOOLEAN;
     name:       FileName;

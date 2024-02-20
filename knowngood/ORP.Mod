@@ -112,15 +112,6 @@ BEGIN
   END
 END CheckNative;
 
-PROCEDURE CheckPointerNativeMatchesRecordNative(ptr, rec: ORB.Type);
-BEGIN
-  IF ptr.native # rec.native THEN
-    IF ptr.native THEN ORS.Mark("Native pointer cannot point to garbage collected record")
-    ELSE               ORS.Mark("Garbage collected pointer cannot point to native record")
-    END
-  END
-END CheckPointerNativeMatchesRecordNative;
-
 PROCEDURE IsExtension(t0, t1: ORB.Type): BOOLEAN;
 BEGIN (*t1 is an extension of t0*)
   RETURN (t0 = t1) OR (t1 # NIL) & IsExtension(t0, t1.base)
@@ -933,7 +924,7 @@ BEGIN type := ORB.intType;  (*sync*)
       IF obj # NIL THEN
         IF (obj.class = ORB.Typ) & (obj.type.form IN {ORB.Record, ORB.NoTyp}) THEN
           CheckRecLevel(obj.lev);
-          CheckPointerNativeMatchesRecordNative(type, obj.type);
+          IF obj.type.native & ~type.native THEN ORS.Mark("Collected pointer cannot point to native record") END;
           type.base := obj.type
         ELSIF obj.class = ORB.Mod THEN ORS.Mark("external base type not implemented")
         ELSE ORS.Mark("no valid base type")
@@ -948,7 +939,7 @@ BEGIN type := ORB.intType;  (*sync*)
       ORS.Get(sym)
     ELSE Type(type.base);
       IF (type.base.form # ORB.Record) OR (type.base.typobj = NIL) THEN ORS.Mark("must point to named record") END;
-      CheckPointerNativeMatchesRecordNative(type, type.base);
+      IF type.base.native & ~type.native THEN ORS.Mark("Collected pointer cannot point to native record") END;
       CheckRecLevel(level)
     END
   ELSIF sym = ORS.procedure THEN
@@ -1027,7 +1018,9 @@ BEGIN (*sync*) pbsList := NIL;
         WHILE ptbase # NIL DO
           IF obj.name = ptbase.name THEN
             ptbase.type.base := obj.type;
-            CheckPointerNativeMatchesRecordNative(ptbase.type, ptbase.type.base)
+            IF ptbase.type.base.native & ~ptbase.type.native THEN
+              ORS.Mark("Collected pointer cannot point to native record")
+            END
           END;
           ptbase := ptbase.next
         END;

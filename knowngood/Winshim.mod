@@ -891,6 +891,7 @@ VAR
   impno:       SYSTEM.CARD16;
   impmodadr:   INTEGER;  (* Module being imported from base address *)
   expadr:      INTEGER;  (* Address relative to imported module of an export *)
+  ptroff:      INTEGER;
   modulebody:  PROCEDURE;
 BEGIN
   (*
@@ -971,6 +972,14 @@ BEGIN
       SYSTEM.PUT(LoadAdr + offset, disp)
     END;
     INC(i)
+  END;
+
+  (* Relocate pointer addresses *)
+  hdr := SYSTEM.VAL(CodeHeaderPtr, LoadAdr);
+  adr := LoadAdr + hdr.pointers;  SYSTEM.GET(adr, ptroff);
+  WHILE ptroff >= 0 DO
+    SYSTEM.PUT(adr, LoadAdr + hdr.imports + ptroff);
+    INC(adr, 8);  SYSTEM.GET(adr, ptroff)
   END;
 
   bodyadr := LoadAdr + hdr.initcode;

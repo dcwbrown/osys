@@ -2614,7 +2614,7 @@ VAR
   fld:  ORB.Object;
   i, s: INTEGER;
 BEGIN
-  IF (typ.form = ORB.Pointer) OR (typ.form = ORB.NilTyp) THEN
+  IF (typ.form = ORB.Pointer) & ~typ.native OR (typ.form = ORB.NilTyp) THEN
     EmitInt(off, "pointer/niltype field offset")
   ELSIF typ.form = ORB.Record THEN
     fld := typ.dsc;

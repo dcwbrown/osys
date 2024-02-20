@@ -2614,7 +2614,7 @@ VAR
   fld:  ORB.Object;
   i, s: INTEGER;
 BEGIN
-  IF (typ.form = ORB.Pointer) OR (typ.form = ORB.NilTyp) THEN
+  IF (typ.form = ORB.Pointer) & ~typ.native OR (typ.form = ORB.NilTyp) THEN
     EmitInt(off, "pointer/niltype field offset")
   ELSIF typ.form = ORB.Record THEN
     fld := typ.dsc;
@@ -2647,6 +2647,8 @@ BEGIN
   l.s(", adr ", Tr);            l.i(adr, Tr); l.sn(")", Tr);
   ASSERT(adr MOD 8 = 0);
   ShowFields(T);
+  IF Disasmpc < X64.PC THEN Disassemble(0, "") END;
+  X64.Align(8);  Disasmpc := X64.PC;
 
   s := T.size; (* Convert size for heap allocation *)
   IF    s <= 48  THEN s := 64
@@ -2673,6 +2675,7 @@ BEGIN
 
   (* Debug annotation: Emit type name *)
   IF T.typobj = NIL THEN X64.Emit(0) ELSE X64.EmitString(T.typobj.name) END;
+  IF ORS.ListAssembly THEN l.DisassembleString(Disasmpc) END;
 END BuildTD;
 
 PROCEDURE TypeTest*(VAR x: X64.Item; T: ORB.Type; varpar, isguard: BOOLEAN);
