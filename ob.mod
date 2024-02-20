@@ -423,6 +423,6 @@ BEGIN
   (*AddExecutableDirToSourceSearchpath;*)
   Build;
 
-  (*K.ShowHeap;*)
   Oberon.GC;
+  Oberon.ShowHeap;
 END ob.
