@@ -86,7 +86,7 @@ TYPE
   END;
 
 VAR
-  Hdr*:     X64.CodeHeader;
+  Hdr*:     H.CodeHeader;
 
   Str:      ARRAY 8192 OF CHAR;  (* Max bytes of string per module body *)
   Strx:     INTEGER;
@@ -2753,7 +2753,7 @@ BEGIN
   VarFInx         := 0;
   ImpFInx         := 0;
   Disasmpc        := 0;
-  X64.SetPC(SYSTEM.SIZE(X64.CodeHeader));
+  X64.SetPC(SYSTEM.SIZE(H.CodeHeader));
   X64.Align(8); (* Increase alignment to match PO2013 where records are aligned on 8 bytes. *)
   X64.EmitString(modid);
   X64.Align(16);
@@ -2949,8 +2949,8 @@ BEGIN
   (* Write compiled module *)
   fname := "";  H.Append(modid, fname);  H.Append(".code", fname);
   F := Files.New(fname);  Files.Set(R, F, 0);
-  Files.WriteBytes(R, Hdr, 0, SYSTEM.SIZE(X64.CodeHeader));
-  Files.WriteBytes(R, X64.Text, SYSTEM.SIZE(X64.CodeHeader), X64.PC - SYSTEM.SIZE(X64.CodeHeader));
+  Files.WriteBytes(R, Hdr, 0, SYSTEM.SIZE(H.CodeHeader));
+  Files.WriteBytes(R, X64.Text, SYSTEM.SIZE(H.CodeHeader), X64.PC - SYSTEM.SIZE(H.CodeHeader));
   Files.Register(F)
 END Close;
 

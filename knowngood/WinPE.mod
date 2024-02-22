@@ -122,7 +122,7 @@ TYPE
   END;
 
   BootstrapBuffer = RECORD
-    Header:  X64.CodeHeader;
+    Header:  H.CodeHeader;
     Content: ARRAY 10000H OF BYTE
   END;
 
@@ -546,7 +546,7 @@ BEGIN
   Verbose := H.Verbose IN LoadFlags;
 
   IF Verbose THEN
-    H.ws("WinPE.Generate. SIZE(CodeHeader) "); H.wh(SYSTEM.SIZE(X64.CodeHeader));
+    H.ws("WinPE.Generate. SIZE(CodeHeader) "); H.wh(SYSTEM.SIZE(H.CodeHeader));
     H.ws("H, SIZE(PEheader) "); H.wh(SYSTEM.SIZE(PEheader)); H.wsn("H.")
   END;
 
