@@ -67,9 +67,23 @@ CONST
   Xor*   = X64.Xor;
   Cmp*   = X64.Cmp;
 
-
 TYPE
   Item = X64.Item;
+
+  LineAnnotation = POINTER TO LineAnnotationDesc;
+  LineAnnotationDesc = RECORD
+    next: LineAnnotation;
+    line: INTEGER;
+    pc:   INTEGER
+  END;
+
+  BodyAnnotation* = POINTER TO BodyAnnotationDesc;
+  BodyAnnotationDesc = RECORD
+    next:      BodyAnnotation;
+    name:      ORS.Ident;
+    firstline: LineAnnotation;
+    lastline:  LineAnnotation
+  END;
 
 VAR
   Hdr*:     X64.CodeHeader;
@@ -87,6 +101,8 @@ VAR
   ImpFInx:  INTEGER;
 
   Free*:    SET;      (* Free registers *)
+
+  BodyAnnotations: BodyAnnotation;
 
 
 (* -------------------------------- Tracing --------------------------------- *)
@@ -125,6 +141,37 @@ BEGIN IF a < b THEN b := a END;  RETURN b END Min;
 
 PROCEDURE Max(a, b: INTEGER): INTEGER;
 BEGIN IF a > b THEN b := a END;  RETURN b END Max;
+
+
+(* ---------------------- Line number -> PC annotation ---------------------- *)
+
+PROCEDURE NewBodyAnnotation*(name: ARRAY OF CHAR; VAR a: BodyAnnotation);
+BEGIN NEW(a); a.name := name END NewBodyAnnotation;
+
+PROCEDURE AddBodyAnnotation*(annotation: BodyAnnotation);
+VAR a: BodyAnnotation;
+BEGIN
+  IF BodyAnnotations = NIL THEN BodyAnnotations := annotation ELSE
+    a := BodyAnnotations;
+    WHILE a.next # NIL DO a := a.next END;
+    a.next := annotation
+  END
+END AddBodyAnnotation;
+
+PROCEDURE AddLineAnnotation*(a: BodyAnnotation);
+VAR la: LineAnnotation;
+BEGIN
+  IF (a.firstline = NIL) OR (a.lastline.line # ORS.linenum) THEN
+    NEW(la);  la.line := ORS.linenum;  la.pc := X64.PC;
+    IF a.firstline = NIL THEN
+      a.firstline := la;
+      a.lastline  := la;
+    ELSE
+      a.lastline.next := la;
+      a.lastline := la;
+    END
+  END
+END AddLineAnnotation;
 
 
 (* --------------------------- Register tracking ---------------------------- *)
@@ -2699,12 +2746,13 @@ BEGIN
   X64.ClearStack;   ClearRegs;
   X64.Init;
   ZeroFill(Hdr);
-  Strx     := 0;
-  StrFInx  := 0;
-  Varsize  := 0;
-  VarFInx  := 0;
-  ImpFInx  := 0;
-  Disasmpc := 0;
+  BodyAnnotations := NIL;
+  Strx            := 0;
+  StrFInx         := 0;
+  Varsize         := 0;
+  VarFInx         := 0;
+  ImpFInx         := 0;
+  Disasmpc        := 0;
   X64.SetPC(SYSTEM.SIZE(X64.CodeHeader));
   X64.Align(8); (* Increase alignment to match PO2013 where records are aligned on 8 bytes. *)
   X64.EmitString(modid);

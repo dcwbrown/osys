@@ -401,7 +401,7 @@ BEGIN
   WriteHuman(codesize, 12);     WriteHuman(varsize,  12);
   WriteHuman(end - start, 6);   H.wsn(" ms");
   IF K.Allocated > maxalloc THEN maxalloc := K.Allocated END;
-  H.ws("Max heap size : "); WriteHuman(maxalloc, 1); H.wsn(".");
+  H.ws("Max heap size: "); WriteHuman(maxalloc, 1); H.wsn(".");
 END Build;
 
 

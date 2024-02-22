@@ -34,6 +34,7 @@ VAR
   (* Trace *)
   Tr: l.Buffer;
 
+
 PROCEDURE Check(s: INTEGER;  msg: ARRAY OF CHAR);
 BEGIN
   IF sym = s THEN ORS.Get(sym) ELSE ORS.Mark(msg) END
@@ -526,7 +527,7 @@ BEGIN Check(ORS.lparen, "no (");
   END
 END StandProc;
 
-PROCEDURE StatSequence;
+PROCEDURE StatSequence(ann: ORG.BodyAnnotation);
 VAR obj:         ORB.Object;
     orgtype:     ORB.Type;  (*original type of case var*)
     x, y, z, by: X64.Item;
@@ -540,7 +541,7 @@ VAR obj:         ORB.Object;
       qualident(typobj);  ORG.MakeItem(x, obj, level);
       IF typobj.class # ORB.Typ THEN ORS.Mark("not a type") END;
       TypeTest(x, typobj.type, FALSE);  obj.type := typobj.type;
-      ORG.CFJump(x);  Check(ORS.colon, ": expected");  StatSequence
+      ORG.CFJump(x);  Check(ORS.colon, ": expected");  StatSequence(ann)
     ELSE ORG.CFJump(x);  ORS.Mark("type id expected")
     END
    END TypeCase;
@@ -548,7 +549,7 @@ VAR obj:         ORB.Object;
   PROCEDURE SkipCase;
   BEGIN
     WHILE sym # ORS.colon DO ORS.Get(sym) END;
-    ORS.Get(sym);  StatSequence
+    ORS.Get(sym);  StatSequence(ann)
   END SkipCase;
 
 BEGIN (* StatSequence *)
@@ -558,6 +559,7 @@ BEGIN (* StatSequence *)
       ORS.Mark("statement expected");
       REPEAT ORS.Get(sym) UNTIL (sym >= ORS.ident)
     END;
+    ORG.AddLineAnnotation(ann);
     IF sym = ORS.ident THEN
       qualident(obj);  ORG.MakeItem(x, obj, level);
       IF x.mode = ORB.SProc THEN StandProc(obj.val)
@@ -605,7 +607,7 @@ BEGIN (* StatSequence *)
       expression(x);  CheckBool(x);
       ORG.CFJump(x);
       Check(ORS.then, "no THEN");
-      StatSequence;
+      StatSequence(ann);
       L0 := 0;
       WHILE sym = ORS.elsif DO
         ORS.Get(sym);
@@ -614,11 +616,11 @@ BEGIN (* StatSequence *)
         expression(x);  CheckBool(x);
         ORG.CFJump(x);
         Check(ORS.then, "no THEN");
-        StatSequence
+        StatSequence(ann)
       END;
       IF sym = ORS.else THEN
         ORS.Get(sym);  ORG.FJump(L0);  ORG.FixLink(x.offset);
-        StatSequence
+        StatSequence(ann)
       ELSE
         ORG.FixLink(x.offset)
       END;
@@ -628,16 +630,16 @@ BEGIN (* StatSequence *)
       L0 := ORG.Here();
       expression(x);  CheckBool(x);
       ORG.CFJump(x);
-      Check(ORS.do, "no DO");  StatSequence;
+      Check(ORS.do, "no DO");  StatSequence(ann);
       ORG.BJump(L0);
       WHILE sym = ORS.elsif DO
         ORS.Get(sym);  ORG.FixLink(x.offset);  expression(x);  CheckBool(x);  ORG.CFJump(x);
-        Check(ORS.do, "no DO");  StatSequence;  ORG.BJump(L0)
+        Check(ORS.do, "no DO");  StatSequence(ann);  ORG.BJump(L0)
       END;
       ORG.FixLink(x.offset);
       Check(ORS.end, "no END")
     ELSIF sym = ORS.repeat THEN
-      ORS.Get(sym);  L0 := ORG.Here();  StatSequence;
+      ORS.Get(sym);  L0 := ORG.Here();  StatSequence(ann);
       IF sym = ORS.until THEN
         ORS.Get(sym);  expression(x);  CheckBool(x);  ORG.CBJump(x, L0)
       ELSE ORS.Mark("missing UNTIL")
@@ -660,7 +662,7 @@ BEGIN (* StatSequence *)
           END;
           Check(ORS.do, "DO expected");
           ORG.For1(x, y, z, by, L1);  (* val, ini, lim, step *)
-          StatSequence;
+          StatSequence(ann);
           Check(ORS.end, "END expected");
           ORG.For2(x, y, by);
           ORG.BJump(L0);  (* val, ini, step *)
@@ -689,7 +691,8 @@ BEGIN (* StatSequence *)
     IF sym = ORS.semicolon THEN ORS.Get(sym)
     ELSIF sym < ORS.semicolon THEN ORS.Mark("missing semicolon?")
     END
-  UNTIL sym > ORS.semicolon
+  UNTIL sym > ORS.semicolon;
+  ORG.AddLineAnnotation(ann)
 END StatSequence;
 
 (* Types and declarations *)
@@ -1080,9 +1083,11 @@ VAR proc, obj:   ORB.Object;
     i:           INTEGER;
     longestname: INTEGER;
     native:      BOOLEAN;
+    ann:         ORG.BodyAnnotation;
 BEGIN ORS.Get(sym);  CheckNative(native);
   IF sym = ORS.ident THEN
     ORS.CopyId(procid);  ORS.Get(sym);
+    ORG.NewBodyAnnotation(procid, ann);
     ORB.NewObj(proc, ORS.id, ORB.Const);
     NEW(type);
     type.form   := ORB.Proc;
@@ -1163,7 +1168,7 @@ BEGIN ORS.Get(sym);  CheckNative(native);
 
     (* Compile procedure body *)
     ORG.Enter(parmsize, locsize, native);
-    IF sym = ORS.begin THEN ORS.Get(sym);  StatSequence END;
+    IF sym = ORS.begin THEN ORS.Get(sym);  StatSequence(ann) END;
     IF sym = ORS.return THEN
       ORS.Get(sym);  expression(x);
       IF type.base = ORB.noType THEN ORS.Mark("this is not a function")
@@ -1189,6 +1194,7 @@ VAR key:    INTEGER;
     impid1: ORS.Ident;
     exno:   INTEGER;
     obj:    ORB.Object;
+    ann:    ORG.BodyAnnotation;
 BEGIN
   (*Texts.WriteString(W, "  compiling ");*)
   ORS.Get(sym);
@@ -1233,7 +1239,11 @@ BEGIN
 
     ORG.Header;
 
-    IF sym = ORS.begin THEN ORS.Get(sym); StatSequence END;
+    IF sym = ORS.begin THEN ORS.Get(sym);
+      ORG.NewBodyAnnotation(modid, ann);
+      StatSequence(ann);
+      ORG.AddBodyAnnotation(ann);
+    END;
 
     Check(ORS.end, "no END");
     IF sym = ORS.ident THEN
