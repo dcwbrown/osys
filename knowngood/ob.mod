@@ -250,72 +250,6 @@ BEGIN
 END ReportDependencies;
 
 
-(*
-PROCEDURE Build();
-VAR
-  mod, prev:  Module;
-  allscanned: BOOLEAN;
-  PEname:     PathName;
-  codesize:   INTEGER;
-  varsize:    INTEGER;
-  start, end: INTEGER;  (* Times *)
-
-BEGIN
-  AddModule(Modulename);
-
-  IF SourcePath # "./" THEN H.ws(", source path: '");  H.ws(SourcePath); H.wsn("'") END;
-  IF BuildPath  # ""   THEN H.ws(", build path: '");   H.ws(BuildPath);  H.wsn("'") END;
-
-  (* Keep scanning and adding modules until all dependencies have been scanned *)
-  REPEAT
-    mod := Modules;  allscanned := TRUE;
-    WHILE mod # NIL DO
-      IF ~mod.scanned THEN
-        allscanned := FALSE;  ScanModuleFileImports(mod)
-      END;
-      mod := mod.next
-    END;
-  UNTIL allscanned;
-
-  IF Verbose THEN H.wsn("Modules and dependencies:");  ReportDependencies END;
-
-  (* Compile dependentless modules until all modules compiled. *)
-  H.wsl("Module", LongestModname + 2);  H.wsl("File", LongestFilename);
-  H.wsn("        code         VAR     time");
-  codesize := 0;  varsize := 0;
-  start := H.Time();
-
-  REPEAT
-    mod := Modules;  prev := NIL;
-    WHILE (mod # NIL) & (mod.dependencies # NIL) DO
-      prev := mod;  mod := mod.next
-    END;
-    IF mod # NIL THEN
-      Compile(mod);
-      IF ORS.errcnt # 0 THEN H.ExitProcess(99) END;
-
-      IF mod.modname # "Winshim" THEN WinPE.AddModule(mod.codename) END;
-
-      INC(codesize, X64.PC);  INC(varsize, ORG.Varsize);
-      RemoveDependencies(mod);
-      IF prev = NIL THEN Modules := mod.next ELSE prev.next := mod.next END
-    ELSE
-      H.wsn("Cannot resolve circular dependency order in:");
-      ReportDependencies; H.ExitProcess(99)
-    END
-  UNTIL Modules = NIL;
-
-  PEname := ""; H.Append(Modulename, PEname);  H.Append(".exe", PEname);
-  WinPE.Generate(PEname, LoadFlags);
-
-  end := H.Time();
-  H.wsl("Total", LongestModname + LongestFilename + 2);
-  WriteHuman(codesize, 12);     WriteHuman(varsize,  12);
-  WriteHuman(end - start, 6);   H.wsn(" ms")
-END Build;
-*)
-
-
 PROCEDURE SortModulesIntoBuildOrder;
 VAR
   mod, prev:  Module;
@@ -483,7 +417,8 @@ BEGIN
       ELSIF arg = "/s"      THEN INC(i);  WinArgs.GetArg(i, SourcePath)
       ELSIF arg = "/build"  THEN INC(i);  WinArgs.GetArg(i, BuildPath)
       ELSIF arg = "/b"      THEN INC(i);  WinArgs.GetArg(i, BuildPath)
-      ELSIF arg = "/v"      THEN Verbose := TRUE; INCL(LoadFlags, H.Verbose)
+      ELSIF arg = "/v"      THEN Verbose := TRUE; INCL(LoadFlags, H.Verbose);
+                                 ASSERT(H.Verbose IN LoadFlags)
       ELSE
         ArgError(i, arg, "unrecognised option.")
       END
@@ -497,11 +432,11 @@ BEGIN
     INC(i)
   END;
 
-  H.ws("OB - Oberon command line builder.");
+  H.ws("OB - Oberon command line builder");
   IF Modulename # "" THEN
-    H.ws(" MODULE "); H.ws(Modulename); H.wsn(".");
+    H.ws(", building MODULE "); H.ws(Modulename); H.wsn(".");
   ELSE
-    H.wn;
+    H.wsn(".");
     H.wsn("No parameters. Expected name of module to build.");
     H.ExitProcess(99);
   END

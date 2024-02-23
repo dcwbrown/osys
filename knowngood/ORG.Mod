@@ -1,4 +1,4 @@
-MODULE ORG;  (* DCWB June 2023; Code generator for X64 *)
+MODULE ORG;  (* DCWB Jun 2023 to Feb 2024; Code generator for X64 *)
 
 (* Originally: N.Wirth, 16.4.2016 / 4.4.2017 / 17.9.2018  Oberon compiler; code generator for RISC*)
 
@@ -1895,7 +1895,7 @@ END Singleton;
 PROCEDURE In*(VAR x, y: Item);  (* x := x IN y *)
 BEGIN
   Trace(TraceAny, "In(x: "); l.Item(x, Tr);
-  l.s(", y: ", Tr);         l.Item(y, Tr); l.sn(")", Tr);
+  l.s(", y: ", Tr);          l.Item(y, Tr); l.sn(")", Tr);
   ASSERT(x.mode  >= Const);
   ASSERT(y.mode  >= Const);
 
@@ -1962,9 +1962,9 @@ BEGIN
   Depar(x);  Depar(y);
   IF y.mode = Const THEN
     IF op = 0 THEN
-      OpItem(0FBAH, 5, 8, 0, x)  (* bts x,imm *)
+      OpItem(0FBAH, 5, 8, 1, x)  (* bts x,imm *)
     ELSE
-      OpItem(0FBAH, 6, 8, 0, x)  (* btr x,imm *)
+      OpItem(0FBAH, 6, 8, 1, x)  (* btr x,imm *)
     END;
     X64.Emit(y.n)
   ELSE

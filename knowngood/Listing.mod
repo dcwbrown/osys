@@ -425,7 +425,7 @@ BEGIN
   INC(pc)
 END DisSIB;
 
-PROCEDURE DisModRegRm(
+PROCEDURE DisModRegRm(  (* TODO pass imsize and include in PC rel disp calculation *)
   VAR pc, reg, base, index, disp, scale: INTEGER;
   size: INTEGER;
   VAR indirect: BOOLEAN;
@@ -929,7 +929,7 @@ BEGIN
       END;
       BaseIndexScaleDisp(indirect, reg, regsize, base, index, scale, disp, itemmode, Args);
       c(",", Args);
-      GetUnsigned(8, pc, disp);
+      GetUnsigned(1, pc, disp);
       h(disp, Args); c("H", Args)
 
     ELSE

@@ -417,7 +417,8 @@ BEGIN
       ELSIF arg = "/s"      THEN INC(i);  WinArgs.GetArg(i, SourcePath)
       ELSIF arg = "/build"  THEN INC(i);  WinArgs.GetArg(i, BuildPath)
       ELSIF arg = "/b"      THEN INC(i);  WinArgs.GetArg(i, BuildPath)
-      ELSIF arg = "/v"      THEN Verbose := TRUE; INCL(LoadFlags, H.Verbose)
+      ELSIF arg = "/v"      THEN Verbose := TRUE; INCL(LoadFlags, H.Verbose);
+                                 ASSERT(H.Verbose IN LoadFlags)
       ELSE
         ArgError(i, arg, "unrecognised option.")
       END
