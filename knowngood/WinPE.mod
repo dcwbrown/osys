@@ -18,6 +18,22 @@ CONST
   User32ImportCount   = 24;
 
 TYPE
+  CodeHeader = H.CodeHeader;
+
+  (* Temporary new code header
+  CodeHeader* = RECORD-
+    length*:   SYSTEM.CARD32;  (* File length *)
+    initcode*: SYSTEM.CARD32;
+    pointers*: SYSTEM.CARD32;
+    commands*: SYSTEM.CARD32;
+    exports*:  SYSTEM.CARD32;
+    imports*:  SYSTEM.CARD32;  (* VARs start here following import resolution *)
+    varsize*:  SYSTEM.CARD32;
+    key*:      INTEGER;
+  END;
+  *)
+
+
   ObjectFile = POINTER TO ObjectFileDesc;
   ObjectFileDesc = RECORD
     next: ObjectFile;
@@ -122,7 +138,7 @@ TYPE
   END;
 
   BootstrapBuffer = RECORD
-    Header:  H.CodeHeader;
+    Header:  CodeHeader;
     Content: ARRAY 10000H OF BYTE
   END;
 
@@ -546,7 +562,7 @@ BEGIN
   Verbose := H.Verbose IN LoadFlags;
 
   IF Verbose THEN
-    H.ws("WinPE.Generate. SIZE(CodeHeader) "); H.wh(SYSTEM.SIZE(H.CodeHeader));
+    H.ws("WinPE.Generate. SIZE(CodeHeader) "); H.wh(SYSTEM.SIZE(CodeHeader));
     H.ws("H, SIZE(PEheader) "); H.wh(SYSTEM.SIZE(PEheader)); H.wsn("H.")
   END;
 

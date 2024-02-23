@@ -25,6 +25,7 @@ TYPE
     pointers*: SYSTEM.CARD32;
     commands*: SYSTEM.CARD32;
     exports*:  SYSTEM.CARD32;
+    lines:     SYSTEM.CARD32;
     imports*:  SYSTEM.CARD32;  (* VARs start here following import resolution *)
     varsize*:  SYSTEM.CARD32;
     key*:      INTEGER;
