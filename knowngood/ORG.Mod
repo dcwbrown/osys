@@ -2809,6 +2809,13 @@ BEGIN
   END
 END EmitPtrs;
 
+PROCEDURE EmitUnsigned(n: INTEGER);
+BEGIN
+  ASSERT(n >= 0);
+  WHILE n >= 128 DO X64.Emit(n MOD 128 + 128); n := n DIV 128 END;
+  X64.Emit(n)
+END EmitUnsigned;
+
 PROCEDURE Close*(modid: ORS.Ident; key, exno: INTEGER);
 (* Note: export numbers are 1 .. exno-1 *)
 VAR
@@ -2818,6 +2825,10 @@ VAR
   fname:  ARRAY 40 OF CHAR;
   F:      Files.File;
   R:      Files.Rider;
+  bodyan: BodyAnnotation;
+  linean: LineAnnotation;
+  line:   INTEGER;
+  pc:     INTEGER;
 BEGIN
   PopReg(15);   PopReg(14);   PopReg(13);   PopReg(12);
   PopReg(RDI);  PopReg(RSI);  PopReg(RBP);  PopReg(RBX);
@@ -2867,6 +2878,30 @@ BEGIN
   X64.Emit(0);
 
 
+  (* ------------------------ Emit line annotations ------------------------- *)
+
+  (*
+  X64.Align(16);
+  Hdr.lines := X64.PC;
+  bodyan := BodyAnnotations;
+  WHILE bodyan # NIL DO
+    X64.EmitString(bodyan.name);
+    linean := bodyan.firstline;
+    line   := linean.line;
+    pc     := linean.pc;
+    X64.EmitBytes(8, line);
+    X64.EmitBytes(8, pc);
+    linean := linean.next;
+    WHILE linean # NIL DO
+      EmitNum(linean.line - line);  line := linean.line;
+      EmitNum(linean.pc   - pc);    pc   := linean.pc;
+      linean := linean.next
+    END;
+    X64.Emit(0);
+    bodyan := bodyan.next
+  END;
+  *)
+
   (* ---------- Determine export table offset and resident length ----------- *)
   X64.Align(16);
   Hdr.exports := X64.PC;     (* Set export table address *)
@@ -2897,19 +2932,19 @@ BEGIN
     obj := obj.next
   END;
 
-(*
+  (*
   (* Types required by pointers *)
   obj := ORB.topScope.next;
   WHILE obj # NIL DO  (*pointer variables*)
     IF obj.class = ORB.Var THEN EmitPtrs(obj.type, obj.val) END;
     obj := obj.next
   END;
-*)
+  *)
 
   (*l.s("Export count ", Tr); l.i((X64.PC - Hdr.exports) DIV 4, Tr); l.sn(".", Tr);*)
   X64.EmitBytes(4, -1);  (* Mark end of table *)
 
-  (* End of resident code/tables *)
+  (* --------------------- End of resident code/tables ---------------------- *)
 
   X64.Align(16);
   IF X64.PC # reslen THEN

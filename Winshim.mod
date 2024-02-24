@@ -25,7 +25,7 @@ TYPE
     pointers*: SYSTEM.CARD32;
     commands*: SYSTEM.CARD32;
     exports*:  SYSTEM.CARD32;
-    lines:     SYSTEM.CARD32;
+    lines*:    SYSTEM.CARD32;
     imports*:  SYSTEM.CARD32;  (* VARs start here following import resolution *)
     varsize*:  SYSTEM.CARD32;
     key*:      INTEGER;
@@ -462,21 +462,37 @@ BEGIN
 END PrepareOberonMachine;
 
 
-(* -------------------------------------------------------------------------- *)
+(* -------------------- Pulling variables out of memory --------------------- *)
+
+PROCEDURE GetString(VAR adr: INTEGER; VAR str: ARRAY OF CHAR);
+VAR i: INTEGER;
+BEGIN
+  i := -1;
+  REPEAT INC(i); SYSTEM.GET(adr, str[i]); INC(adr) UNTIL str[i] = 0X
+END GetString;
+
+PROCEDURE GetUnsigned(VAR adr, n: INTEGER);
+VAR i, s: INTEGER;
+BEGIN
+  n := 0; s := 0;
+  REPEAT
+    SYSTEM.GET(adr, i);  INC(adr);
+    INC(n, LSL(i MOD 128, s));  INC(s, 7)
+  UNTIL i < 128
+END GetUnsigned;
+
+
+(* --------------------- Write module name and exports ---------------------- *)
 
 PROCEDURE GetModuleName*(adr: INTEGER; VAR name: ARRAY OF CHAR);
-VAR hdr: CodeHeaderPtr;  ch: CHAR;  i: INTEGER;
 BEGIN
-  hdr := SYSTEM.VAL(CodeHeaderPtr, adr);
   INC(adr, SYSTEM.SIZE(CodeHeader));
-  i := -1;
-  REPEAT INC(i); SYSTEM.GET(adr, name[i]); INC(adr) UNTIL name[i] = 0X
+  GetString(adr, name)
 END GetModuleName;
 
 PROCEDURE WriteModuleName*(adr: INTEGER);
-VAR hdr: CodeHeaderPtr;  ch: CHAR;
+VAR ch: CHAR;
 BEGIN
-  hdr := SYSTEM.VAL(CodeHeaderPtr, adr);
   INC(adr, SYSTEM.SIZE(CodeHeader));
   SYSTEM.GET(adr, ch);
   WHILE ch # 0X DO wc(ch);  INC(adr);  SYSTEM.GET(adr, ch) END;
@@ -832,18 +848,6 @@ END WriteStdout;
 
 (* -------------------------------------------------------------------------- *)
 
-PROCEDURE GetString(adr: INTEGER; VAR s: ARRAY OF CHAR; VAR len: INTEGER);
-VAR i: INTEGER;
-BEGIN i := 0;
-  (*ws("GetString -> '");*)
-  REPEAT SYSTEM.GET(adr, s[i]); INC(adr); INC(i) UNTIL s[i-1] = 0X;
-  len := i;
-  (*ws(s); wsn("'.")*)
-END GetString;
-
-
-(* -------------------------------------------------------------------------- *)
-
 PROCEDURE ExportedAddress(modhdr: CodeHeaderPtr; index: INTEGER): INTEGER;
 VAR exportoffset: SYSTEM.CARD32;
 BEGIN
@@ -854,19 +858,21 @@ PROCEDURE FindModule(name: ARRAY OF CHAR; key: INTEGER): INTEGER;
 VAR
   hdr:     CodeHeaderPtr;
   modadr:  INTEGER;
+  stradr:  INTEGER;
   modname: ARRAY 32 OF CHAR;
-  len:     INTEGER;
 BEGIN
   (*ws("Findmodule "); ws(name); wsn(".");*)
   modadr := OberonAdr;
   hdr := SYSTEM.VAL(CodeHeaderPtr, modadr);
-  GetString(modadr + SYSTEM.SIZE(CodeHeader), modname, len);
+  stradr := modadr + SYSTEM.SIZE(CodeHeader);
+  GetString(stradr, modname);
   WHILE (hdr.length # 0) & (modname # name) DO
     modadr := (modadr + hdr.imports + hdr.varsize + 15) DIV 16 * 16;
     (*ws(".. considering ");  WriteModuleName(modadr); wn;*)
     hdr := SYSTEM.VAL(CodeHeaderPtr, modadr);
     IF hdr.length > 0 THEN
-      GetString(modadr + SYSTEM.SIZE(CodeHeader), modname, len)
+      stradr := modadr + SYSTEM.SIZE(CodeHeader);
+      GetString(stradr, modname);
     END
   END;
   assert(hdr.length # 0); (*, "FindModule hdr.length is 0.");*)
@@ -922,12 +928,12 @@ BEGIN
   (* Build list of imported module header addresses *)
   i := 0;
   adr := modadr + hdr.imports;
-  GetString(adr, impmod, len);  INC(adr, len);
+  GetString(adr, impmod);
   WHILE impmod[0] # 0X DO
     SYSTEM.GET(adr, key);  INC(adr, 8);
     modules[i] := FindModule(impmod, key);
     INC(i);
-    GetString(adr, impmod, len);  INC(adr, len)
+    GetString(adr, impmod)
   END;
   modules[i] := 0;
 
