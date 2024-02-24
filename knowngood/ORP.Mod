@@ -1242,7 +1242,6 @@ BEGIN
     IF sym = ORS.begin THEN ORS.Get(sym);
       ORG.NewBodyAnnotation(modid, ann);
       StatSequence(ann);
-      ORG.AddBodyAnnotation(ann);
     END;
 
     Check(ORS.end, "no END");

@@ -194,11 +194,23 @@ BEGIN
 
   IF ORS.errcnt = 0 THEN
     endTime := H.Time();
-    WriteHuman(X64.PC, 12);   WriteHuman(ORG.Varsize, 12);
-    WriteHuman(endTime - startTime, 6);    H.ws(" ms");
-
-    (*H.ws("  allocated: "); WriteHuman(K.Allocated, 1);*)
-
+    WriteHuman(X64.PC, 12);
+    WriteHuman(ORG.Varsize, 12);
+    WriteHuman(endTime - startTime, 6);
+    WriteHuman(ORG.Hdr.commands - ORG.Hdr.pointers, 5);
+    WriteHuman(ORG.Hdr.lines    - ORG.Hdr.commands, 4);
+    WriteHuman(ORG.Hdr.exports  - ORG.Hdr.lines,    7);
+    WriteHuman(ORG.Hdr.imports  - ORG.Hdr.exports,  8);
+    WriteHuman(ORG.Hdr.length   - ORG.Hdr.imports,  8);
+    WriteHuman(K.Allocated, 10);
+(*
+    H.ws(", pointers: ");    WriteHuman(ORG.Hdr.commands - ORG.Hdr.pointers, 1);
+    H.ws(", commands: ");    WriteHuman(ORG.Hdr.lines    - ORG.Hdr.commands, 1);
+    H.ws(", annotations: "); WriteHuman(ORG.Hdr.exports  - ORG.Hdr.lines, 1);
+    H.ws(", exports: ");     WriteHuman(ORG.Hdr.imports  - ORG.Hdr.exports, 1);
+    H.ws(", imports: ");     WriteHuman(ORG.Hdr.length   - ORG.Hdr.imports, 1);
+    H.ws(", allocated: ");   WriteHuman(K.Allocated, 1);
+*)
     H.wn
   END
 END Compile;
@@ -311,7 +323,7 @@ BEGIN
   SortModulesIntoBuildOrder;
 
   H.wsl("Module", LongestModname + 2);  H.wsl("File", LongestFilename);
-  H.wsn("        code         VAR     time");
+  H.wsn("        code         VAR    ms ptrs cmd  annot  export  import      heap");
   codesize := 0;
   varsize  := 0;
   maxalloc := 0;

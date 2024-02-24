@@ -161,30 +161,30 @@ BEGIN IF a > b THEN b := a END;  RETURN b END Max;
 (* ---------------------- Line number -> PC annotation ---------------------- *)
 
 PROCEDURE NewBodyAnnotation*(name: ARRAY OF CHAR; VAR a: BodyAnnotation);
-BEGIN NEW(a); a.name := name END NewBodyAnnotation;
-
-PROCEDURE AddBodyAnnotation*(annotation: BodyAnnotation);
-VAR a: BodyAnnotation;
 BEGIN
-  IF BodyAnnotations = NIL THEN BodyAnnotations := annotation ELSE
+  IF BodyAnnotations = NIL THEN
+    NEW(a);  BodyAnnotations := a
+  ELSE
     a := BodyAnnotations;
     WHILE a.next # NIL DO a := a.next END;
-    a.next := annotation
-  END
-END AddBodyAnnotation;
+    NEW(a.next);  a := a.next
+  END;
+  a.name := name;  a.firstline := NIL;  a.lastline := NIL;
+END NewBodyAnnotation;
 
 PROCEDURE AddLineAnnotation*(a: BodyAnnotation);
 VAR la: LineAnnotation;
 BEGIN
-  IF (a.firstline = NIL) OR (a.lastline.line # ORS.linenum) THEN
+  IF a.firstline # NIL THEN ASSERT(a.lastline # NIL) END;
+  IF (a.firstline = NIL)
+  OR (a.lastline.line # ORS.linenum) & (a.lastline.pc # X64.PC) THEN
     NEW(la);  la.line := ORS.linenum;  la.pc := X64.PC;
     IF a.firstline = NIL THEN
-      a.firstline := la;
-      a.lastline  := la;
+      a.firstline := la
     ELSE
-      a.lastline.next := la;
-      a.lastline := la;
-    END
+      a.lastline.next := la
+    END;
+    a.lastline := la
   END
 END AddLineAnnotation;
 
@@ -2880,7 +2880,6 @@ BEGIN
 
   (* ------------------------ Emit line annotations ------------------------- *)
 
-  (*
   X64.Align(16);
   Hdr.lines := X64.PC;
   bodyan := BodyAnnotations;
@@ -2891,16 +2890,30 @@ BEGIN
     pc     := linean.pc;
     X64.EmitBytes(8, line);
     X64.EmitBytes(8, pc);
+    (*
+    H.ws("Emit body annotation for '"); H.ws(bodyan.name);
+    H.ws("', first line "); H.wi(line);
+    H.ws(", first PC "); H.wh(pc); H.wsn("H.");
+    *)
     linean := linean.next;
     WHILE linean # NIL DO
-      EmitNum(linean.line - line);  line := linean.line;
-      EmitNum(linean.pc   - pc);    pc   := linean.pc;
+      (*
+      H.ws("  line "); H.wi(linean.line);
+      H.ws(", PC "); H.wh(linean.pc); H.wsn("H.");
+      *)
+      ASSERT(linean.pc > pc);
+      EmitUnsigned(linean.pc   - pc);    pc   := linean.pc;
+      EmitUnsigned(linean.line - line);  line := linean.line;
       linean := linean.next
     END;
     X64.Emit(0);
     bodyan := bodyan.next
   END;
+  X64.Emit(0);
+  (*
+  H.ws("Annotations took "); H.wi(X64.PC - Hdr.lines); H.wsn(" bytes.");
   *)
+
 
   (* ---------- Determine export table offset and resident length ----------- *)
   X64.Align(16);
@@ -3001,7 +3014,9 @@ BEGIN
   F := Files.New(fname);  Files.Set(R, F, 0);
   Files.WriteBytes(R, Hdr, 0, SYSTEM.SIZE(CodeHeader));
   Files.WriteBytes(R, X64.Text, SYSTEM.SIZE(CodeHeader), X64.PC - SYSTEM.SIZE(CodeHeader));
-  Files.Register(F)
+  Files.Register(F);
+
+  BodyAnnotations := NIL
 END Close;
 
 
