@@ -161,7 +161,7 @@ VAR
   AssertionFailure:   PROCEDURE;
   ArraySizeMismatch:  PROCEDURE;
   UnterminatedString: PROCEDURE;
-  PostMortemDump:     PROCEDURE(modadr, offset, excpcode: INTEGER);
+  PostMortemDump:     PROCEDURE(modadr, offset: INTEGER);
 
   ExceptionDepth: INTEGER;
 
@@ -472,7 +472,7 @@ BEGIN
 END GetString;
 
 PROCEDURE GetUnsigned(VAR adr, n: INTEGER);
-VAR i, s: INTEGER;
+VAR i: BYTE; s: INTEGER;
 BEGIN
   n := 0; s := 0;
   REPEAT
@@ -542,15 +542,66 @@ BEGIN
   IF (adr < modadr) OR (adr > modadr + hdr.imports) THEN modadr := 0 END;
 RETURN modadr END LocateModule;
 
-PROCEDURE WriteModuleOffset*(adr: INTEGER);
+PROCEDURE LocateLine(modadr, offset: INTEGER);
+VAR
+  hdr: CodeHeaderPtr;
+  adr, line, pc, i: INTEGER;
+  name: ARRAY 32 OF CHAR;
+BEGIN
+  hdr := SYSTEM.VAL(CodeHeaderPtr, modadr);
+  IF hdr.lines # 0 THEN
+    adr := modadr + hdr.lines;
+    GetString(adr, name);
+    WHILE name[0] # 0X DO
+      SYSTEM.GET(adr, line);  INC(adr, 8);
+      SYSTEM.GET(adr, pc);    INC(adr, 8);
+      ws("Locate line: body name "); ws(name);
+      ws(", first line "); wi(line);
+      ws(", first pc ");   wh(pc);  wsn("H.");
+      (*DumpMem(2, adr, 0, 80H);*)
+      GetUnsigned(adr, i);
+      (*ws("  got "); wh(i); wsn("H.");*)
+      WHILE i # 0 DO
+        INC(pc, i);  GetUnsigned(adr, i);  INC(line, i);
+        ws("  line "); wi(line); ws(", pc "); wh(pc); wsn("H.");
+        GetUnsigned(adr, i)
+      END;
+      (*DumpMem(2, adr, 0, 80H);*)
+      GetString(adr, name);
+    END
+  END;
+
+END LocateLine;
+
+PROCEDURE LocateAddress(adr: INTEGER; p: ExceptionPointers);  (* Writes location info about address, if any *)
 VAR modadr: INTEGER;
 BEGIN
+  ws(" at address ");  wh(adr); wc("H");
   modadr := LocateModule(adr);
   IF modadr # 0  THEN
     ws(" in module "); WriteModuleName(modadr);
     ws(" at offset "); wh(adr - modadr); wc("H")
+  END;
+  wsn(". **");
+
+  LocateLine(modadr, adr - modadr);
+
+  IF (modadr # 0) & (PostMortemDump # NIL) & (ExceptionDepth < 2) THEN
+    INC(ExceptionDepth);
+    PostMortemDump(modadr, adr - modadr)
+  ELSIF p # NIL THEN
+    ws("  rax "); whz(p.context.rax, 16);  ws("  rbx "); whz(p.context.rbx, 16);
+    ws("  rcx "); whz(p.context.rcx, 16);  ws("  rdx "); whz(p.context.rdx, 16);  wn;
+    ws("  rsp "); whz(p.context.rsp, 16);  ws("  rbp "); whz(p.context.rbp, 16);
+    ws("  rsi "); whz(p.context.rsi, 16);  ws("  rdi "); whz(p.context.rdi, 16);  wn;
+    ws("  r8  "); whz(p.context.r8,  16);  ws("  r9  "); whz(p.context.r9,  16);
+    ws("  r10 "); whz(p.context.r10, 16);  ws("  r11 "); whz(p.context.r11, 16);  wn;
+    ws("  r12 "); whz(p.context.r12, 16);  ws("  r13 "); whz(p.context.r13, 16);
+    ws("  r14 "); whz(p.context.r14, 16);  ws("  r15 "); whz(p.context.r15, 16);  wn;
+    (* Dump top of stack (i.e. lowest addresses) *)
+    DumpMem(2, p.context.rsp, p.context.rsp, 128)
   END
-END WriteModuleOffset;
+END LocateAddress;
 
 PROCEDURE- ExceptionHandler(p: ExceptionPointers);  (* Called by Windows *)
 VAR modadr, excpadr, excpcode: INTEGER;
@@ -568,30 +619,7 @@ BEGIN
   ELSIF excpcode = 0C0000094H THEN ws("** Integer divide by zero");
   ELSE ws("** Exception ");  wh(excpcode);  wc("H")
   END;
-  ws(" at address ");  wh(excpadr); wc("H");
-  modadr := LocateModule(excpadr);
-  IF modadr # 0  THEN
-    ws(" in module "); WriteModuleName(modadr);
-    ws(" at offset "); wh(excpadr - modadr); wc("H")
-  END;
-  wsn(". **");
-
-  IF (modadr # 0) & (PostMortemDump # NIL) & (ExceptionDepth < 2) THEN
-    INC(ExceptionDepth);
-    PostMortemDump(modadr, excpadr - modadr, excpcode)
-  ELSE
-    ws("  rax "); whz(p.context.rax, 16);  ws("  rbx "); whz(p.context.rbx, 16);
-    ws("  rcx "); whz(p.context.rcx, 16);  ws("  rdx "); whz(p.context.rdx, 16);  wn;
-    ws("  rsp "); whz(p.context.rsp, 16);  ws("  rbp "); whz(p.context.rbp, 16);
-    ws("  rsi "); whz(p.context.rsi, 16);  ws("  rdi "); whz(p.context.rdi, 16);  wn;
-    ws("  r8  "); whz(p.context.r8,  16);  ws("  r9  "); whz(p.context.r9,  16);
-    ws("  r10 "); whz(p.context.r10, 16);  ws("  r11 "); whz(p.context.r11, 16);  wn;
-    ws("  r12 "); whz(p.context.r12, 16);  ws("  r13 "); whz(p.context.r13, 16);
-    ws("  r14 "); whz(p.context.r14, 16);  ws("  r15 "); whz(p.context.r15, 16);  wn;
-    (* Dump top of stack (i.e. lowest addresses) *)
-    DumpMem(2, p.context.rsp, p.context.rsp, 128)
-  END;
-
+  LocateAddress(excpadr, p);
   ExitProcess(99)
 END ExceptionHandler;
 
@@ -601,36 +629,27 @@ END ExceptionHandler;
 PROCEDURE Trap(desc: ARRAY OF CHAR);
 VAR adr, modadr: INTEGER;
 BEGIN
-  wsn(desc);
+  ws(desc);
   SYSTEM.GET(SYSTEM.ADR(LEN(desc)) + 8, adr);  (* Get caller address of trap caller *)
-  ws("At address ");  wh(adr);  ws("H");
-  modadr := LocateModule(adr);
-  IF modadr # 0  THEN
-    ws(" in module "); WriteModuleName(modadr);
-    ws(" at offset "); wh(adr - modadr); wc("H")
-  END;
-  wsn(".");
+  LocateAddress(adr, NIL);
   IF (modadr # 0) & (PostMortemDump # NIL) & (ExceptionDepth < 2) THEN
     INC(ExceptionDepth);
-    PostMortemDump(modadr, adr - modadr, -1)
+    PostMortemDump(modadr, adr - modadr)
   END;
   ExitProcess(99)
 END Trap;
 
 PROCEDURE AssertionFailureHandler();
-BEGIN wn; Trap("** Assertion failure **") END AssertionFailureHandler;
+BEGIN wn; Trap("** Assertion failure") END AssertionFailureHandler;
 
 PROCEDURE ArraySizeMismatchHandler();
-BEGIN wn; Trap("** Array size mismatch **") END ArraySizeMismatchHandler;
+BEGIN wn; Trap("** Array size mismatch") END ArraySizeMismatchHandler;
 
 PROCEDURE UnterminatedStringHandler();
-BEGIN wn; Trap("** Unterminated string **") END UnterminatedStringHandler;
+BEGIN wn; Trap("** Unterminated string") END UnterminatedStringHandler;
 
 PROCEDURE NewPointerHandler(ptr, len: INTEGER);
-BEGIN
-  Log("NewPointer called.");  Log(crlf);
-  ExitProcess(99)
-END NewPointerHandler;
+BEGIN wn; Trap("** New pointer handler not istalled") END NewPointerHandler;
 
 
 (* ------------------ Winshim internal assertion handlers ------------------- *)

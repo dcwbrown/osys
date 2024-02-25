@@ -2783,9 +2783,11 @@ PROCEDURE Header*;
 BEGIN
   Trace(TraceAny, "Header - module initialisation code entry point."); l.n(Tr);
   Hdr.initcode := X64.PC;  (* Set entry point address *)
+  (*
   (* Save non-volatile registers (for testing from Patchouli Oberon) *)
   PushReg(RBX);  PushReg(RBP);  PushReg(RSI);  PushReg(RDI);
   PushReg(12);   PushReg(13);   PushReg(14);   PushReg(15);
+  *)
 END Header;
 
 PROCEDURE wsize(size: INTEGER);
@@ -2830,8 +2832,10 @@ VAR
   line:   INTEGER;
   pc:     INTEGER;
 BEGIN
+  (*
   PopReg(15);   PopReg(14);   PopReg(13);   PopReg(12);
   PopReg(RDI);  PopReg(RSI);  PopReg(RBP);  PopReg(RBX);
+  *)
   X64.Emit(0C3H);  (* ret *)
   Disassemble(0, "Return");
   X64.Emit(2EH);  (* Mark end of code with ignored instruction 'seg cs' *)

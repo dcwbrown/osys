@@ -1,5 +1,7 @@
 MODULE ob;
 
+(*$la+*)
+
 (* Hosted Oberon build command                                                *)
 (*                                                                            *)
 (* Given a single module to build, works out what to compile to satisfy its   *)
@@ -348,6 +350,11 @@ BEGIN
   WriteHuman(end - start, 6);   H.wsn(" ms");
   IF K.Allocated > maxalloc THEN maxalloc := K.Allocated END;
   H.ws("Max heap size: "); WriteHuman(maxalloc, 1); H.wsn(".");
+
+  (*
+  (* Force crash *)
+  start := 0; H.wi(12 DIV start);
+  *)
 END Build;
 
 
@@ -465,5 +472,9 @@ BEGIN
   (*AddExecutableDirToSourceSearchpath;*)
   Build;
 
-  Oberon.GC
+  Oberon.GC;
+
+  (* Force crash *)
+  ASSERT(FALSE);
+  Modules := NIL;  H.wsn(Modules.modname)
 END ob.
