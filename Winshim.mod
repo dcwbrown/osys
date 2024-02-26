@@ -555,19 +555,25 @@ BEGIN
     WHILE name[0] # 0X DO
       SYSTEM.GET(adr, line);  INC(adr, 8);
       SYSTEM.GET(adr, pc);    INC(adr, 8);
+      (*
       ws("Locate line: body name "); ws(name);
       ws(", first line "); wi(line);
       ws(", first pc ");   wh(pc);  wsn("H.");
       (*DumpMem(2, adr, 0, 80H);*)
+      *)
       GetUnsigned(adr, i);
       (*ws("  got "); wh(i); wsn("H.");*)
-      WHILE i # 0 DO
+      WHILE (i # 0) & (offset > pc + i) DO
         INC(pc, i);  GetUnsigned(adr, i);  INC(line, i);
-        ws("  line "); wi(line); ws(", pc "); wh(pc); wsn("H.");
+        (*ws("  line "); wi(line); ws(", pc "); wh(pc); ws("H, offset "); wh(offset); wsn("H.");*)
         GetUnsigned(adr, i)
       END;
-      (*DumpMem(2, adr, 0, 80H);*)
-      GetString(adr, name);
+      IF (offset > pc) & (offset <= pc + i) THEN
+        ws("** on line "); wi(line); ws(" in "); ws(name); wsn(" **");
+        name[0] := 0X
+      ELSE
+        GetString(adr, name)
+      END;
     END
   END;
 
