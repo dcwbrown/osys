@@ -197,8 +197,8 @@ BEGIN
     WriteHuman(X64.PC, 12);
     WriteHuman(ORG.Varsize, 12);
     WriteHuman(endTime - startTime, 6);
-    WriteHuman(ORG.Hdr.commands - ORG.Hdr.pointers, 5);
-    WriteHuman(ORG.Hdr.lines    - ORG.Hdr.commands, 4);
+    WriteHuman(ORG.Hdr.commands - ORG.Hdr.pointers, 11);
+    WriteHuman(ORG.Hdr.lines    - ORG.Hdr.commands, 6);
     WriteHuman(ORG.Hdr.exports  - ORG.Hdr.lines,    7);
     WriteHuman(ORG.Hdr.imports  - ORG.Hdr.exports,  8);
     WriteHuman(ORG.Hdr.length   - ORG.Hdr.imports,  8);
@@ -319,22 +319,41 @@ VAR
   varsize:    INTEGER;
   start, end: INTEGER;  (* Times *)
   maxalloc:   INTEGER;
+  maxptrs:    INTEGER;
+  maxcmd:     INTEGER;
+  maxannot:   INTEGER;
+  maxexport:  INTEGER;
+  maximport:  INTEGER;
+  i:          INTEGER;
 BEGIN
   SortModulesIntoBuildOrder;
 
   H.wsl("Module", LongestModname + 2);  H.wsl("File", LongestFilename);
-  H.wsn("        code         VAR    ms ptrs cmd  annot  export  import      heap");
-  codesize := 0;
-  varsize  := 0;
-  maxalloc := 0;
-  start    := H.Time();
+  H.wsn("        code         VAR    ms       ptrs  cmd  annot  export  import      heap");
+  codesize  := 0;
+  varsize   := 0;
+  maxalloc  := 0;
+  maxptrs   := 0;
+  maxcmd    := 0;
+  maxannot  := 0;
+  maxexport := 0;
+  maximport := 0;
+  start     := H.Time();
 
   WHILE Modules # NIL DO
     Compile(Modules);
+    INC(codesize, X64.PC);
+    INC(varsize, ORG.Varsize);
+    maxalloc  := ORG.Max(maxalloc,  K.Allocated);
+    maxptrs   := ORG.Max(maxptrs,   ORG.Hdr.commands - ORG.Hdr.pointers);
+    maxcmd    := ORG.Max(maxcmd,    ORG.Hdr.lines    - ORG.Hdr.commands);
+    maxannot  := ORG.Max(maxannot,  ORG.Hdr.exports  - ORG.Hdr.lines);
+    maxexport := ORG.Max(maxexport, ORG.Hdr.imports  - ORG.Hdr.exports);
+    maximport := ORG.Max(maximport, ORG.Hdr.length   - ORG.Hdr.imports);
+
     IF ORS.errcnt # 0 THEN H.ExitProcess(99) END;
     IF Modules.modname # "Winshim" THEN WinPE.AddModule(Modules.codename) END;
     Modules := Modules.next;
-    IF K.Allocated > maxalloc THEN maxalloc := K.Allocated END;
     Oberon.GC;
     INC(codesize, X64.PC);  INC(varsize, ORG.Varsize)
   END;
@@ -343,11 +362,22 @@ BEGIN
   WinPE.Generate(PEname, LoadFlags);
 
   end := H.Time();
-  H.wsl("Total", LongestModname + LongestFilename + 2);
+
+  H.wb(LongestModname + LongestFilename);
+  H.wsn("    ==========  ==========  ====      =====  ====  =====  ======  ======  ========");
+
+  H.wsl("Total:", LongestModname + LongestFilename + 2);
+
   WriteHuman(codesize, 12);     WriteHuman(varsize,  12);
-  WriteHuman(end - start, 6);   H.wsn(" ms");
+  WriteHuman(end - start, 6);   H.ws("  Max:");
+
   IF K.Allocated > maxalloc THEN maxalloc := K.Allocated END;
-  H.ws("Max heap size: "); WriteHuman(maxalloc, 1); H.wsn(".")
+  WriteHuman(maxptrs,   5);
+  WriteHuman(maxcmd,    6);
+  WriteHuman(maxannot,  7);
+  WriteHuman(maxexport, 8);
+  WriteHuman(maximport, 8);
+  WriteHuman(maxalloc,  10);  H.wn
 END Build;
 
 
