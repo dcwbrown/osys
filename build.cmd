@@ -2,21 +2,20 @@
 ::
 :: The first build uses the previous knowngood compiler, which will build the
 :: first new .exe with the old WinPE code. Therefore the first build must
-:: use the old winshim code to guarantee that the winshim global variable
+:: use the old WinHost code to guarantee that the WinHost global variable
 :: layout matches that of the knowngood WinPE.
 ::
-:: To add functionality that requires a new winshim, it is therefore necessary
-:: to build once with just winshim updated, then again with functionality
-:: dependent on winshim.
+:: To add functionality that requires a new WinHost, it is therefore necessary
+:: to build once with just WinHost updated, then again with functionality
+:: dependent on WinHost.
 ::
 @rd /s /q buildpre 2>NUL
 @rd /s /q build1 2>NUL
 @rd /s /q build2 2>NUL
-goto firstbuild
 ::
 :: If WinPE has changed a prebuild will be required
-@sed -n '/Start of/,/End of/p' knowngood\Winshim.mod >t1
-@sed -n '/Start of/,/End of/p' Winshim.mod >t2
+@sed -n '/Start of/,/End of/p' knowngood\WinHost.mod >t1
+@sed -n '/Start of/,/End of/p' WinHost.mod >t2
 @fc t1 t2 >NUL
 @if not errorlevel 1 goto firstbuild
 ::
