@@ -7,7 +7,7 @@ MODULE ob;
 
 
 IMPORT
-  SYSTEM, H := Winshim, K := Kernel, Files, Texts, Oberon, ORS, X64, ORG, ORP, WinPE, WinArgs;
+  SYSTEM, H := WinHost, K := Kernel, Files, Texts, Oberon, ORS, X64, ORG, ORP, WinPE, WinArgs;
 
 TYPE
   ModuleName = ARRAY 1024 OF CHAR;
@@ -148,15 +148,15 @@ BEGIN
         IF sym # ORS.ident THEN Expected(module.filename, "expected id (2).") END;
         impname := ORS.id;  ORS.Get(sym)
       END;
-      IF (impname # "SYSTEM") & (impname # "Winshim") & (impname # "Kernel") THEN
+      IF (impname # "SYSTEM") & (impname # "WinHost") & (impname # "Kernel") THEN
         AddImport(module, impname)
       END
     UNTIL sym # ORS.comma
   END;
 
-  (* All modules need Winshim, excepting Winshim itself *)
-  IF module.modname # "Winshim" THEN
-    AddImport(module, "Winshim");
+  (* All modules need WinHost, excepting WinHost itself *)
+  IF module.modname # "WinHost" THEN
+    AddImport(module, "WinHost");
     IF module.modname # "Kernel" THEN
       AddImport(module, "Kernel")
     END
@@ -203,14 +203,6 @@ BEGIN
     WriteHuman(ORG.Hdr.imports  - ORG.Hdr.exports,  8);
     WriteHuman(ORG.Hdr.length   - ORG.Hdr.imports,  8);
     WriteHuman(K.Allocated, 10);
-(*
-    H.ws(", pointers: ");    WriteHuman(ORG.Hdr.commands - ORG.Hdr.pointers, 1);
-    H.ws(", commands: ");    WriteHuman(ORG.Hdr.lines    - ORG.Hdr.commands, 1);
-    H.ws(", annotations: "); WriteHuman(ORG.Hdr.exports  - ORG.Hdr.lines, 1);
-    H.ws(", exports: ");     WriteHuman(ORG.Hdr.imports  - ORG.Hdr.exports, 1);
-    H.ws(", imports: ");     WriteHuman(ORG.Hdr.length   - ORG.Hdr.imports, 1);
-    H.ws(", allocated: ");   WriteHuman(K.Allocated, 1);
-*)
     H.wn
   END
 END Compile;
@@ -352,10 +344,9 @@ BEGIN
     maximport := ORG.Max(maximport, ORG.Hdr.length   - ORG.Hdr.imports);
 
     IF ORS.errcnt # 0 THEN H.ExitProcess(99) END;
-    IF Modules.modname # "Winshim" THEN WinPE.AddModule(Modules.codename) END;
+    IF Modules.modname # "WinHost" THEN WinPE.AddModule(Modules.codename) END;
     Modules := Modules.next;
-    Oberon.GC;
-    INC(codesize, X64.PC);  INC(varsize, ORG.Varsize)
+    Oberon.GC
   END;
 
   PEname := ""; H.Append(Modulename, PEname);  H.Append(".exe", PEname);

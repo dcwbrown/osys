@@ -1,6 +1,6 @@
 MODULE ORP;  (*N. Wirth 1.7.97 / 17.9.2018  Oberon compiler for RISC in Oberon-07*)
 
-IMPORT SYSTEM, H := Winshim, Texts, Oberon, ORS, ORB, X64, ORG, l := Listing;
+IMPORT SYSTEM, H := WinHost, Texts, Oberon, ORS, ORB, X64, ORG, l := Listing;
 
   (*Author: Niklaus Wirth, 2014.
     Parser of Oberon-RISC compiler. Uses Scanner ORS to obtain symbols (tokens),

@@ -1,6 +1,6 @@
 MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
 
-IMPORT SYSTEM, H := Winshim;
+IMPORT SYSTEM, H := WinHost;
 
 VAR
   (* Every allocated block on the heap starts 64/tag, 64/unset  *)

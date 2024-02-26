@@ -1,6 +1,6 @@
 MODULE Oberon;
 
-IMPORT SYSTEM, H := Winshim, K := Kernel, Files, Texts;
+IMPORT SYSTEM, H := WinHost, K := Kernel, Files, Texts;
 
 VAR
   Log*: Texts.Text;

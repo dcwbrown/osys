@@ -1,6 +1,6 @@
 MODULE WinPE;  (* Create exe from a list of compiled Oberon modules *)
 (* DCWB 14.04.2023..10.02.2024 *)
-IMPORT SYSTEM, H := Winshim, K := Kernel, X64, Files;
+IMPORT SYSTEM, H := WinHost, K := Kernel, X64, Files;
 
 
 CONST
@@ -223,7 +223,7 @@ BEGIN
   target := RvaModules + Bootstrap.Header.imports + BootstrapVarBytes;
 
   (* **NOTE** these imports must be in exactly the same order as the *)
-  (* corresponding procedure variable declarations in winshim.mode   *)
+  (* corresponding procedure variable declarations in WinHost.mode   *)
 
   Idt.Kernel32LookupTable := FieldRVA(Idt.Kernel32Lookups);
   Idt.Kernel32Dllnameadr  := FieldRVA(Idt.Kernel32Dllname);
@@ -521,8 +521,8 @@ VAR
   f: Files.File;
   r: Files.Rider;
 BEGIN
-  f := Files.Old("Winshim.code");
-  IF f = NIL THEN H.wsn("Couldn't open Winshim.code."); K.Halt(99) END;
+  f := Files.Old("WinHost.code");
+  IF f = NIL THEN H.wsn("Couldn't open WinHost.code."); K.Halt(99) END;
   Files.Set(r, f, 0);
   Files.ReadBytes(r, Bootstrap,  SYSTEM.SIZE(BootstrapBuffer));
   (*H.ws("Bootstrap bytes read: "); w.i(Files.Pos(r)); H.wsn(".");*)

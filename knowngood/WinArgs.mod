@@ -1,6 +1,6 @@
 MODULE WinArgs;  (* DCWB 14.02.2024 *)
 
-IMPORT SYSTEM, H := Winshim;
+IMPORT SYSTEM, H := WinHost;
 
 VAR
   Commandline: INTEGER;  (* Address of UTF16 string obtained from Windows *)

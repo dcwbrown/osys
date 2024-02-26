@@ -12,6 +12,7 @@
 @rd /s /q buildpre 2>NUL
 @rd /s /q build1 2>NUL
 @rd /s /q build2 2>NUL
+goto firstbuild
 ::
 :: If WinPE has changed a prebuild will be required
 @sed -n '/Start of/,/End of/p' knowngood\Winshim.mod >t1

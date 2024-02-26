@@ -1,4 +1,4 @@
-MODULE Winshim;  IMPORT SYSTEM;
+MODULE WinHost;  IMPORT SYSTEM;
 
 CONST
   (* Platform independent file open kinds *)
@@ -152,7 +152,7 @@ VAR
   Stdout:     INTEGER;
   crlf*:      ARRAY 3 OF CHAR;
   Log*:       PROCEDURE(s: ARRAY OF BYTE);
-  OberonAdr*: INTEGER;   (* Address of first module (Winshim.mod) *)
+  OberonAdr*: INTEGER;   (* Address of first module (WinHost.mod) *)
   LoadAdr:    INTEGER;   (* Where to load next module *)
   HWnd:       INTEGER;   (* Set if a window has been created *)
 
@@ -405,7 +405,7 @@ END DumpMem;
 (* System functions have not been set up, meaning                             *)
 (*   The code may not use system functions such as NEW, ASSERT etc.           *)
 (*   Faults like Array size mismatch or unterminated string will crash        *)
-(* Any global variables set to code addresses must be reset after Winshim is   *)
+(* Any global variables set to code addresses must be reset after WinHost is   *)
 (*   moved to Oberon memory.                                                  *)
 (* -------------------------------------------------------------------------- *)
 
@@ -658,7 +658,7 @@ PROCEDURE NewPointerHandler(ptr, len: INTEGER);
 BEGIN wn; Trap("** New pointer handler not istalled") END NewPointerHandler;
 
 
-(* ------------------ Winshim internal assertion handlers ------------------- *)
+(* ------------------ WinHost internal assertion handlers ------------------- *)
 
 PROCEDURE assertmsg(expectation: BOOLEAN; msg: ARRAY OF CHAR);
 VAR res: INTEGER;
@@ -671,7 +671,7 @@ BEGIN
 END assertmsg;
 
 PROCEDURE assert(expectation: BOOLEAN);
-BEGIN IF ~expectation THEN Trap("** Winshim assertion failure **") END
+BEGIN IF ~expectation THEN Trap("** WinHost assertion failure **") END
 END assert;
 
 
@@ -1090,7 +1090,7 @@ BEGIN
   Log := WriteStdout;
 
   IF Verbose IN LoadFlags THEN
-    ws("Winshim starting, Header at "); wh(SYSTEM.VAL(INTEGER, Header)); wsn("H.")
+    ws("WinHost starting, Header at "); wh(SYSTEM.VAL(INTEGER, Header)); wsn("H.")
   END;
   (*
   ws("Stdout handle "); wh(Stdout);            wsn("H.");
@@ -1128,9 +1128,9 @@ BEGIN
 
   LoadRemainingModules;
 
-  (*MessageBoxA(0, SYSTEM.ADR("Complete."), SYSTEM.ADR("Winshim"), 0);*)
-  (*wsn("Winshim complete.");*)
-  (*MessageBox("Winshim", "Complete");*)
+  (*MessageBoxA(0, SYSTEM.ADR("Complete."), SYSTEM.ADR("WinHost"), 0);*)
+  (*wsn("WinHost complete.");*)
+  (*MessageBox("WinHost", "Complete");*)
 
   ExitProcess(0);
-END Winshim.
+END WinHost.

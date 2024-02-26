@@ -1,6 +1,6 @@
 MODULE Texts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 20.3.2017*)
 
-IMPORT SYSTEM, Files, Fonts, P := Winshim;
+IMPORT SYSTEM, Files, Fonts, H := WinHost;
 
 CONST (*scanner symbol classes*)
   Inval*  = 0;  (* invalid symbol                     *)
@@ -87,21 +87,21 @@ VAR
 
 PROCEDURE DumpBuffer(B: Buffer);
 BEGIN
-  P.ws("at ");          P.wh(SYSTEM.VAL(INTEGER, B));
-  P.ws("H, .len ");     P.wh(B.len);
-  P.ws("H, .header ");  P.wh(SYSTEM.VAL(INTEGER, B.header));
-  P.ws("H, .last ");    P.wh(SYSTEM.VAL(INTEGER, B.last));
-  P.ws("H")
+  H.ws("at ");          H.wh(SYSTEM.VAL(INTEGER, B));
+  H.ws("H, .len ");     H.wh(B.len);
+  H.ws("H, .header ");  H.wh(SYSTEM.VAL(INTEGER, B.header));
+  H.ws("H, .last ");    H.wh(SYSTEM.VAL(INTEGER, B.last));
+  H.ws("H")
 END DumpBuffer;
 
 PROCEDURE DumpWriter(W: Writer);
 BEGIN
-  P.ws("at ");            P.wh(SYSTEM.ADR(W));
-  P.ws("H, .buf (");      DumpBuffer(W.buf);
-  P.ws("), .fnt at ");    P.wh(SYSTEM.VAL(INTEGER, W.fnt));
-  P.ws("H, .col ");       P.wh(W.col);
-  P.ws("H, .rider at ");  P.wh(SYSTEM.VAL(INTEGER, W.rider));
-  P.ws("H")
+  H.ws("at ");            H.wh(SYSTEM.ADR(W));
+  H.ws("H, .buf (");      DumpBuffer(W.buf);
+  H.ws("), .fnt at ");    H.wh(SYSTEM.VAL(INTEGER, W.fnt));
+  H.ws("H, .col ");       H.wh(W.col);
+  H.ws("H, .rider at ");  H.wh(SYSTEM.VAL(INTEGER, W.rider));
+  H.ws("H")
 END DumpWriter;
 
 
@@ -148,17 +148,17 @@ VAR
   tag:  CHAR;
   len:  INTEGER;
 BEGIN
-  (*P.ws("Texts.Open('"); P.ws(name); P.wsn("').");*)
+  (*H.ws("Texts.Open('"); H.ws(name); H.wsn("').");*)
   f := Files.Old(name);
-  (*P.ws("  opened, f = "); P.wh(SYSTEM.VAL(INTEGER, f)); P.wsn("H.");*)
+  (*H.ws("  opened, f = "); H.wh(SYSTEM.VAL(INTEGER, f)); H.wsn("H.");*)
   IF f # NIL THEN
     Files.Set(R, f, 0); Files.Read(R, tag);
-    (*P.ws("  read tag: "); P.wh(ORD(tag)); P.wsn("H.");*)
+    (*H.ws("  read tag: "); H.wh(ORD(tag)); H.wsn("H.");*)
     IF tag = TextTag THEN
-      (*P.wsn("  Tag matches - this is an Oberon formatted text file.");*)
+      (*H.wsn("  Tag matches - this is an Oberon formatted text file.");*)
       Load(R, T)
     ELSE (*Ascii file*)
-      (*P.wsn("  Ascii text file.");*)
+      (*H.wsn("  Ascii text file.");*)
       len := Files.Length(f); Q := Trailer();
       NEW(q); q.fnt := Fonts.Default; q.col := 1; q.voff := 0; q.f := f; q.off := 0; q.len := len;
       Q.next := q; q.prev := Q; q.next := Q; Q.prev := q; T.trailer := Q; T.len := len
@@ -216,10 +216,10 @@ END Close;
 
 PROCEDURE OpenBuf* (B: Buffer);
 BEGIN
-  (*P.ws("OpenBuf(B): "); DumpBuffer(B); P.wn;*)
+  (*H.ws("OpenBuf(B): "); DumpBuffer(B); H.wn;*)
   NEW(B.header); (*null piece*)
   B.last := B.header;  B.len := 0;
-  (*P.ws("OpenBuf returning: ");  DumpBuffer(B); P.wn;*)
+  (*H.ws("OpenBuf returning: ");  DumpBuffer(B); H.wn;*)
 END OpenBuf;
 
 PROCEDURE FindPiece (T: Text; pos: INTEGER; VAR org: INTEGER; VAR pce: Piece);
@@ -299,12 +299,12 @@ END Insert;
 PROCEDURE Append* (T: Text; B: Buffer);
 BEGIN
   (*
-  P.ws("Texts.Append(T, B at "); P.wh(SYSTEM.VAL(INTEGER, B));
-  P.ws("H by val, ");            P.wh(SYSTEM.ADR(B));
-  P.ws("H by adr), B.len ");     P.wh(B.len);
-  P.ws("H, B.header ");          P.wh(SYSTEM.VAL(INTEGER, B.header));
-  P.ws("H, B.last ");            P.wh(SYSTEM.VAL(INTEGER, B.last));
-  P.wsn("H.");
+  H.ws("Texts.Append(T, B at "); H.wh(SYSTEM.VAL(INTEGER, B));
+  H.ws("H by val, ");            H.wh(SYSTEM.ADR(B));
+  H.ws("H by adr), B.len ");     H.wh(B.len);
+  H.ws("H, B.header ");          H.wh(SYSTEM.VAL(INTEGER, B.header));
+  H.ws("H, B.last ");            H.wh(SYSTEM.VAL(INTEGER, B.last));
+  H.wsn("H.");
   *)
   Insert(T, T.len, B)
 END Append;
@@ -468,16 +468,16 @@ END Scan;
 
 PROCEDURE OpenWriter* (VAR W: Writer);
 BEGIN
-  (*P.wsn("Texts.OpenWriter creating W.buf.");*)
+  (*H.wsn("Texts.OpenWriter creating W.buf.");*)
   NEW(W.buf);
   OpenBuf(W.buf);
-  (*P.ws("OpenBuf returned buffer "); DumpBuffer(W.buf); P.wsn(".");*)
+  (*H.ws("OpenBuf returned buffer "); DumpBuffer(W.buf); H.wsn(".");*)
   W.fnt := Fonts.Default;
   W.col := 15;
   W.voff := 0;
-  (*P.ws("After W.voff :=, W "); DumpWriter(W); P.wsn(".");*)
+  (*H.ws("After W.voff :=, W "); DumpWriter(W); H.wsn(".");*)
   Files.Set(W.rider, Files.New(""), 0);
-  (*P.ws("OpenWriter returning W "); DumpWriter(W); P.wsn(".");*)
+  (*H.ws("OpenWriter returning W "); DumpWriter(W); H.wsn(".");*)
 END OpenWriter;
 
 PROCEDURE SetFont* (VAR W: Writer; fnt: Fonts.Font);
@@ -495,7 +495,7 @@ END SetOffset;
 PROCEDURE Write* (VAR W: Writer; ch: CHAR);
 VAR p: Piece;
 BEGIN
-  (*P.ws("Texts.Write(W, '"); P.wc(ch); P.ws("'). W.buf: "); DumpBuffer(W.buf); P.wn;*)
+  (*H.ws("Texts.Write(W, '"); H.wc(ch); H.ws("'). W.buf: "); DumpBuffer(W.buf); H.wn;*)
   IF (W.buf.last.fnt # W.fnt) OR (W.buf.last.col # W.col) OR (W.buf.last.voff # W.voff) THEN
     NEW(p);
     p.f   := Files.Base(W.rider);
@@ -519,8 +519,8 @@ PROCEDURE WriteString* (VAR W: Writer; s: ARRAY OF CHAR);
 VAR i: INTEGER;
 BEGIN
   (*
-  P.ws("Texts.WriteString(W, '"); P.ws(s); P.wsn("').");
-  P.ws("W: "); DumpWriter(W); P.wn;
+  H.ws("Texts.WriteString(W, '"); H.ws(s); H.wsn("').");
+  H.ws("W: "); DumpWriter(W); H.wn;
   *)
   i := 0;
   WHILE s[i] >= " " DO Write(W, s[i]); INC(i) END

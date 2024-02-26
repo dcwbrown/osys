@@ -1,6 +1,6 @@
 MODULE Files;  (* DCWB 11.01.2024..10.02.2024 *)
 
-IMPORT SYSTEM, Kernel, P := Winshim;
+IMPORT SYSTEM, Kernel, P := WinHost;
 
 (* DCWB 10.02.2023 *)
 

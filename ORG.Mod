@@ -13,7 +13,7 @@ MODULE ORG;  (* DCWB Jun 2023 to Feb 2024; Code generator for X64 *)
     applied.
 *)
 
-IMPORT SYSTEM, H := Winshim, Files, ORS, ORB, X64, l := Listing, K := Kernel;
+IMPORT SYSTEM, H := WinHost, Files, ORS, ORB, X64, l := Listing, K := Kernel;
 
 CONST
   WordSize* = ORB.WordSize;
