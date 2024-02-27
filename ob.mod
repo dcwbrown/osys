@@ -5,7 +5,6 @@ MODULE ob;
 (* Given a single module to build, works out what to compile to satisfy its   *)
 (* imports, compiles them, and combines all objects into a single executable. *)
 
-
 IMPORT
   SYSTEM, H := WinHost, K := Kernel, Files, Texts, Oberon, ORS, X64, ORG, ORP, WinPE, WinArgs;
 
@@ -321,7 +320,7 @@ BEGIN
   SortModulesIntoBuildOrder;
 
   H.wsl("Module", LongestModname + 2);  H.wsl("File", LongestFilename);
-  H.wsn("        code         VAR    ms       ptrs  cmd  annot  export  import      heap");
+  H.wsn("        code         VAR    ms       ptrs   cmd  annot  export  import      heap");
   codesize  := 0;
   varsize   := 0;
   maxalloc  := 0;

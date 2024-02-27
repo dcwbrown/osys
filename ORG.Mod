@@ -19,15 +19,7 @@ CONST
   WordSize* = ORB.WordSize;
   MaxImpMod = 32;     (* Max no. imported modules *)
 
-
-  (* System library procedure indices *)
-  NewProc                = 0;
-  (* error traps *)
-  AssertionFailureProc   = 1;
-  ArraySizeMismatchProc  = 2;
-  UnterminatedStringProc = 3;
-
-  (* Trace flags *)
+     (* Trace flags *)
   TraceAny*      = 0;
   TraceMakeItem* = 1;
 
@@ -640,7 +632,10 @@ BEGIN
     ASSERT((x.type.form = ORB.Record) OR (x.type.form = ORB.Array) & (x.type.len < 0));
     (* Load length / type descriptor address *)
     LoadMem(reg, Eadr, FALSE, 8, RSP, -1, 0, x.n + 8 * X64.SPO + 8);
-    IF x.type.form = ORB.Record THEN  (* Get record size from type descriptor *)
+    IF x.type.form = ORB.Array THEN
+      (* TODO multiply by element size *)
+      IF x.type.base.size # 1 THEN ASSERT(FALSE) END;
+    ELSIF x.type.form = ORB.Record THEN  (* Get record size from type descriptor *)
       LoadMem(reg, Eadr, FALSE, 8, reg, -1, 0, 0);   (* Load length from first qword of type descriptor *)
     END
   ELSIF x.type.form = ORB.Array THEN ASSERT(x.type.len >= 1);
@@ -990,8 +985,7 @@ BEGIN
       IF dest.mode # Reg THEN Load(dest) END;
       AluOpToReg(op, src.mode, dest.n, X64.IsSigned(src.type), src.type.size, src.n, src.index, src.scale, offset);
       Disassemble(src.mode, opname)
-    END;
-    FreeRegs(src);
+    END
 
   END;
 
@@ -1187,7 +1181,7 @@ BEGIN Trace(TraceAny, "StoreStruct(x: "); l.Item(x, Tr);  l.s(", y: ", Tr); l.It
         (* Generate code to fail on differing size *)
         OpModRegRm(Cmp+1, Reg, slen, 8, dlen, -1, 0, 0, 0);
         X64.Emit(73H);   X64.Emit(6);  (* jae: if source fits in target *)
-        CallSysFn(ArraySizeMismatchProc)
+        CallSysFn(H.ArraySizeMismatchProc)
       END
     END;
 
@@ -1236,7 +1230,7 @@ BEGIN Trace(TraceAny, "CopyString(x: "); l.Item(x, Tr);  l.s(", y: ", Tr); l.Ite
     (* Check length at run time *)
     OpModRegRm(Cmp+1, Reg, slen, 8, dlen, -1, 0, 0, 0);
     X64.Emit(76H);   X64.Emit(6);  (* jbe: if source fits in dest skip failure *)
-    CallSysFn(ArraySizeMismatchProc)
+    CallSysFn(H.ArraySizeMismatchProc)
   END;
 
   (* Consider: stop copy at first 0, enforce 0 if none *)
@@ -1768,12 +1762,12 @@ BEGIN Trace(TraceAny, "Assert(x: ");  l.Item(x, Tr);  l.sn(")", Tr);
   IF x.mode # Cond THEN LoadFlags(x) END;
   IF x.n <= 1 THEN (* assertion is constant at compile time *)
     ASSERT(x.offset = 0);  ASSERT(x.index = 0);
-    IF x.n = 0 THEN CallSysFn(AssertionFailureProc) END
+    IF x.n = 0 THEN CallSysFn(H.AssertionFailureProc) END
   ELSE
     ASSERT(x.n DIV 16 = 8);
     X64.Emit(x.n - 10H);  X64.Emit(6);  (* Skip over call instruction if condition met *)
     FixLink(x.offset); (* FALSE chain jumps to assert trap *)
-    CallSysFn(AssertionFailureProc);
+    CallSysFn(H.AssertionFailureProc);
     FixLink(x.index); (* TRUE chain bypasses asser trap *)
   END;
   Disassemble(x.mode, "ASSERT")
@@ -1783,7 +1777,7 @@ BEGIN Trace(TraceAny, "Assert(x: ");  l.Item(x, Tr);  l.sn(")", Tr);
     ASSERT(x.n DIV 16 = 8);
     X64.Emit(x.n - 10H);  X64.Emit(6);  (* Skip over call instruction if condition met *)
   END;
-  IF x.n # 1 THEN CallSysFn(AssertionFailureProc) END;  (* Jump to assert failure handler *)
+  IF x.n # 1 THEN CallSysFn(H.AssertionFailureProc) END;  (* Jump to assert failure handler *)
   *)
 END Assert;
 
@@ -1795,7 +1789,7 @@ BEGIN
   PushAdr(x);      X64.AdjustStack(1);
   PushTypeAdr(x);  X64.AdjustStack(1);
   FreeRegs(x);
-  CallSysFn(NewProc);
+  CallSysFn(H.NewProc);
   X64.AdjustStack(-2);
   Disassemble(x.mode, "New")
 END New;
@@ -1946,7 +1940,7 @@ BEGIN
     ELSIF op = ORS.rdiv  THEN op := Xor
     ELSE l.s("** op = ", Tr); l.i(op, Tr); l.sn(" **", Tr); ASSERT(FALSE)
     END;
-    Dyadic(op, x, y)
+    Dyadic(op, x, y);  FreeRegs(y)
   END;
   Disassemble(0, "SetOp")
 END SetOp;
@@ -2097,6 +2091,7 @@ BEGIN
   Depar(x);  Depar(y);
   ASSERT(x.mode >= Const);  ASSERT(y.mode >= Const);
   IF (y.mode = Const) & (y.n >= -80000000H) & (y.n < 80000000H) THEN
+    ASSERT(x.mode # Const);
     IF x.type.size <= 4 THEN immsize := x.type.size ELSE immsize := 4 END;
     IF (y.n >= -80H) & (y.n < 80H) THEN immsize := 1 END;
     IF    x.type.size = 1 THEN OpItem(80H, 7, x.type.size, immsize, x)
@@ -2190,7 +2185,7 @@ Trace(TraceAny, "StringRelation("); l.Sym(op, Tr);
   X64.Emit(74H);  X64.Emit(6);                          (* je     end               *)
   Disassemble(0, "If strings match");
 
-  CallSysFn(UnterminatedStringProc);  (* error handler *)
+  CallSysFn(H.UnterminatedStringProc);  (* error handler *)
   Disassemble(0, "Unterminated string error trap");
 
   RestoreReg(RSI, xchgsi);
@@ -2228,7 +2223,7 @@ BEGIN
     (* Convert op to x86 opcode *)
     IF op = ORS.plus THEN op := Plus ELSE op := Minus END;
     Load(x);
-    Dyadic(op, x, y);
+    Dyadic(op, x, y);  FreeRegs(y);
     Disassemble(y.mode, "AddOp")
   END
 END AddOp;
@@ -2447,16 +2442,35 @@ BEGIN
 END Field;
 
 PROCEDURE Index*(VAR x, y: Item);   (* x := x[y] *)
-VAR elemsize: INTEGER;
+VAR elemsize: INTEGER;  xlength: Item;
 BEGIN Trace(TraceAny, "Index(x: "); l.Item(x, Tr); l.s(", y: ", Tr); l.Item(y, Tr); l.n(Tr);
   ASSERT(x.type.form = ORB.Array);
   ASSERT(x.mode IN {Stkind, Strucp, Eadr, String, Global, Import});
-  IF x.mode IN {Stkind, Strucp} THEN x.mode := Stkind END;
-
   elemsize := x.type.base.size;
   Trace(TraceAny, "  "); l.s("x base type: ", Tr); l.Type(x.type.base, Tr); l.n(Tr);
   Trace(TraceAny, "  "); l.s("elemsize: ", Tr); l.i(elemsize, Tr); l.n(Tr);
 
+  (* Check index in range *)
+  IF ~ORS.Hasty THEN
+    IF (y.mode = Const) & ((y.n < 0) OR ((x.type.len >= 0) & (y.n >= x.type.len))) THEN
+      ORS.Mark("Bad index")
+    ELSIF (y.mode # Const) OR (x.type.len < 0) THEN
+      ZeroFill(xlength); X64.ClearMode(xlength); xlength.type := ORB.intType;
+      IF x.type.len < 0 THEN
+        ASSERT(x.mode = Strucp);
+        xlength.mode := Eadr;  xlength.offset := x.n + 8;  xlength.n := RSP
+      ELSE
+        xlength.mode := Const;  xlength.n := x.type.len
+      END;
+      Compare(xlength, y);
+      X64.Emit(73H);   X64.Emit(6);  (* jae: if index within array *)
+      CallSysFn(H.IndexOutOfRangeProc);
+      FreeRegs(xlength)
+    END;
+    Trace(TraceAny, "  After range check y: "); l.Item(y, Tr); l.n(Tr)
+  END;
+
+  (* Index into array *)
   IF y.mode = Const THEN
     INC(x.offset, y.n * elemsize)
   ELSE
@@ -2620,7 +2634,7 @@ BEGIN
   ASSERT(inc.mode = Const);
   IF inc.n = 0 THEN ORS.Mark("zero increment"); inc.n := 1 END;
 
-  Dyadic(Cmp, loopvar, lim);
+  Dyadic(Cmp, loopvar, lim);  FreeRegs(lim);
   X64.Emit(0FH);
   IF inc.n > 0 THEN X64.Emit(8FH) ELSE X64.Emit(8CH) END; (* jg/jl *)
   L := X64.PC;
@@ -2641,7 +2655,7 @@ BEGIN
   IF var.mode = Eadr THEN ASSERT(var.n = RSP)
   ELSE ASSERT(var.mode IN {Global, Import}) END;
 
-  Dyadic(Plus, var, inc);
+  Dyadic(Plus, var, inc);  FreeRegs(inc);
   FreeRegs(var);
   CheckRegs("For loop termination");
   Disassemble(0, "For2");

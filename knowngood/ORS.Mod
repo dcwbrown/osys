@@ -56,6 +56,7 @@ VAR
   (* Compilation options *)
   ListCodegen*:  BOOLEAN;
   ListAssembly*: BOOLEAN;
+  Hasty*:        BOOLEAN;
 
 
 PROCEDURE CopyId*(VAR ident: Ident);
@@ -245,13 +246,17 @@ END Number;
 PROCEDURE comment;
 BEGIN GetCh;
   IF ch = "$" THEN GetCh;
-    IF ch = "l" THEN GetCh;
-      IF ch = "a" THEN GetCh;
-        IF ch = "-" THEN ListAssembly := FALSE; GetCh ELSIF ch = "+" THEN ListAssembly := TRUE; GetCh END
-      ELSIF ch = "c" THEN GetCh;
-        IF ch = "-" THEN ListCodegen := FALSE; GetCh ELSIF ch = "+" THEN ListCodegen := TRUE; GetCh END
+    WHILE (ch = "l") OR (ch = "h") DO
+      IF ch = "l" THEN GetCh;
+        IF ch = "a" THEN GetCh;
+          IF (ch = "-") OR (ch = "+") THEN ListAssembly := ch = "+"; GetCh END
+        ELSIF ch = "c" THEN GetCh;
+          IF (ch = "-") OR (ch = "+") THEN ListCodegen := ch = "+"; GetCh END
+        END
+      ELSIF ch = "h" THEN GetCh;
+        IF (ch = "-") OR (ch = "+") THEN Hasty := ch = "+"; GetCh END
       END
-    END;
+    END
   END;
   REPEAT
     WHILE ~R.eot & (ch # "*") DO
@@ -339,6 +344,7 @@ PROCEDURE Init*(T: Texts.Text; pos: INTEGER);
 BEGIN
   ListCodegen  := FALSE;
   ListAssembly := FALSE;
+  Hasty        := FALSE;
   errpos       := pos;
   errcnt       := 0;
   linebeg      := 0;
