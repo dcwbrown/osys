@@ -2437,16 +2437,20 @@ BEGIN Trace(TraceAny, "Index(x: "); l.Item(x, Tr); l.s(", y: ", Tr); l.Item(y, T
     IF (y.mode = Const) & ((y.n < 0) OR ((x.type.len >= 0) & (y.n >= x.type.len))) THEN
       ORS.Mark("Bad index")
     ELSIF (y.mode # Const) OR (x.type.len < 0) THEN
-      ZeroFill(xlength); X64.ClearMode(xlength); xlength.type := ORB.intType;
-      IF x.type.len < 0 THEN
-        ASSERT(x.mode = Strucp);
-        xlength.mode := Eadr;  xlength.offset := x.n + 8;  xlength.n := RSP
+      IF x.type.len < 0 THEN  ASSERT(x.mode = Strucp);
+        ZeroFill(xlength);
+        xlength.type   := ORB.intType;
+        xlength.mode   := Eadr;
+        xlength.n      := RSP;
+        xlength.offset := x.n + 8;
+        xlength.index  := -1
       ELSE
-        xlength.mode := Const;  xlength.n := x.type.len
+        MakeConstItem(xlength, ORB.intType, x.type.len)
       END;
-      Compare(xlength, y);
-      X64.Emit(73H);   X64.Emit(6);  (* jae: if index within array *)
+      Compare(y, xlength);
+      X64.Emit(72H);   X64.Emit(6);  (* jb: if index within array *)
       CallSysFn(H.IndexOutOfRangeProc);
+      Disassemble(0, "Array index trap");
       FreeRegs(xlength)
     END;
     Trace(TraceAny, "  After range check y: "); l.Item(y, Tr); l.n(Tr)
@@ -2456,6 +2460,7 @@ BEGIN Trace(TraceAny, "Index(x: "); l.Item(x, Tr); l.s(", y: ", Tr); l.Item(y, T
   IF y.mode = Const THEN
     INC(x.offset, y.n * elemsize)
   ELSE
+    IF x.mode = Strucp THEN x.mode := Stkind END;
     IF (elemsize IN {1, 2, 4, 8})
      & (x.mode IN {Stkind, Strucp, Eadr, Code, String, Global, Import})
      & (x.index < 0) THEN
@@ -2488,7 +2493,13 @@ BEGIN Trace(TraceAny, "DeRef(x), x: "); l.Item(x, Tr); l.n(Tr);
   ASSERT(x.type.form = ORB.Pointer);
   ASSERT(x.mode IN {Stkind, Eadr, Code, String, Global, Import});
   Load(x);  x.mode := Eadr;
-  Disassemble(0, "DeRef")
+  Disassemble(0, "DeRef");
+  IF ~ORS.Hasty THEN
+    OpModRegRm(85H, Reg, x.n, 8, x.n, -1, 0, 0, 0);  (* test reg,reg *)
+    X64.Emit(75H);  X64.Emit(6);  (* jnz: if pointer not NIL *)
+    CallSysFn(H.NilPointerDereferenceProc);
+    Disassemble(0, "NIL pointer trap")
+  END
 END DeRef;
 
 

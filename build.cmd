@@ -12,6 +12,7 @@
 @rd /s /q buildpre 2>NUL
 @rd /s /q build1 2>NUL
 @rd /s /q build2 2>NUL
+@rd /s /q buildtest 2>NUL
 ::
 :: If WinPE has changed a prebuild will be required
 @sed -n '/Start of/,/End of/p' knowngood\WinHost.mod >t1
@@ -47,14 +48,32 @@ if exist ..\buildpre\ob.exe (..\buildpre\ob ob) else (..\knowngood\ob ob)
 @cd build2
 ..\build1\ob ob
 @if errorlevel 1 goto end
-@if exist ob.exe goto ok
+@if exist ob.exe goto obexists
 ::
 @echo.
 @echo Build failed. ob.exe not created.
 @goto end
-:ok
+:obexists
 @cd ..
+::
 @echo.
+@echo --------------------------------- Build tests ----------------------------------
+@mkdir buildtest >NUL 2>NUL
+@copy *.mod buildtest >NUL
+@cd buildtest
+..\build1\ob Test
+@if errorlevel 1 goto end
+@if exist Test.exe goto Testexists
+::
+@echo.
+@echo Build failed. Test.exe not created.
+@goto end
+:Testexists
+@echo.
+@echo ---------------------------------- Run tests -----------------------------------
+Test
+@if errorlevel 1 goto end
+@cd ..
 @echo Build successful. Run snapgood.cmd to snapshot as known good.
 
 :end

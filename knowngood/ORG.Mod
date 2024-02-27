@@ -183,55 +183,24 @@ END AddLineAnnotation;
 
 (* --------------------------- Register tracking ---------------------------- *)
 
-PROCEDURE FirstReg*(s: SET): INTEGER;  (* Returns first reg in SET, or -1 if none *)
-VAR f: INTEGER;
-BEGIN
-  f := 0;
-  WHILE (f < 16) & ~(f IN s) DO INC(f) END;
-  IF f >= 16 THEN f := -1 END
-RETURN f END FirstReg;
-
-PROCEDURE IsDataReg*(r: INTEGER): BOOLEAN;
-BEGIN ASSERT(r < 16); RETURN (r >= 0) & (r # RSP) END IsDataReg;
-
 PROCEDURE ReserveReg*(r: INTEGER);
-BEGIN ASSERT(r >= 0);  IF IsDataReg(r) THEN EXCL(Free, r) END END ReserveReg;
+BEGIN ASSERT((r >= 0) & (r < 16) & (r # RSP));  EXCL(Free, r) END ReserveReg;
 
-PROCEDURE ReleaseReg*(r: INTEGER);
-BEGIN IF IsDataReg(r) THEN INCL(Free, r) END END ReleaseReg;
-
-PROCEDURE FirstFreeReg*(): INTEGER;
-VAR r: INTEGER;
-BEGIN r := FirstReg(Free);
-  IF r < 0 THEN ORS.Mark("Out of registers") END;
-RETURN r END FirstFreeReg;
-
-PROCEDURE FindFreeReg*(desired: INTEGER; allow: SET): INTEGER;
-(* Return desired if free, else return first free in allow
-   Common usage like FindFreeReg(RSI, -{RAX, RCX, RDI}):
-   return si if available, else anything but ax, cx or di *)
-VAR result: INTEGER;
+PROCEDURE Reserve(request: INTEGER; reject: SET): INTEGER;
 BEGIN
-  IF desired IN Free THEN
-    result := desired
+  IF (request < 0) OR ~(request IN Free) THEN
+    request := 0;  reject := reject + (-Free);
+    WHILE (request < 16) & (request IN reject) DO INC(request) END;
+  END;
+  IF request < 16 THEN
+    EXCL(Free, request)
   ELSE
-    result := FirstReg(Free * allow)
+    request := 15; ORS.Mark("out of registers")
   END
-RETURN result END FindFreeReg;
+RETURN request END Reserve;
 
-PROCEDURE ReserveNextFree*(): INTEGER;
-VAR n: INTEGER;
-BEGIN n := FirstFreeReg();
-  IF n < 0 THEN ORS.Mark("out of registers");  n := 15
-  ELSE ReserveReg(n) END
-RETURN n END ReserveNextFree;
-
-PROCEDURE FindAndReserveReg(desired: INTEGER; allow: SET): INTEGER;
-VAR n: INTEGER;
-BEGIN n := FindFreeReg(desired, allow);
-  IF n < 0 THEN ORS.Mark("out of registers");  n := 15
-  ELSE ReserveReg(n) END
-RETURN n END FindAndReserveReg;
+PROCEDURE Release(r: INTEGER);
+BEGIN ASSERT((r >= 0) & (r # RSP)); INCL(Free, r) END Release;
 
 PROCEDURE ClearRegs; BEGIN Free := AllFree END ClearRegs;
 
@@ -243,15 +212,15 @@ BEGIN
     l.s(", Free: ", Tr); l.Set(Free, Tr);
     l.s(", SPO ",   Tr); l.i(X64.SPO, Tr); l.sn(".", Tr)
   END;
-  IF Free # AllFree           THEN ORS.Mark("Reg Stack"); ClearRegs;  ASSERT(FALSE) END;
-  IF X64.PC >= X64.MaxPC - 40 THEN ORS.Mark("program too long");      ASSERT(FALSE) END;
-  IF X64.SPO # 0              THEN ORS.Mark("SPO error"); X64.ClearStack; ASSERT(FALSE) END
+  IF Free # AllFree           THEN ORS.Mark("Reg Stack"); ClearRegs;      H.wn; H.Trap("** Free # AllFree")           END;
+  IF X64.PC >= X64.MaxPC - 40 THEN ORS.Mark("program too long");          H.wn; H.Trap("** X64.PC >= X64.MaxPC - 40") END;
+  IF X64.SPO # 0              THEN ORS.Mark("SPO error"); X64.ClearStack; H.wn; H.Trap("** X64.SPO # 0")              END
 END CheckRegs;
 
 PROCEDURE FreeRegs(VAR x: Item);
 BEGIN
-  IF x.mode IN {Reg, Eadr} THEN ReleaseReg(x.n) END;
-  ReleaseReg(x.index);
+  IF (x.mode IN {Reg, Eadr}) & (x.n # RSP) THEN Release(x.n) END;
+  IF x.index >= 0 THEN Release(x.index) END;
   X64.ClearMode(x)
 END FreeRegs;
 
@@ -391,9 +360,10 @@ BEGIN
     Trace(TraceAny, "** mode "); l.i(mode, Tr); l.sn(" **", Tr);
   END;
   ASSERT(mode IN {Reg, Eadr, Code, String, Global, Import, Impcode});
+  iprelreg := -1;
   IF (mode IN {Code, String, Global, Import, Impcode}) & (index >= 0) THEN
     (* Preload code (rip) relative address because SIB doesn't support rip relative *)
-    iprelreg := FirstFreeReg();
+    iprelreg := Reserve(-1, {});
     OpModRegRm(8DH, mode, iprelreg, 8, n, -1, 0, offset, 0); (* lea *)
     mode    := Eadr;
     n       := iprelreg;
@@ -403,7 +373,8 @@ BEGIN
   Prefices(mode, reg, size, n, index);
   IF op >= 100H THEN X64.Emit(op DIV 100H) END;
   X64.Emit(op MOD 100H);
-  ModRegRm(mode, reg, n, index, scale, offset, immsize)
+  ModRegRm(mode, reg, n, index, scale, offset, immsize);
+  IF iprelreg >= 0 THEN Release(iprelreg) END
 END OpModRegRm;
 
 PROCEDURE OpItem*(op, reg, size, immsize: INTEGER; x: Item);
@@ -438,7 +409,7 @@ END DeparToReg;
 
 PROCEDURE Depar(VAR x: Item);
 BEGIN
-  IF x.mode IN {Stkind, Strucp} THEN DeparToReg(ReserveNextFree(), x) END
+  IF x.mode IN {Stkind, Strucp} THEN DeparToReg(Reserve(-1, {}), x) END
 END Depar;
 
 
@@ -587,7 +558,7 @@ BEGIN
   ELSIF x.mode = Const THEN
     LoadImmediate(reg, x.n)
   ELSIF x.mode = Reg THEN
-    IF reg # x.n THEN MoveReg(reg, x.n); ReleaseReg(x.n) END
+    IF reg # x.n THEN MoveReg(reg, x.n); Release(x.n) END
   ELSIF x.mode IN {Eadr, Code, String, Global, Import} THEN
     offset := x.offset;
     IF (x.mode = Eadr) & (x.n = RSP) THEN INC(offset, X64.SPO * 8) END;
@@ -655,7 +626,7 @@ BEGIN
     IF (x.mode = Eadr) & (x.n # RSP) THEN
       reg := x.n
     ELSE
-      reg := ReserveNextFree()
+      reg := Reserve(-1, {})
     END;
     IF (x.mode = Code) & (x.type.form = ORB.Proc) THEN
       LoadAddressReg(reg, x); FreeRegs(x);  x.mode := Reg;  x.n := reg;  ReserveReg(x.n);
@@ -668,7 +639,7 @@ END Load;
 PROCEDURE LoadAddress(VAR x: Item);
 VAR reg: INTEGER;
 BEGIN
-  IF x.mode = Reg THEN reg := x.n ELSE reg := ReserveNextFree() END;
+  IF x.mode = Reg THEN reg := x.n ELSE reg := Reserve(-1, {}) END;
   LoadAddressReg(reg, x);
   FreeRegs(x);  x.mode := Reg;  x.n := reg;  ReserveReg(x.n)
 END LoadAddress;
@@ -741,9 +712,10 @@ BEGIN
     X64.EmitBytes(immsize, imm);
     Disassemble(mode, "StoreImmediate")
   ELSE  (* 64 bit immediate - load immediate then store reg *)
-    reg := FirstFreeReg();
+    reg := Reserve(-1, {});
     LoadImmediate(reg, imm);
     StoreRegToMem(reg, mode, size, n, index, scale, offset);
+    Release(reg)
   END
 END StoreImmediateToMem;
 
@@ -771,9 +743,10 @@ BEGIN
   ELSIF (i >= -80000000H) & (i < 80000000H) THEN
     X64.Emit(68H);  X64.EmitBytes(4, i)
   ELSE
-    reg := FirstFreeReg();
+    reg := Reserve(-1, {});
     Prefices(Reg, reg, 8, -1, -1); X64.Emit(0B8H + reg MOD 8); X64.EmitBytes(8, i);  (* Load literal *)
     Prefices(Reg, reg, 4, -1, -1); X64.Emit(050H + reg MOD 8);                       (* Push reg *)
+    Release(reg)
   END
 END PushImmediate;
 
@@ -781,9 +754,10 @@ PROCEDURE PushMem*(mode: INTEGER; signed: BOOLEAN; size, n, index, scale, offset
 VAR reg: INTEGER;
 BEGIN
   IF size < 8 THEN
-    reg := FirstFreeReg();
+    reg := Reserve(-1, {});
     LoadMem(reg, mode, signed, size, n, index, scale, offset);
-    PushReg(reg)
+    PushReg(reg);
+    Release(reg)
   ELSE
     Prefices(mode, -1, 8, n, index);
     X64.Emit(0FFH);  ModRegRm(mode, 6, n, index, scale, offset, 0)
@@ -798,8 +772,9 @@ BEGIN
   ELSIF (x.mode = Eadr) & (x.index < 0) & (x.offset = 0) & ((x.n # RSP) OR (X64.SPO = 0)) THEN
     PushReg(x.n)
   ELSIF x.mode IN {Stkind, Strucp, Eadr, Code, String, Global, Import} THEN
-    reg := FirstFreeReg();
-    LoadAddressReg(reg, x);  PushReg(reg)
+    reg := Reserve(-1, {});
+    LoadAddressReg(reg, x);  PushReg(reg);
+    Release(reg);
   ELSE
     ASSERT(FALSE)
   END
@@ -814,10 +789,10 @@ BEGIN
   ELSE
     IF x.type.form = ORB.Pointer THEN type := x.type.base ELSE type := x.type END;
     ASSERT(type.form = ORB.Record);
-    reg := ReserveNextFree();
+    reg := Reserve(-1, {});
     LoadTypeAddress(reg, type);
     PushReg(reg);  (* Pass record descriptor *)
-    ReleaseReg(reg)
+    Release(reg)
   END
 END PushTypeAdr;
 
@@ -840,7 +815,7 @@ BEGIN
     IF x.type.base.size = 1 THEN
       PushMem(Eadr, FALSE, 8, RSP, -1, 0, x.n + 8 * X64.SPO + 8)
     ELSE (* element count from parameter *)
-      reg := ReserveNextFree();
+      reg := Reserve(-1, {});
       IF x.type.base.size < 80H THEN
         OpModRegRm(6BH, Eadr, reg, 8, RSP, -1, 0, x.n + 8 * X64.SPO + 8, 1);
         X64.Emit(x.type.base.size)
@@ -849,7 +824,7 @@ BEGIN
         X64.EmitBytes(4, x.type.base.size)
       END;
       PushReg(reg);
-      ReleaseReg(reg)
+      Release(reg)
     END
     (* Note, cannot determine dynamic accurate record size at run time:
        The type desciptor size field is the (larger) allocation size. *)
@@ -897,15 +872,16 @@ BEGIN
     OpModRegRm(0FFH, mode, incdec, size, n, index, scale, offset, 0)  (* inc/dec dest *)
   ELSE
     IF (imm < -80000000H) OR (imm >= 80000000H) THEN
-      immreg := FirstFreeReg();
-      LoadImmediate(immreg, imm);                                                       (* mov immreg,imm64 *)
-      OpModRegRm(op+1, mode, immreg, size, n, index, scale, offset, 0)                     (* op  dest,immreg  *)
+      immreg := Reserve(-1, {});
+      LoadImmediate(immreg, imm);                                                               (* mov immreg,imm64 *)
+      OpModRegRm(op+1, mode, immreg, size, n, index, scale, offset, 0);                         (* op  dest,immreg  *)
+      Release(immreg)
     ELSIF size = 1 THEN
-      OpModRegRm(80H, mode, op DIV 8, size, n, index, scale, offset, 1);  X64.Emit(imm)          (* op  dest8,imm8    *)
+      OpModRegRm(80H, mode, op DIV 8, size, n, index, scale, offset, 1);  X64.Emit(imm)         (* op  dest8,imm8    *)
     ELSIF (imm >= -80H) & (imm < 80H) THEN
       OpModRegRm(83H, mode, op DIV 8, size, n, index, scale, offset, 1);  X64.Emit(imm)         (* op  dest,imm8     *)
     ELSE
-      OpModRegRm(81H, mode, op DIV 8, size, n, index, scale, offset, 4);  X64.EmitBytes(4, imm)  (* op  dest,imm32    *)
+      OpModRegRm(81H, mode, op DIV 8, size, n, index, scale, offset, 4);  X64.EmitBytes(4, imm) (* op  dest,imm32    *)
     END
   END
 END AluOpFromImmediate;
@@ -917,12 +893,14 @@ PROCEDURE AluOpToReg(  (* reg := reg op src *)
 VAR srcreg: INTEGER;
 BEGIN
   ASSERT(mode IN {Reg, Eadr, Code, String, Global, Import});
+  srcreg := -1;
   IF (mode # reg) & (size < 8) THEN
-    srcreg := FirstFreeReg();
+    srcreg := Reserve(-1, {});
     LoadMem(srcreg, mode, signed, size, n, index, scale, offset);
     mode := Reg;  n := srcreg;  index := -1;  scale := 0;  offset := 0;
   END;
-  OpModRegRm(op+3, mode, reg, 8, n, index, scale, offset, 0)
+  OpModRegRm(op+3, mode, reg, 8, n, index, scale, offset, 0);
+  IF srcreg >= 0 THEN Release(srcreg) END
 END AluOpToReg;
 
 PROCEDURE IsDyadicNoOp(op: INTEGER; src: Item): BOOLEAN;
@@ -1122,7 +1100,7 @@ PROCEDURE SaveExchange(current, required: INTEGER; VAR save: INTEGER);
 BEGIN
   IF current < 0 THEN
     IF required IN Free THEN current := required
-                        ELSE current := ReserveNextFree() END
+                        ELSE current := Reserve(-1, {}) END
   END;
   IF current = required THEN
     save := -1
@@ -1137,7 +1115,7 @@ BEGIN
   IF exchanged >= 0 THEN
     MoveReg(reg, exchanged)
   ELSE
-    ReleaseReg(reg)
+    Release(reg)
   END
 END RestoreReg;
 
@@ -1161,13 +1139,13 @@ BEGIN Trace(TraceAny, "StoreStruct(x: "); l.Item(x, Tr);  l.s(", y: ", Tr); l.It
   IF y.type.size # 0 THEN
 
     (* Source structure *)
-    sadr := FindAndReserveReg(RSI, -{RDI, RCX});
-    slen := FindAndReserveReg(RCX, -{RDI});
+    sadr := Reserve(RSI, {RDI, RCX});
+    slen := Reserve(RCX, {RDI});
     LoadStructure(sadr, slen, y);
 
     (* Destination structure *)
-    dadr := FindAndReserveReg(RDI, -{});
-    dlen := ReserveNextFree();
+    dadr := Reserve(RDI, {});
+    dlen := Reserve(-1, {});
     LoadStructure(dadr, dlen, x);
 
     (* For arrays need to check lengths *)
@@ -1216,16 +1194,16 @@ BEGIN Trace(TraceAny, "CopyString(x: "); l.Item(x, Tr);  l.s(", y: ", Tr); l.Ite
   END;
 
   (* Source string *)
-  sadr := FindAndReserveReg(RSI, {});  (* Must be RSI *)
-  slen := FindAndReserveReg(RCX, {});  (* Must be RCX *)
+  sadr := Reserve(RSI, -{});  (* Must be RSI *)
+  slen := Reserve(RCX, -{});  (* Must be RCX *)
   LoadStructure(sadr, slen, y);
 
   (* Destination string *)
-  dadr := FindAndReserveReg(RDI, {});  (* Must be RDI *)
+  dadr := Reserve(RDI, -{});  (* Must be RDI *)
   IF x.type.len >= 0 THEN (* dest length known at compile time*)
     LoadAddressReg(dadr, x)
   ELSE
-    dlen := ReserveNextFree();
+    dlen := Reserve(-1, {});
     LoadStructure(dadr, dlen, x);
     (* Check length at run time *)
     OpModRegRm(Cmp+1, Reg, slen, 8, dlen, -1, 0, 0, 0);
@@ -1235,7 +1213,7 @@ BEGIN Trace(TraceAny, "CopyString(x: "); l.Item(x, Tr);  l.s(", y: ", Tr); l.Ite
 
   (* Consider: stop copy at first 0, enforce 0 if none *)
   X64.Emit(0F3H);  X64.Emit(0A4H);  (* rep movsb *)
-  ReleaseReg(RSI);  ReleaseReg(RDI);  ReleaseReg(RCX);
+  Release(RSI);  Release(RDI);  Release(RCX);
   FreeRegs(x);  FreeRegs(y);
   Disassemble(0, "CopyString")
 END CopyString;
@@ -1336,11 +1314,11 @@ BEGIN
         PushMem(Eadr, FALSE, 8, RSP, -1, 0, x.n + 8 * X64.SPO + 8)
       ELSE ASSERT(x.type.form = ORB.Record);  (* Cannot pass open array to dynamic record *)
         (* Passing dynamic record to ARRAY OF BYTE *)
-        reg := ReserveNextFree();  (* Obtain length from type descriptor *)
+        reg := Reserve(-1, {});  (* Obtain length from type descriptor *)
         LoadMem(reg, Eadr, FALSE, 8, RSP, -1, 0, x.n + 8 * X64.SPO + 8);  (* Load address of record *)
         LoadMem(reg, Eadr, FALSE, 8, reg, -1, 0, -8);  (* Load address of type descriptor from qword preceeding record *)
         PushMem(Eadr, FALSE, 8, reg, -1, 0, 0);        (* Push record length from first qword of type descriptor *)
-        ReleaseReg(reg)
+        Release(reg)
       END;
       X64.AdjustStack(1);
       PushMem(Eadr, FALSE, 8, RSP, -1, 0, x.n + 8 * X64.SPO);  (* Push array/record address *)
@@ -1358,9 +1336,10 @@ BEGIN
         END;
         X64.AdjustStack(1) (* Pass array length *)
       ELSIF ftype.form = ORB.Record THEN
-        reg := FirstFreeReg();
+        reg := Reserve(-1, {});
         LoadTypeAddress(reg, ftype);  (* Pass record descriptor *)
-        PushReg(reg);  X64.AdjustStack(1)
+        PushReg(reg);  X64.AdjustStack(1);
+        Release(reg)
       END;
       (* Pass array or record address *)
       PushAdr(x);  X64.AdjustStack(1)
@@ -1495,9 +1474,9 @@ BEGIN
     FreeRegs(x);
     (* Move function result to another reg if RAX was in use before fn call *)
     Free := Free - saved;
-    resultreg := FirstFreeReg();
+    resultreg := Reserve(-1, {});
     IF resultreg # RAX THEN MoveReg(resultreg, RAX) END;
-    x.mode := Reg;  x.n := resultreg;  ReserveReg(resultreg);
+    x.mode := Reg;  x.n := resultreg;
     IF saved # {} THEN (* Restore saved registers *)
       i := 15;
       WHILE i >= 0 DO
@@ -1607,10 +1586,11 @@ BEGIN Trace(TraceAny, "Abs(x "); l.Item(x, Tr); l.sn(")", Tr);
   IF x.mode = Const THEN x.n := ABS(x.n)
   ELSIF x.type.form = ORB.Real THEN ASSERT(FALSE)
   ELSE
-    Load(x);  reg := FirstFreeReg();
-    MoveReg(reg, x.n);                              (* mov     reg,x.n *)
+    Load(x);  reg := Reserve(-1, {});
+    MoveReg(reg, x.n);                                 (* mov     reg,x.n *)
     OpModRegRm(0F7H,  Reg, 3,   8, x.n, -1, 0, 0, 0);  (* neg     x.n     *)
-    OpModRegRm(0F4CH, Reg, x.n, 8, reg, -1, 0, 0, 0)   (* cmovl   x.n,reg *)
+    OpModRegRm(0F4CH, Reg, x.n, 8, reg, -1, 0, 0, 0);  (* cmovl   x.n,reg *)
+    Release(reg)
   END;
   Disassemble(x.mode, "Abs")
 END Abs;
@@ -1672,12 +1652,12 @@ BEGIN
     Load(x);
     OpModRegRm(0C1H, Reg, op, 8, x.n, -1, 0, 0, 1);  X64.Emit(y.n);
   ELSE
-    IF x.mode # Reg THEN LoadReg(FindAndReserveReg(RAX, -{RCX}), x) END;
+    IF x.mode # Reg THEN LoadReg(Reserve(RAX, {RCX}), x) END;
     IF x.n = RCX THEN  (* Use a different register as we'll need cl for shift count *)
-      x.n := ReserveNextFree();  MoveReg(x.n, RCX);  ReleaseReg(RCX)
+      x.n := Reserve(-1, {});  MoveReg(x.n, RCX);  Release(RCX)
     END;
     (* Get shift amount to rcx *)
-    IF y.mode # Reg THEN LoadReg(FindAndReserveReg(RCX, AllFree), y) END;
+    IF y.mode # Reg THEN LoadReg(Reserve(RCX, {}), y) END;
     SaveExchange(y.n, RCX, xchgrcx);
     OpModRegRm(0D3H, Reg, op, 8, x.n, -1, 0, 0, 0);  (* shiftop reg,cl *)
     RestoreReg(RCX, xchgrcx)
@@ -1876,7 +1856,7 @@ BEGIN Trace(TraceAny, "Singleton(x: "); l.Item(x, Tr); l.sn(")", Tr);
     x.n := LSL(1, x.n)
   ELSE
     Load(x);
-    reg := ReserveNextFree();
+    reg := Reserve(-1, {});
     LoadImmediate(reg, 1);
     OpModRegRm(0FABH, Reg, reg, 8, x.n, -1, 0, 0, 0);  (* bts reg, x *)
     Disassemble(x.mode, "Singleton");
@@ -2148,13 +2128,13 @@ Trace(TraceAny, "StringRelation("); l.Sym(op, Tr);
   l.s(", x: ", Tr); l.Item(x, Tr);
   l.s(", y: ", Tr); l.Item(y, Tr); l.sn(")", Tr);
 
-  xadr := FindAndReserveReg(RSI, -{RAX, RCX});
-  xlen := FindAndReserveReg(RCX, -{RAX});
+  xadr := Reserve(RSI, {RAX, RCX});
+  xlen := Reserve(RCX, {RAX});
   LoadStructure(xadr, xlen, x);
   Disassemble(x.mode, "Load string x");
 
-  yadr := FindAndReserveReg(RDI, -{RAX});
-  ylen := FindAndReserveReg(RDX, -{RAX});
+  yadr := Reserve(RDI, {RAX});
+  ylen := Reserve(RDX, {RAX});
   LoadStructure(yadr, ylen, y);
   Disassemble(y.mode, "Load string y");
 
@@ -2240,12 +2220,13 @@ VAR reg: INTEGER;
 BEGIN
   ASSERT(x.mode >= Const);
   IF (y < -80000000H) OR (y >= 80000000H) THEN
-    reg := FirstFreeReg();
+    reg := Reserve(-1, {});
     LoadImmediate(reg, y);
-    OpModRegRm(0FAFH, Reg, x.n, 8, reg, -1, 0, 0, 0)
+    OpModRegRm(0FAFH, Reg, x.n, 8, reg, -1, 0, 0, 0);
+    Release(reg)
   ELSE
     Depar(x);
-    IF (x.mode IN {Reg, Eadr}) & (x.n # RSP) THEN reg := x.n ELSE reg := FirstFreeReg() END;
+    IF (x.mode IN {Reg, Eadr}) & (x.n # RSP) THEN reg := x.n ELSE reg := Reserve(-1, {}) END;
     IF (y < -80H) OR (y >= 80H) THEN
       OpItem(69H, reg, 8, 4, x);  X64.EmitBytes(4, y)  (* imul reg,x,imm32 *)
     ELSE
@@ -2317,7 +2298,7 @@ BEGIN
         IF ~(RAX IN Free) THEN
           (* Save rax temporarily *)
           saveRAX := TRUE;
-          PushReg(RAX);  X64.AdjustStack(1);  ReleaseReg(RAX);
+          PushReg(RAX);  X64.AdjustStack(1);  Release(RAX);
           Disassemble(0, "DivOp save rax")
         END;
         LoadReg(RAX, x);  ReserveReg(RAX);
@@ -2327,7 +2308,7 @@ BEGIN
       IF ~(RDX IN Free) THEN
         Depar(y);
         saveRDX := TRUE;
-        PushReg(RDX);  X64.AdjustStack(1);  ReleaseReg(RDX);
+        PushReg(RDX);  X64.AdjustStack(1);  Release(RDX);
         IF (y.mode = Reg) & (y.n = RDX) THEN
           y.mode := Eadr;
           y.n    := RSP;
@@ -2338,8 +2319,9 @@ BEGIN
       Disassemble(0, "DivOp prepare rdx");
 
       IF y.mode = Const THEN
-        reg := FirstFreeReg();  LoadImmediate(reg, y.n);
+        reg := Reserve(-1, {});  LoadImmediate(reg, y.n);
         OpModRegRm(0F7H, Reg, 7, 8, reg, -1, 0, 0, 0);   (* idiv reg *)
+        Release(reg)
       ELSE
         Depar(y);
         OpItem(0F7H, 7, 8, 0, y);                        (* idiv y *)
@@ -2354,7 +2336,7 @@ BEGIN
         END;
 
         IF saveRAX THEN
-          reg := FirstFreeReg();  MoveReg(reg, RAX);
+          reg := Reserve(-1, {});  MoveReg(reg, RAX);
           Disassemble(0, "Move result out of rax");
           PopReg(RAX);  X64.AdjustStack(-1);  ReserveReg(RAX);
           Disassemble(0, "Divop DIV restore rax")
@@ -2365,7 +2347,7 @@ BEGIN
       ELSE (* MOD result in RDX *)
 
         IF saveRDX THEN
-          reg := FirstFreeReg();  MoveReg(reg, RDX);
+          reg := Reserve(-1, {});  MoveReg(reg, RDX);
           Disassemble(0, "Move result out of rdx");
           PopReg(RDX);  X64.AdjustStack(-1);
           Disassemble(0, "Divop MOD restore rdx")
@@ -2380,8 +2362,8 @@ BEGIN
 
       END;
 
-      IF ~saveRAX THEN ReleaseReg(RAX) END;
-      IF ~saveRDX THEN ReleaseReg(RDX) END
+      IF ~saveRAX THEN Release(RAX) END;
+      IF ~saveRDX THEN Release(RDX) END
 
     END;
 
@@ -2455,16 +2437,20 @@ BEGIN Trace(TraceAny, "Index(x: "); l.Item(x, Tr); l.s(", y: ", Tr); l.Item(y, T
     IF (y.mode = Const) & ((y.n < 0) OR ((x.type.len >= 0) & (y.n >= x.type.len))) THEN
       ORS.Mark("Bad index")
     ELSIF (y.mode # Const) OR (x.type.len < 0) THEN
-      ZeroFill(xlength); X64.ClearMode(xlength); xlength.type := ORB.intType;
-      IF x.type.len < 0 THEN
-        ASSERT(x.mode = Strucp);
-        xlength.mode := Eadr;  xlength.offset := x.n + 8;  xlength.n := RSP
+      IF x.type.len < 0 THEN  ASSERT(x.mode = Strucp);
+        ZeroFill(xlength);
+        xlength.type   := ORB.intType;
+        xlength.mode   := Eadr;
+        xlength.n      := RSP;
+        xlength.offset := x.n + 8;
+        xlength.index  := -1
       ELSE
-        xlength.mode := Const;  xlength.n := x.type.len
+        MakeConstItem(xlength, ORB.intType, x.type.len)
       END;
-      Compare(xlength, y);
-      X64.Emit(73H);   X64.Emit(6);  (* jae: if index within array *)
+      Compare(y, xlength);
+      X64.Emit(72H);   X64.Emit(6);  (* jb: if index within array *)
       CallSysFn(H.IndexOutOfRangeProc);
+      Disassemble(0, "Array index trap");
       FreeRegs(xlength)
     END;
     Trace(TraceAny, "  After range check y: "); l.Item(y, Tr); l.n(Tr)
@@ -2474,6 +2460,7 @@ BEGIN Trace(TraceAny, "Index(x: "); l.Item(x, Tr); l.s(", y: ", Tr); l.Item(y, T
   IF y.mode = Const THEN
     INC(x.offset, y.n * elemsize)
   ELSE
+    IF x.mode = Strucp THEN x.mode := Stkind END;
     IF (elemsize IN {1, 2, 4, 8})
      & (x.mode IN {Stkind, Strucp, Eadr, Code, String, Global, Import})
      & (x.index < 0) THEN
@@ -2506,7 +2493,13 @@ BEGIN Trace(TraceAny, "DeRef(x), x: "); l.Item(x, Tr); l.n(Tr);
   ASSERT(x.type.form = ORB.Pointer);
   ASSERT(x.mode IN {Stkind, Eadr, Code, String, Global, Import});
   Load(x);  x.mode := Eadr;
-  Disassemble(0, "DeRef")
+  Disassemble(0, "DeRef");
+  IF ~ORS.Hasty THEN
+    OpModRegRm(85H, Reg, x.n, 8, x.n, -1, 0, 0, 0);  (* test reg,reg *)
+    X64.Emit(75H);  X64.Emit(6);  (* jnz: if pointer not NIL *)
+    CallSysFn(H.NilPointerDereferenceProc);
+    Disassemble(0, "NIL pointer trap")
+  END
 END DeRef;
 
 

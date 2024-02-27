@@ -6,12 +6,13 @@ CONST
   OpenRW*      = 1;  (* Open r/w, fail if doesn't exist *)
 
   (* System library procedure indices *)
-  NewProc*                = 0;
+  NewProc*                   = 0;
   (* error traps *)
-  AssertionFailureProc*   = 1;
-  ArraySizeMismatchProc*  = 2;
-  UnterminatedStringProc* = 3;
-  IndexOutOfRangeProc*    = 4;
+  AssertionFailureProc*      = 1;
+  ArraySizeMismatchProc*     = 2;
+  UnterminatedStringProc*    = 3;
+  IndexOutOfRangeProc*       = 4;
+  NilPointerDereferenceProc* = 5;
 
   MaxPath* = 780;  (* Enough UTF-8 bytes for for 260 wide chars *)
 
@@ -158,12 +159,13 @@ VAR
   HWnd:       INTEGER;   (* Set if a window has been created *)
 
   (* System functions *)
-  NewPointer*:        PROCEDURE(ptr, tag: INTEGER);
-  AssertionFailure:   PROCEDURE;
-  ArraySizeMismatch:  PROCEDURE;
-  UnterminatedString: PROCEDURE;
-  IndexOutOfRange:    PROCEDURE;
-  PostMortemDump:     PROCEDURE(modadr, offset: INTEGER);
+  NewPointer*:           PROCEDURE(ptr, tag: INTEGER);
+  AssertionFailure:      PROCEDURE;
+  ArraySizeMismatch:     PROCEDURE;
+  UnterminatedString:    PROCEDURE;
+  IndexOutOfRange:       PROCEDURE;
+  NilPointerDereference: PROCEDURE;
+  PostMortemDump:        PROCEDURE(modadr, offset: INTEGER);
 
   ExceptionDepth: INTEGER;
 
@@ -659,6 +661,9 @@ BEGIN wn; Trap("** Unterminated string") END UnterminatedStringHandler;
 PROCEDURE IndexOutOfRangeHandler();
 BEGIN wn; Trap("** Index out of range") END IndexOutOfRangeHandler;
 
+PROCEDURE NilPointerDereferenceHandler();
+BEGIN wn; Trap("** NIL pointer dereference") END NilPointerDereferenceHandler;
+
 PROCEDURE NewPointerHandler(ptr, len: INTEGER);
 BEGIN wn; Trap("** New pointer handler not istalled") END NewPointerHandler;
 
@@ -985,11 +990,12 @@ BEGIN
     IF modno = 0 THEN  (* system function *)
       SYSTEM.GET(LoadAdr + offset, disp);
       (*ws("disp    -"); wh(-disp); wsn("H.");*)
-      IF    impno = NewProc                THEN disp := SYSTEM.ADR(NewPointer)         + disp - LoadAdr
-      ELSIF impno = AssertionFailureProc   THEN disp := SYSTEM.ADR(AssertionFailure)   + disp - LoadAdr
-      ELSIF impno = ArraySizeMismatchProc  THEN disp := SYSTEM.ADR(ArraySizeMismatch)  + disp - LoadAdr
-      ELSIF impno = UnterminatedStringProc THEN disp := SYSTEM.ADR(UnterminatedString) + disp - LoadAdr
-      ELSIF impno = IndexOutOfRangeProc    THEN disp := SYSTEM.ADR(IndexOutOfRange)    + disp - LoadAdr
+      IF    impno = NewProc                   THEN disp := SYSTEM.ADR(NewPointer)            + disp - LoadAdr
+      ELSIF impno = AssertionFailureProc      THEN disp := SYSTEM.ADR(AssertionFailure)      + disp - LoadAdr
+      ELSIF impno = ArraySizeMismatchProc     THEN disp := SYSTEM.ADR(ArraySizeMismatch)     + disp - LoadAdr
+      ELSIF impno = UnterminatedStringProc    THEN disp := SYSTEM.ADR(UnterminatedString)    + disp - LoadAdr
+      ELSIF impno = IndexOutOfRangeProc       THEN disp := SYSTEM.ADR(IndexOutOfRange)       + disp - LoadAdr
+      ELSIF impno = NilPointerDereferenceProc THEN disp := SYSTEM.ADR(NilPointerDereference) + disp - LoadAdr
       ELSE  assert(FALSE) (*, "LoadModule: Unexpected system function import number.")*)
       END;
       (*ws("disp'   -"); wh(-disp); wsn("H.");*)
@@ -1078,15 +1084,16 @@ END LoadRemainingModules;
 
 
 BEGIN
-  HWnd               := 0;
-  Log                := NoLog;
-  ExceptionDepth     := 0;
-  NewPointer         := NIL;
-  AssertionFailure   := NIL;
-  ArraySizeMismatch  := NIL;
-  UnterminatedString := NIL;
-  IndexOutOfRange    := NIL;
-  PostMortemDump     := NIL;
+  HWnd                  := 0;
+  Log                   := NoLog;
+  ExceptionDepth        := 0;
+  NewPointer            := NIL;
+  AssertionFailure      := NIL;
+  ArraySizeMismatch     := NIL;
+  UnterminatedString    := NIL;
+  IndexOutOfRange       := NIL;
+  NilPointerDereference := NIL;
+  PostMortemDump        := NIL;
 
   (* Initialise console input/output *)
   Stdin  := GetStdHandle(-10);  (* -10:   StdInputHandle *)
@@ -1118,11 +1125,12 @@ BEGIN
   END;
 
   (* Initialise system fuction handlers *)
-  NewPointer         := NewPointerHandler;
-  AssertionFailure   := AssertionFailureHandler;
-  ArraySizeMismatch  := ArraySizeMismatchHandler;
-  UnterminatedString := UnterminatedStringHandler;
-  IndexOutOfRange    := IndexOutOfRangeHandler;
+  NewPointer            := NewPointerHandler;
+  AssertionFailure      := AssertionFailureHandler;
+  ArraySizeMismatch     := ArraySizeMismatchHandler;
+  UnterminatedString    := UnterminatedStringHandler;
+  IndexOutOfRange       := IndexOutOfRangeHandler;
+  NilPointerDereference := NilPointerDereferenceHandler;
 
   (* Trap OS exceptions *)
   IF AddVectoredExceptionHandler(1, SYSTEM.ADR(ExceptionHandler)) = 0 THEN

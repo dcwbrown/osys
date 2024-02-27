@@ -10,4 +10,5 @@ knowngood.prev*/*
 buildpre/*
 build1/*
 build2/*
+buildtest/*
 *.sublime-*
