@@ -634,7 +634,7 @@ END ExceptionHandler;
 
 (* ----------------------------- Trap handlers ------------------------------ *)
 
-PROCEDURE Trap(desc: ARRAY OF CHAR);
+PROCEDURE Trap*(desc: ARRAY OF CHAR);
 VAR adr, modadr: INTEGER;
 BEGIN
   ws(desc);
