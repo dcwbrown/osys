@@ -995,10 +995,6 @@ BEGIN
   x.readonly := y.rdo;
   IF y.class = ORB.Const THEN
     IF y.type.form = ORB.Proc THEN
-      (*
-      IF    y.lev > 0 THEN x.mode := Eadr;    x.n := RSP;  x.offset := y.val;
-      ELSIF y.lev = 0 THEN x.mode := Code;    x.n := 0;    x.offset := y.val;
-      *)
       IF y.lev >= 0 THEN x.mode := Code;    x.n := 0;    x.offset := y.val;
       ELSE               x.mode := Import;  x.n := LSL(-y.lev, 16) + y.val;
       END

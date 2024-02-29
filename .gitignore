@@ -11,4 +11,5 @@ buildpre/*
 build1/*
 build2/*
 buildtest/*
+p6000/*
 *.sublime-*

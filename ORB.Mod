@@ -313,7 +313,7 @@ BEGIN
       Files.Set(R, F, 0); Files.ReadInt(R, key); Files.ReadInt(R, key); Files.ReadString(R, modname);
       IF modid1 # modname THEN
         (* catch module name mismatch due to Windows filename case insensitivity *)
-        ORS.Mark("Module name case mismatch");  modid1 := modname;
+        ORS.Mark("Module name case differs from filename");  modid1 := modname;
       END;
       thismod := ThisModule(modid, modid1, TRUE, key); thismod.rdo := TRUE;
       Read(R, class); (*version key*)
