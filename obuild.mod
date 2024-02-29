@@ -1,4 +1,4 @@
-MODULE ob;
+MODULE obuild;
 
 (* Hosted Oberon build command                                                *)
 (*                                                                            *)
@@ -464,7 +464,7 @@ BEGIN
     INC(i)
   END;
 
-  H.ws("OB - Oberon command line builder");
+  H.ws("obuild - Oberon command line builder");
   IF Modulename # "" THEN
     H.ws(", building MODULE "); H.ws(Modulename); H.wsn(".");
   ELSE
@@ -486,4 +486,4 @@ BEGIN
   Build;
 
   Oberon.GC
-END ob.
+END obuild.

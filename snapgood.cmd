@@ -1,7 +1,7 @@
 :: Copy latest build to knowngood
-@if exist build2\ob.exe goto good
+@if exist build2\obuild.exe goto good
 ::
-@echo Cannot snapshot good build: no file build2\ob.exe
+@echo Cannot snapshot good build: no file build2\obuild.exe
 @goto end
 ::
 :good

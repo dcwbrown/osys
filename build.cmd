@@ -26,7 +26,7 @@
 @copy knowngood\*.mod buildpre >NUL
 @copy WinPE.mod buildpre >NUL
 @cd buildpre >NUL
-..\knowngood\ob ob
+..\knowngood\obuild obuild
 @if errorlevel 1 goto end
 @cd ..
 ::
@@ -37,7 +37,7 @@
 @mkdir build1 >NUL 2>NUL
 @copy *.mod build1 >NUL
 @cd build1
-if exist ..\buildpre\ob.exe (..\buildpre\ob ob) else (..\knowngood\ob ob)
+if exist ..\buildpre\obuild.exe (..\buildpre\obuild obuild) else (..\knowngood\obuild obuild)
 @if errorlevel 1 goto end
 @cd ..
 ::
@@ -46,12 +46,12 @@ if exist ..\buildpre\ob.exe (..\buildpre\ob ob) else (..\knowngood\ob ob)
 @mkdir build2 >NUL 2>NUL
 @copy *.mod build2 >NUL
 @cd build2
-..\build1\ob ob
+..\build1\obuild obuild
 @if errorlevel 1 goto end
-@if exist ob.exe goto obexists
+@if exist obuild.exe goto obexists
 ::
 @echo.
-@echo Build failed. ob.exe not created.
+@echo Build failed. obuild.exe not created.
 @goto end
 :obexists
 @cd ..
@@ -61,7 +61,7 @@ if exist ..\buildpre\ob.exe (..\buildpre\ob ob) else (..\knowngood\ob ob)
 @mkdir buildtest >NUL 2>NUL
 @copy *.mod buildtest >NUL
 @cd buildtest
-..\build1\ob Test
+..\build1\obuild Test
 @if errorlevel 1 goto end
 @if exist Test.exe goto Testexists
 ::
