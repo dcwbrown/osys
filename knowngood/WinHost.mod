@@ -93,6 +93,7 @@ VAR
   GetEnvironmentVariableW*:        PROCEDURE-(lpName, lpBuffer, nSize: INTEGER): INTEGER;
   GetFileAttributesExW*:           PROCEDURE-(lpName, fInfoLevelId, lpFileInformation: INTEGER): INTEGER;  (* fInfoLevelId Must be 0 (GetFileExInfoStandard) *)
   GetFileAttributesW*:             PROCEDURE-(lpFileName: INTEGER): INTEGER;
+  GetFileInformationByHandleEx:    PROCEDURE-(hfile, infoclass, infoptr, bufsize: INTEGER): INTEGER;
   GetFileSizeEx*:                  PROCEDURE-(hFile, lpFileSize: INTEGER): INTEGER;
   GetLastError*:                   PROCEDURE-(): INTEGER;
   GetModuleFileNameW*:             PROCEDURE-(hModule, lpFilename, nSize: INTEGER): INTEGER;
@@ -870,6 +871,22 @@ BEGIN
   res := MoveFileExW(SYSTEM.ADR(sourcew), SYSTEM.ADR(destw), 3);  (* 1 => replace existing, 2 => copy allowed *)
   IF res = 0 THEN res := GetLastError() ELSE res := 0 END
 RETURN res END MoveFile;
+
+PROCEDURE NanoDate*(hfile: INTEGER): INTEGER;
+TYPE infodesc = RECORD-
+    creation: INTEGER;
+    access:   INTEGER;
+    write:    INTEGER;
+    change:   INTEGER;
+    attribs:  SYSTEM.CARD32
+  END;
+VAR
+  res:  INTEGER;
+  info: infodesc;
+BEGIN
+  res := GetFileInformationByHandleEx(hfile, 0, SYSTEM.ADR(info), SYSTEM.SIZE(infodesc));
+  IF res = 0 THEN AssertWinErr(GetLastError()) END;
+RETURN info.creation END NanoDate;
 
 
 (* -------------------------------------------------------------------------- *)
