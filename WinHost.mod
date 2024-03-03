@@ -22,15 +22,15 @@ CONST
 TYPE
   CodeHeaderPtr* = POINTER- TO CodeHeader;
   CodeHeader* = RECORD-
-    length*:   SYSTEM.CARD32;  (* File length *)
-    initcode*: SYSTEM.CARD32;
-    pointers*: SYSTEM.CARD32;
-    commands*: SYSTEM.CARD32;
-    exports*:  SYSTEM.CARD32;
-    lines*:    SYSTEM.CARD32;
-    imports*:  SYSTEM.CARD32;  (* VARs start here following import resolution *)
-    varsize*:  SYSTEM.CARD32;
-    key*:      INTEGER;
+    length*:   SYSTEM.CARD32;  (*  0H  File length *)
+    initcode*: SYSTEM.CARD32;  (*  4H *)
+    pointers*: SYSTEM.CARD32;  (*  8H *)
+    commands*: SYSTEM.CARD32;  (* 0CH *)
+    exports*:  SYSTEM.CARD32;  (* 10H *)
+    lines*:    SYSTEM.CARD32;  (* 14H *)
+    imports*:  SYSTEM.CARD32;  (* 18H  VARs start here following import resolution *)
+    varsize*:  SYSTEM.CARD32;  (* 1CH *)
+    key*:      INTEGER;        (* 20H *)
   END;
 
   (* -------------------- Windows exception structures -------------------- *)
@@ -224,65 +224,45 @@ END IntToDecimal;
 (* ----------------------------- Time functions ----------------------------- *)
 (* -------------------------------------------------------------------------- *)
 
-PROCEDURE Nanotime*(): INTEGER;  (* In 100 nanosecond ticks since 1601 UTC *)
+PROCEDURE Time*(): INTEGER;  (* In 100 nanosecond ticks since 1601 UTC *)
 VAR tick: INTEGER;
 BEGIN GetSystemTimePreciseAsFileTime(SYSTEM.ADR(tick));
-RETURN tick END Nanotime;
+RETURN tick END Time;
 
-PROCEDURE Time*(): INTEGER;  (* In millisecond ticks since 1601 UTC *)
-VAR tick: INTEGER;
-BEGIN GetSystemTimePreciseAsFileTime(SYSTEM.ADR(tick));
-RETURN tick DIV 10000 END Time;
+PROCEDURE TimeAsClock*(filetime: INTEGER): INTEGER;
+(* Returns local time as                                              *)
+(* 13/0,15/year,4/month,5/day,5/hour,6/minute,6/second,10/millisecond *)
+VAR
+  local, res: INTEGER;
+  st: RECORD  (* Windows system time format *)
+    year:         SYSTEM.CARD16;
+    month:        SYSTEM.CARD16;
+    dayofweek:    SYSTEM.CARD16;
+    day:          SYSTEM.CARD16;
+    hour:         SYSTEM.CARD16;
+    minute:       SYSTEM.CARD16;
+    second:       SYSTEM.CARD16;
+    milliseconds: SYSTEM.CARD16;
+  END;
+  clock: INTEGER;
+BEGIN
+  res := FileTimeToLocalFileTime(SYSTEM.ADR(filetime), SYSTEM.ADR(local));
+  clock := 0;
+  IF FileTimeToSystemTime(SYSTEM.ADR(local), SYSTEM.ADR(st)) # 0 THEN
+    clock := (((((  st.year    * 10H
+                  + st.month ) * 20H
+                  + st.day   ) * 20H
+                  + st.hour  ) * 40H
+                  + st.minute) * 40H
+                  + st.second) * 400H
+                  + st.milliseconds;
+  END
+RETURN clock END TimeAsClock;
 
 PROCEDURE Clock*(): INTEGER;
-(* Returns 6/year,4/month,5/day,5/hour,6/minute,6/second local time*)
-VAR
-  tick, local, res: INTEGER;
-  st: RECORD  (* Windows system time format *)
-    year:         SYSTEM.CARD16;
-    month:        SYSTEM.CARD16;
-    dayofweek:    SYSTEM.CARD16;
-    day:          SYSTEM.CARD16;
-    hour:         SYSTEM.CARD16;
-    minute:       SYSTEM.CARD16;
-    second:       SYSTEM.CARD16;
-    milliseconds: SYSTEM.CARD16;
-  END;
-  clock: INTEGER;
-BEGIN
-  clock := 0;
-  GetSystemTimePreciseAsFileTime(SYSTEM.ADR(tick));
-  res := FileTimeToLocalFileTime(SYSTEM.ADR(tick), SYSTEM.ADR(local));
-  IF FileTimeToSystemTime(SYSTEM.ADR(local), SYSTEM.ADR(st)) # 0 THEN
-    clock := ((  (((st.year MOD 100)*16 + st.month)*32 + st.day)*32
-               + st.hour)*64 + st.minute)*64 + st.second;
-  END
-RETURN clock END Clock;
-
-PROCEDURE LongClock*(): INTEGER;
-(* Returns 13/0,15/year,4/month,5/day,5/hour,6/minute,6/second,10/millisecond *)
-VAR
-  tick, local, res: INTEGER;
-  st: RECORD  (* Windows system time format *)
-    year:         SYSTEM.CARD16;
-    month:        SYSTEM.CARD16;
-    dayofweek:    SYSTEM.CARD16;
-    day:          SYSTEM.CARD16;
-    hour:         SYSTEM.CARD16;
-    minute:       SYSTEM.CARD16;
-    second:       SYSTEM.CARD16;
-    milliseconds: SYSTEM.CARD16;
-  END;
-  clock: INTEGER;
-BEGIN
-  clock := 0;
-  GetSystemTimePreciseAsFileTime(SYSTEM.ADR(tick));
-  res := FileTimeToLocalFileTime(SYSTEM.ADR(tick), SYSTEM.ADR(local));
-  IF FileTimeToSystemTime(SYSTEM.ADR(local), SYSTEM.ADR(st)) # 0 THEN
-    clock := (((  ((st.year*16 + st.month)*32 + st.day)*32
-                + st.hour)*64 + st.minute)*64 + st.second)*1024 + st.milliseconds;
-  END
-RETURN clock END LongClock;
+(* Returns local time as                                              *)
+(* 13/0,15/year,4/month,5/day,5/hour,6/minute,6/second,10/millisecond *)
+BEGIN RETURN TimeAsClock(Time()) END Clock;
 
 
 (* -------------------------------------------------------------------------- *)
@@ -344,6 +324,7 @@ BEGIN IntToDecimal(n, dec); wsz(dec, w) END wiz;
 PROCEDURE wb*(n: INTEGER);
 BEGIN WHILE n > 0 DO wc(" "); DEC(n) END END wb;
 
+(*
 PROCEDURE WriteClock*;
 VAR clock: INTEGER;
 BEGIN
@@ -355,6 +336,20 @@ BEGIN
   wiz(clock DIV 10000H MOD 40H,        2);  (*min*)      wc(":");
   wiz(clock DIV 400H MOD 40H,          2);  (*sec*)
 END WriteClock;
+*)
+
+PROCEDURE WriteTime*(time: INTEGER);
+VAR clock: INTEGER;
+BEGIN
+  clock := TimeAsClock(time);
+  wiz(clock DIV 1000000000H MOD 8000H, 4);  (*year*)     wc("-");
+  wiz(clock DIV 100000000H MOD 10H,    2);  (*month*)    wc("-");
+  wiz(clock DIV 8000000H MOD 20H,      2);  (*day*)      wc(" ");
+  wiz(clock DIV 400000H MOD 20H,       2);  (*hour*)     wc(":");
+  wiz(clock DIV 10000H MOD 40H,        2);  (*min*)      wc(":");
+  wiz(clock DIV 400H MOD 40H,          2);  (*sec*)      wc(".");
+  wiz(clock MOD 400H,                  3)
+END WriteTime;
 
 
 (* -------------------------------------------------------------------------- *)
@@ -872,7 +867,7 @@ BEGIN
   IF res = 0 THEN res := GetLastError() ELSE res := 0 END
 RETURN res END MoveFile;
 
-PROCEDURE NanoDate*(hfile: INTEGER): INTEGER;
+PROCEDURE FileTime*(hfile: INTEGER): INTEGER;
 TYPE infodesc = RECORD-
     creation: INTEGER;
     access:   INTEGER;
@@ -885,8 +880,14 @@ VAR
   info: infodesc;
 BEGIN
   res := GetFileInformationByHandleEx(hfile, 0, SYSTEM.ADR(info), SYSTEM.SIZE(infodesc));
+  wsn("* GetFileInformationByHandleEx ->");
+  ws("  creation "); WriteTime(info.creation); wsn(".");
+  ws("  access   "); WriteTime(info.access);   wsn(".");
+  ws("  write    "); WriteTime(info.write);    wsn(".");
+  ws("  change   "); WriteTime(info.change);   wsn(".");
+  ws("  attribs  "); whz(info.attribs, 4);     wsn("H.");
   IF res = 0 THEN AssertWinErr(GetLastError()) END;
-RETURN info.creation END NanoDate;
+RETURN info.creation END FileTime;
 
 
 (* -------------------------------------------------------------------------- *)

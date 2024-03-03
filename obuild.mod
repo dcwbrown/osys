@@ -17,7 +17,7 @@ TYPE
 
   ModuleDesc = RECORD
     next:         Module;
-    modname:      ModuleName;
+    modname:      ModuleName;  (* Just the module name: no directory, no extension *)
     filename:     PathName;
     codename:     PathName;
     text:         Texts.Text;
@@ -30,15 +30,199 @@ TYPE
     mod:  Module
   END;
 
+  (* ---- *)
+
+  Prefix= POINTER TO PrefixDesc;
+  PrefixDesc = RECORD
+    next:   Prefix;
+    prefix: PathName
+  END;
+
+  Module2 = POINTER TO Module2Desc;
+  Module2Desc = RECORD
+    next:     Module2;
+    modname:  ModuleName;  (* Just the module name: no directory, no extension *)
+
+    sourcefn:   PathName;  sourcefile: Files.File;  sourceprefix: Prefix;
+    sourcetime: INTEGER;
+    symfn:      PathName;  symfile:    Files.File;  symprefix:  Prefix;
+    symtime:    INTEGER;   symkey:     INTEGER;
+    codefn:     PathName;  codefile:   Files.File;  codeprefix: Prefix;
+    codetime:   INTEGER;   codekey:    INTEGER;
+  END;
+
+
 VAR
   Modulename:      ModuleName;
-  SourcePath:      PathName;
-  BuildPath:       PathName;
+  SourcePrefix:    PathName;
+  BinariesPrefix:  PathName;
+  OutputPrefix:    PathName;
   Verbose:         BOOLEAN;
   Modules:         Module;
   LongestModname:  INTEGER;
   LongestFilename: INTEGER;
   LoadFlags:       SET;
+
+  SourcePrefices: Prefix;
+  BinaryPrefices: Prefix;
+
+  Modules2:       Module2;
+
+
+(* ------------- File open with alternative file name prefix -------------- *)
+
+PROCEDURE Open(
+  name:       ARRAY OF CHAR;
+  prefices:   Prefix;
+  VAR file:   Files.File;
+  VAR prefix: Prefix);
+VAR
+  fn: PathName;
+BEGIN
+  file := NIL;  prefix := prefices;
+  IF prefix = NIL THEN
+    file := Files.Old(name)
+  ELSE
+    WHILE (file = NIL) & (prefix # NIL) DO
+      fn := prefix.prefix;
+      H.Append(name, fn);
+      file := Files.Old(fn);
+      IF file = NIL THEN prefix := prefix.next END
+    END
+  END
+END Open;
+
+PROCEDURE Copy(source: ARRAY OF CHAR; VAR target: ARRAY OF CHAR);
+VAR i, lim: INTEGER;
+BEGIN
+  i := 0;
+  IF LEN(source) < LEN(target) THEN
+    lim := LEN(source) - 1
+  ELSE
+    lim := LEN(target) - 1
+  END;
+  WHILE i < lim DO target[i] := source[i]; INC(i) END;
+  target[i] := 0X
+END Copy;
+
+PROCEDURE CopySlice(
+  source:     ARRAY OF CHAR;
+  sourcepos:  INTEGER;
+  len:        INTEGER;
+  VAR target: ARRAY OF CHAR;
+  targetpos:  INTEGER);
+VAR
+  i, j, lim: INTEGER;
+BEGIN
+  i := sourcepos;  j := targetpos;  lim := i + len;
+  WHILE i < lim DO target[j] := source[i]; INC(i); INC(j) END;
+  target[j] := 0X
+END CopySlice;
+
+PROCEDURE ParsePrefices(str: ARRAY OF CHAR; VAR prefix: Prefix);
+VAR lastprefix: Prefix;  i, j: INTEGER;
+BEGIN
+  prefix := NIL;  i := 0;
+  WHILE str[i] # 0X DO
+    WHILE str[i] = ";" DO INC(i) END;
+    j := i;
+    WHILE (str[j] # 0X) & (str[j] # ";") DO INC(j) END;
+    IF prefix = NIL THEN
+      NEW(prefix);  lastprefix := prefix
+    ELSE
+      NEW(lastprefix.next);  lastprefix := lastprefix.next
+    END;
+    CopySlice(str, i, j-i, lastprefix.prefix, 0);
+    i := j
+  END
+END ParsePrefices;
+
+PROCEDURE InitModule(modname: ARRAY OF CHAR; VAR module: Module2);
+VAR
+  fn:      PathName;
+  r:       Files.Rider;
+  symkey:  INTEGER;
+  codekey: INTEGER;
+  last:    Module2;
+BEGIN
+  module := Modules2;  last := NIL;
+  WHILE (module # NIL) & (modname # module.modname) DO
+    last := module; module := module.next
+  END;
+
+  IF module = NIL THEN
+    NEW(module);
+    IF Modules2 = NIL THEN Modules2 := module ELSE last.next := module END;
+    Copy(modname, module.modname);
+    module.symkey := 1;  module.codekey := 2;
+    module.sourcetime := 0; module.symtime := 0; module.codetime := 0;
+
+    Copy(modname, module.sourcefn);  H.Append(".mod", module.sourcefn);
+    Open(module.sourcefn, SourcePrefices, module.sourcefile, module.sourceprefix);
+    IF module.sourcefile # NIL THEN
+      module.sourcetime := Files.Date(module.sourcefile)
+    END;
+
+    Copy(modname, module.symfn);  H.Append(".smb", module.symfn);
+    Open(module.symfn, BinaryPrefices, module.symfile, module.symprefix);
+    IF module.symfile # NIL THEN
+      module.symtime := Files.Date(module.symfile);
+      Files.Set(r, module.symfile, 8);  Files.ReadInt(r, module.symkey)
+    END;
+
+    Copy(modname, module.codefn);  H.Append(".code", module.codefn);
+    Open(module.codefn, BinaryPrefices, module.codefile, module.codeprefix);
+    IF module.codefile # NIL THEN
+      module.codetime := Files.Date(module.codefile);
+      Files.Set(r, module.codefile, 20H); Files.ReadInt(r, module.codekey);
+    END;
+
+    H.ws("InitModule("); H.ws(modname); H.wsn("):");
+    IF module.sourcefile # NIL THEN
+      H.ws("  source: fn ");  H.ws(module.sourcefn);
+      H.ws(",  prefix ");     IF module.sourceprefix = NIL THEN H.ws("NIL") ELSE H.ws(module.sourceprefix.prefix) END;
+      H.ws(", date ");        H.WriteTime(module.sourcetime);
+      H.wsn(".");
+    END;
+    IF module.symfile # NIL THEN
+      H.ws("  sym:    fn ");  H.ws(module.symfn);
+      H.ws(",  prefix ");     IF module.symprefix = NIL THEN H.ws("NIL") ELSE H.ws(module.symprefix.prefix) END;
+      H.ws(", date ");        H.WriteTime(module.symtime);
+      H.ws(", key ");         H.wh(module.symkey);
+      H.wsn(".");
+    END;
+    IF module.codefile # NIL THEN
+      H.ws("  code:   fn ");  H.ws(module.codefn);
+      H.ws(", prefix ");      IF module.codeprefix = NIL THEN H.ws("NIL") ELSE H.ws(module.codeprefix.prefix) END;
+      H.ws(", date ");        H.WriteTime(module.codetime);
+      H.ws(", key ");         H.wh(module.codekey);
+      H.wsn(".");
+    END;
+  END;
+
+  IF (module.sourcefile # NIL)
+   & (module.symfile    # NIL)
+   & (module.codefile   # NIL) THEN
+    IF (module.sourcetime > module.symtime) OR (module.sourcetime > module.codetime) THEN
+      H.wsn("  Use source files as newer.")
+    ELSE
+      H.wsn("  Attempt using pre-compiled binaries as source not modified.")
+    END
+  ELSE
+    IF module.sourcefile # NIL THEN
+      H.wsn("  Use source files as no pre-compiled binaries.")
+    ELSIF (module.symfile # NIL) & (module.codefile # NIL) THEN
+      IF module.symkey = module.codekey THEN
+        H.wsn("  Attempt using pre-compiled binary as no source file.")
+      ELSE
+        H.wsn("  Cannot build as no source file, and pre-compiled binary symbols and code do not match.")
+      END
+    ELSE
+      H.wsn("  Cannot build as neither source files nor suitabe pre-compiled binaries are available.");
+    END
+  END;
+END InitModule;
+
 
 
 
@@ -51,19 +235,23 @@ PROCEDURE FindFile(    name:       ARRAY OF CHAR;
                    VAR file:       Files.File;
                    VAR filename:   PathName);
 VAR
-  path: PathName;
-  i, j: INTEGER;
+  path:   PathName;
+  i, j:   INTEGER;
 BEGIN
   i := 0;  file := NIL;
-  WHILE (file = NIL) & (searchpath[i] # 0X) DO
-    j := 0;
-    WHILE (i < LEN(searchpath)) & (searchpath[i] # 0X) & (searchpath[i] # ";") DO
-      path[j] := searchpath[i];  INC(i);  INC(j);
-    END;
-    IF (path[j-1] # "/") & (path[j-1] # 5CX) THEN path[j] := 5CX; INC(j) END;  (* Switch / to \ *)
-    path[j] := 0X;  H.Append(name, path);
-    file := Files.Old(path);
-    WHILE searchpath[i] = ";" DO INC(i) END;
+  IF searchpath = "" THEN
+    file := Files.Old(name)
+  ELSE
+    WHILE (file = NIL) & (searchpath[i] # 0X) DO
+      j := 0;
+      WHILE (i < LEN(searchpath)) & (searchpath[i] # 0X) & (searchpath[i] # ";") DO
+        path[j] := searchpath[i];  INC(i);  INC(j);
+      END;
+      IF (path[j-1] # "/") & (path[j-1] # 5CX) THEN path[j] := 5CX; INC(j) END;  (* Switch / to \ *)
+      path[j] := 0X;  H.Append(name, path);
+      file := Files.Old(path);
+      WHILE searchpath[i] = ";" DO INC(i) END;
+    END
   END;
   IF file # NIL THEN
     filename := path;
@@ -78,10 +266,14 @@ END FindFile;
 
 PROCEDURE AddModule(modname: ARRAY OF CHAR);
 VAR mod: Module;  file: Files.File;  filename: ModuleName;
-BEGIN NEW(mod);
+  dummy:   Module2;
+BEGIN
+  (*---*)InitModule(modname, dummy);(*---*)
+
+  NEW(mod);
   mod.modname := modname;  mod.scanned := FALSE;
   filename := modname;  H.Append(".mod", filename);
-  FindFile(filename, SourcePath, file, mod.filename);
+  FindFile(filename,   SourcePrefix, file, mod.filename);
   IF file = NIL THEN
     H.ws("Could not find source file "); H.ws(filename); H.ws(" for module '"); H.ws(modname); H.wsn("'.");
     H.ExitProcess(99)
@@ -153,10 +345,9 @@ BEGIN
     UNTIL sym # ORS.comma
   END;
 
-  (* All modules need WinHost, excepting WinHost itself *)
-  IF module.modname # "WinHost" THEN
+  IF module.modname # "WinHost" THEN  (* All modules need WinHost, excepting WinHost itself *)
     AddImport(module, "WinHost");
-    IF module.modname # "Kernel" THEN
+    IF module.modname # "Kernel" THEN (* All modules need Kernel, excepting WinHost and Kernel *)
       AddImport(module, "Kernel")
     END
   END;
@@ -178,24 +369,24 @@ BEGIN
   END
 END WriteHuman;
 
-PROCEDURE Compile(module: Module);
+PROCEDURE Compile(module: Module; VAR newsymbols: BOOLEAN);
 VAR startTime, endTime: INTEGER;
 BEGIN
   H.wsl(module.modname,  LongestModname  + 2);
   H.wsl(module.filename, LongestFilename);
   (*
-  B.SetSourcePath(SourcePath);
-  B.SetBuildPath(BuildPath);
+  B.SetSourcePath(SourcePrefix);
+  B.SetBuildPath(BinariesPrefix);
   *)
 
   startTime := H.Time();
-  ORS.Init(module.text, 0);  ORP.Module(module.filename);
+  ORS.Init(module.text, 0);  ORP.Module(module.filename, newsymbols);
 
   IF ORS.errcnt = 0 THEN
     endTime := H.Time();
     WriteHuman(X64.PC, 12);
     WriteHuman(ORG.Varsize, 12);
-    WriteHuman(endTime - startTime, 6);
+    WriteHuman((endTime - startTime) DIV 10000, 6);
     WriteHuman(ORG.Hdr.commands - ORG.Hdr.pointers, 11);
     WriteHuman(ORG.Hdr.lines    - ORG.Hdr.commands, 6);
     WriteHuman(ORG.Hdr.exports  - ORG.Hdr.lines,    7);
@@ -262,8 +453,8 @@ VAR
 BEGIN
   AddModule(Modulename);
 
-  IF SourcePath # "./" THEN H.ws(", source path: '");  H.ws(SourcePath); H.wsn("'") END;
-  IF BuildPath  # ""   THEN H.ws(", build path: '");   H.ws(BuildPath);  H.wsn("'") END;
+  IF SourcePrefix   # "" THEN H.ws("Sources path:  '");  H.ws(SourcePrefix);   H.wsn("'") END;
+  IF BinariesPrefix # "" THEN H.ws("Binaries path: '");  H.ws(BinariesPrefix); H.wsn("'") END;
 
   (* Keep scanning and adding modules until all dependencies have been scanned *)
   REPEAT
@@ -316,6 +507,7 @@ VAR
   maxexport:  INTEGER;
   maximport:  INTEGER;
   i:          INTEGER;
+  newsymbols: BOOLEAN;
 BEGIN
   SortModulesIntoBuildOrder;
 
@@ -332,7 +524,8 @@ BEGIN
   start     := H.Time();
 
   WHILE Modules # NIL DO
-    Compile(Modules);
+    newsymbols := TRUE;
+    Compile(Modules, newsymbols);
     INC(codesize, X64.PC);
     INC(varsize, ORG.Varsize);
     maxalloc  := ORG.Max(maxalloc,  K.Allocated);
@@ -348,7 +541,9 @@ BEGIN
     Oberon.GC
   END;
 
-  PEname := ""; H.Append(Modulename, PEname);  H.Append(".exe", PEname);
+  PEname := "";
+  IF OutputPrefix # "" THEN H.Append(OutputPrefix, PEname) END;
+  H.Append(Modulename, PEname);  H.Append(".exe", PEname);
   WinPE.Generate(PEname, LoadFlags);
 
   end := H.Time();
@@ -359,7 +554,7 @@ BEGIN
   H.wsl("Total:", LongestModname + LongestFilename + 2);
 
   WriteHuman(codesize, 12);     WriteHuman(varsize,  12);
-  WriteHuman(end - start, 6);   H.ws("  Max:");
+  WriteHuman((end - start) DIV 10000, 6);   H.ws("  Max:");
 
   IF K.Allocated > maxalloc THEN maxalloc := K.Allocated END;
   WriteHuman(maxptrs,   5);
@@ -403,23 +598,16 @@ BEGIN
     (* 'i'and 'j' are first and limit character of executable directory *)
     (* Find end of source searchpath *)
     k := 0;
-    WHILE (k < LEN(SourcePath)) & (SourcePath[k] # 0X) DO INC(k) END;
-
-    (* Add path separator to source searchpath if none already present *)
-    IF k < LEN(SourcePath) - 1 THEN
-      IF (k > 0) & (SourcePath[k-1] # "/") & (SourcePath[k-1] # '\') THEN
-        SourcePath[k] := "/";  INC(k);
-      END
-    END;
+    WHILE (k < LEN(SourcePrefix)) & (SourcePrefix[k] # 0X) DO BinariesPrefix  (* Add path separator to source searchpath if none already present *)
+    IF k < LEN(SourcePrefix)   - 1 THEN
+      IF (k > 0BinariesPrefixix[k  -1] # "  /") & (So  urcePrefix[k-1] # '\') THEN
+        SourcePrefixBinariesPrefixsPrefixiesPrefix  END;
 
     (* Add executable path to source search path *)
-    IF k + j-i + 3 < LEN(SourcePath) THEN
-      SourcePath[k] := ";";  INC(k);
-      WHILE i < j DO SourcePath[k] := K.ExecutablePath[i];  INC(i);  INC(k) END;
-      SourcePath[k] := '/';  INC(k);
-      SourcePath[k] := 0X;
-    END
-  END
+    IF k + j-i + 3 < LEN(SourcePrefix)   THEN
+      SourcePrefix[k] := BinariesP  refix     BinariesPrefixSourcePrefix[k] := K.ExecutablePath[i];  INC(i);  INC(k) END;
+      SourcePrefix[  k]BinariesPrefix)  ;
+      BinariesPrefix :=BinariesPrefixEND
 END AddExecutableDirToSourceSearchpath;
 *)
 
@@ -437,20 +625,19 @@ END ArgError;
 PROCEDURE ScanArguments;
 VAR i: INTEGER;  arg: ARRAY 1024 OF CHAR;
 BEGIN
-  SourcePath := "./";
-  BuildPath  := "";
-  Modulename := "";
+  SourcePrefix   := "";
+  BinariesPrefix := "";
+  OutputPrefix   := "";
+  Modulename     := "";
 
   i := 1;
   WHILE i < WinArgs.Argcount DO
     WinArgs.GetArg(i, arg);
     IF arg[0] = "/" THEN
-      IF    arg = "/source" THEN INC(i);  WinArgs.GetArg(i, SourcePath)
-      ELSIF arg = "/s"      THEN INC(i);  WinArgs.GetArg(i, SourcePath)
-      ELSIF arg = "/build"  THEN INC(i);  WinArgs.GetArg(i, BuildPath)
-      ELSIF arg = "/b"      THEN INC(i);  WinArgs.GetArg(i, BuildPath)
-      ELSIF arg = "/v"      THEN Verbose := TRUE; INCL(LoadFlags, H.Verbose);
-                                 ASSERT(H.Verbose IN LoadFlags)
+      IF    (arg = "/sources")  OR (arg = "/s") THEN INC(i);  WinArgs.GetArg(i, SourcePrefix)
+      ELSIF (arg = "/binaries") OR (arg = "/b") THEN INC(i);  WinArgs.GetArg(i, BinariesPrefix)
+      ELSIF (arg = "/output")   OR (arg = "/o") THEN INC(i);  WinArgs.GetArg(i, OutputPrefix)
+      ELSIF (arg = "/verbose")  OR (arg = "/v") THEN Verbose := TRUE; INCL(LoadFlags, H.Verbose)
       ELSE
         ArgError(i, arg, "unrecognised option.")
       END
@@ -481,6 +668,11 @@ BEGIN
   LongestModname  := 0;
   LongestFilename := 0;
   ScanArguments;
+
+  (* --- prototyping --- *)
+  ParsePrefices(SourcePrefix,   SourcePrefices);
+  ParsePrefices(BinariesPrefix, BinaryPrefices);
+  (* --- prototyping --- *)
 
   (*AddExecutableDirToSourceSearchpath;*)
   Build;

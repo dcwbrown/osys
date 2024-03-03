@@ -23,30 +23,30 @@
 @echo.
 @echo ------------- Build prebuild compiler from knowngood and new WinPE -------------
 @mkdir buildpre >NUL
-@copy knowngood\*.mod buildpre >NUL
 @copy WinPE.mod buildpre >NUL
 @cd buildpre >NUL
-..\knowngood\obuild obuild
+..\knowngood\obuild /s ./;../ obuild
 @if errorlevel 1 goto end
 @cd ..
+::
 ::
 :firstbuild
 @echo.
 @echo ----------------- Build new compiler using known good compiler -----------------
-@del t1 t2 >NUL
+@del t1 t2 >NUL 2>NUL
 @mkdir build1 >NUL 2>NUL
-@copy *.mod build1 >NUL
 @cd build1
-if exist ..\buildpre\obuild.exe (..\buildpre\obuild obuild) else (..\knowngood\obuild obuild)
+::if exist ..\buildpre\obuild.exe (..\buildpre\obuild obuild) else (..\knowngood\obuild obuild)
+..\knowngood\obuild /s ../ obuild
 @if errorlevel 1 goto end
 @cd ..
+::
 ::
 @echo.
 @echo ---------------- Build new compiler using newly built compiler -----------------
 @mkdir build2 >NUL 2>NUL
-@copy *.mod build2 >NUL
 @cd build2
-..\build1\obuild obuild
+..\build1\obuild /s ../ obuild
 @if errorlevel 1 goto end
 @if exist obuild.exe goto obexists
 ::
@@ -56,12 +56,12 @@ if exist ..\buildpre\obuild.exe (..\buildpre\obuild obuild) else (..\knowngood\o
 :obexists
 @cd ..
 ::
+::
 @echo.
 @echo --------------------------------- Build tests ----------------------------------
 @mkdir buildtest >NUL 2>NUL
-@copy *.mod buildtest >NUL
 @cd buildtest
-..\build1\obuild Test
+..\build1\obuild /s ../ Test
 @if errorlevel 1 goto end
 @if exist Test.exe goto Testexists
 ::

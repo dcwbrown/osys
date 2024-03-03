@@ -20,7 +20,6 @@ VAR
   sym:     INTEGER;             (* last symbol read *)
   dc:      INTEGER;             (* data counter *)
   level:   INTEGER;
-  newSF:   BOOLEAN;             (* new symbol file option flag *)
   modid:   ORS.Ident;
   pbsList: PtrBase;             (* list of names of pointer base types *)
   dummy:   ORB.Object;
@@ -1188,7 +1187,7 @@ BEGIN ORS.Get(sym);  CheckNative(native);
   END
 END ProcedureDecl;
 
-PROCEDURE Module*(sourcefn: ARRAY OF CHAR);
+PROCEDURE Module*(sourcefn: ARRAY OF CHAR; VAR newsymbols: BOOLEAN);
 VAR key:    INTEGER;
     impid:  ORS.Ident;
     impid1: ORS.Ident;
@@ -1282,8 +1281,8 @@ BEGIN
       Texts.WriteString(W, "Exporting symbols for module ");
       Texts.WriteString(W, modid); Texts.WriteLn(W);
       *)
-      ORB.Export(modid, newSF, key);
-      (*IF newSF THEN Texts.WriteString(W, " new symbol file") END*)
+      ORB.Export(modid, newsymbols, key);
+      (*IF newsymbols THEN Texts.WriteString(W, " new symbol file") END*)
     END;
 
     IF ORS.errcnt = 0 THEN
@@ -1299,15 +1298,15 @@ BEGIN
   END
 END Module;
 
+(*
 PROCEDURE Option(VAR S: Texts.Scanner);
-BEGIN newSF := FALSE;
+BEGIN NewSF := FALSE;
   IF S.nextCh = "/" THEN
     Texts.Scan(S);  Texts.Scan(S);
-    IF (S.class = Texts.Name) & (S.s[0] = "s") THEN newSF := TRUE END
+    IF (S.class = Texts.Name) & (S.s[0] = "s") THEN NewSF := TRUE END
   END
 END Option;
 
-(*
 PROCEDURE Compile*;
 VAR beg, end, time: INTEGER;
     T: Texts.Text;
@@ -1341,11 +1340,11 @@ BEGIN Texts.OpenScanner(S, Oberon.Par.text, Oberon.Par.pos);  Texts.Scan(S);
 END Compile;
 *)
 
-PROCEDURE CompileFile*(fn: ARRAY OF CHAR);
+PROCEDURE CompileFile*(fn: ARRAY OF CHAR; VAR newsymbols: BOOLEAN);
 VAR T: Texts.Text;
 BEGIN
   NEW(T);  Texts.Open(T, fn);  IF T.len > 0 THEN ORS.Init(T, 0);
-  Module(fn) END;
+  Module(fn, newsymbols) END;
 END CompileFile;
 
 BEGIN
