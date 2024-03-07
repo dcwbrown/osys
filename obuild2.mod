@@ -34,19 +34,23 @@ TYPE
 
   ModuleMaker = PROCEDURE (modname: ARRAY OF CHAR): Module;
 
+  Import = POINTER TO Importdesc;
+  Importdesc = RECORD name: ORS.Ident; next: Import END;
 
 VAR
-  Modulename:      ModuleName;
-  SourcePrefix:    PathName;
-  BinariesPrefix:  PathName;
-  OutputPrefix:    PathName;
+  Modulename:     ModuleName;
+  SourcePrefix:   PathName;
+  BinariesPrefix: PathName;
+  OutputPrefix:   PathName;
+  LoadFlags:      SET;
+  SourcePrefices: Prefix;
+  BinaryPrefices: Prefix;
+
+  (* Log output control *)
   Verbose:         BOOLEAN;
   LongestModname:  INTEGER;
   LongestFilename: INTEGER;
-  LoadFlags:       SET;
-
-  SourcePrefices: Prefix;
-  BinaryPrefices: Prefix;
+  TitlePending:    BOOLEAN;
 
   Modules:        Module;
   Lastmodule:     Module;
@@ -146,11 +150,20 @@ VAR
   sym:        INTEGER;
   impname:    ORS.Ident;
   impmodule:  Module;
+  import:     Import;
+  imports:    Import;
+  lastimport: Import;
 BEGIN
   IF module.sourcefile = NIL THEN
     H.ws("Compile - missing source file for '"); H.ws(module.sourcefn); H.wsn("'.");
+  (*
+  ELSE
+    H.ws("Compiling "); H.ws(module.sourcefile.name); H.wsn(".");
+  *)
   END;
   ASSERT(module.sourcefile # NIL);
+
+  (* Extract list of imported modules *)
   NEW(module.text);
   Texts.OpenFile(module.text, module.sourcefile);
   ORS.Init(module.text, 0);
@@ -179,13 +192,26 @@ BEGIN
         impname := ORS.id;  ORS.Get(sym)
       END;
       IF impname # "SYSTEM" THEN
-        impmodule := MakeModule(impname)
+        NEW(import);  import.name := impname;
+        IF imports = NIL THEN imports := import ELSE lastimport.next := import END;
+        lastimport := import
       END;
     UNTIL sym # ORS.comma
   END;
 
-  H.wsl(module.modname,  LongestModname  + 2); H.ws("  ");
-  H.wsl(module.sourcefn, LongestFilename);     H.ws("  ");
+  (* Make imported modules *)
+  import := imports;
+  WHILE import # NIL DO impmodule := MakeModule(import.name); import := import.next END;
+
+  IF TitlePending THEN  (* Cannot write title until longest module and file names have been determined *)
+    H.wsl("Module", LongestModname + 2);  H.wsl("File", LongestFilename + 2);
+    H.wsn("        code         VAR    ms       ptrs   cmd  annot  export  import      heap");
+    TitlePending := FALSE
+  END;
+
+  H.wsl(module.modname,  LongestModname + 2);
+  H.ws(module.sourceprefix.prefix);  H.ws(module.sourcefn);
+  H.wb(LongestFilename - (H.Length(module.sourceprefix.prefix) + H.Length(module.sourcefn)) + 2);
   startTime := H.Time();
   ORS.Init(module.text, 0);  (* Rewind text to beginning for full compilation *)
   newsymbols := TRUE;
@@ -227,6 +253,7 @@ BEGIN
 
   IF module = NIL THEN
     (*H.ws("Making module "); H.ws(modname); H.wsn(".");*)
+    LongestModname := H.Max(LongestModname, H.Length(modname));
     NEW(module);
     Copy(modname, module.modname);
     module.symkey := 1;  module.codekey := 2;
@@ -234,6 +261,7 @@ BEGIN
 
     Copy(modname, module.sourcefn);  H.Append(".mod", module.sourcefn);
     Open(module.sourcefn, SourcePrefices, module.sourcefile, module.sourceprefix);
+    LongestFilename := H.Max(LongestFilename, H.Length(module.sourcefn) + H.Length(module.sourceprefix));
 
     IF module.sourcefile = NIL THEN
       H.ws("(couldn't open ");  H.ws(module.sourcefn);
@@ -310,28 +338,25 @@ BEGIN
 RETURN module END MakeModuleProc;
 
 
-
-
 PROCEDURE Build;
 VAR
   mod:    Module;
   PEname: PathName;
+  start:  INTEGER;  (* Times *)
+  end:    INTEGER;
 BEGIN
+  start := H.Time();
   mod := MakeModule("WinHost");
   mod := MakeModule("Kernel");
   mod := MakeModule(Modulename);
-  H.wsn("Modules made: order is:");
   mod := Modules;
-  WHILE mod # NIL DO
-    H.ws("  ");    H.ws(mod.modname);
-    H.ws(" in ");  H.ws(mod.codefn);  H.wsn(".");
-    WinPE.AddModule(mod.codefile);
-    mod := mod.next
-  END;
+  WHILE mod # NIL DO WinPE.AddModule(mod.codefile); mod := mod.next END;
   PEname := "";
   IF OutputPrefix # "" THEN H.Append(OutputPrefix, PEname) END;
   H.Append(Modulename, PEname);  H.Append(".exe", PEname);
   WinPE.Generate(PEname, LoadFlags);
+  end := H.Time();
+  H.ws("Build complete, "); H.wi((end - start) DIV 10000); H.wsn("ms.");
 END Build;
 
 
@@ -390,16 +415,17 @@ BEGIN
   LoadFlags       := {};
   LongestModname  := 0;
   LongestFilename := 0;
+  TitlePending    := TRUE;
   MakeModule      := MakeModuleProc;
 
   ScanArguments;
 
   ParsePrefices(SourcePrefix,   SourcePrefices);
-  IF SourcePrefices # NIL THEN
+  IF Verbose & (SourcePrefices # NIL) THEN
     H.wsn("Source prefixes:");  WritePrefices(SourcePrefices)
   END;
   ParsePrefices(BinariesPrefix, BinaryPrefices);
-  IF BinaryPrefices # NIL THEN
+  IF Verbose & (BinaryPrefices # NIL) THEN
     H.wsn("Binary prefixes:");  WritePrefices(BinaryPrefices)
   END;
 

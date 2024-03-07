@@ -347,12 +347,12 @@ BEGIN
     Compile(Modules, newsymbols);
     INC(codesize, X64.PC);
     INC(varsize, ORG.Varsize);
-    maxalloc  := ORG.Max(maxalloc,  K.Allocated);
-    maxptrs   := ORG.Max(maxptrs,   ORG.Hdr.commands - ORG.Hdr.pointers);
-    maxcmd    := ORG.Max(maxcmd,    ORG.Hdr.lines    - ORG.Hdr.commands);
-    maxannot  := ORG.Max(maxannot,  ORG.Hdr.exports  - ORG.Hdr.lines);
-    maxexport := ORG.Max(maxexport, ORG.Hdr.imports  - ORG.Hdr.exports);
-    maximport := ORG.Max(maximport, ORG.Hdr.length   - ORG.Hdr.imports);
+    maxalloc  := H.Max(maxalloc,  K.Allocated);
+    maxptrs   := H.Max(maxptrs,   ORG.Hdr.commands - ORG.Hdr.pointers);
+    maxcmd    := H.Max(maxcmd,    ORG.Hdr.lines    - ORG.Hdr.commands);
+    maxannot  := H.Max(maxannot,  ORG.Hdr.exports  - ORG.Hdr.lines);
+    maxexport := H.Max(maxexport, ORG.Hdr.imports  - ORG.Hdr.exports);
+    maximport := H.Max(maximport, ORG.Hdr.length   - ORG.Hdr.imports);
 
     IF ORS.errcnt # 0 THEN H.ExitProcess(99) END;
     (*IF Modules.modname # "WinHost" THEN WinPE.AddModule(Modules.codefile) END;*)

@@ -143,13 +143,6 @@ BEGIN
 END Disassemble;
 
 
-PROCEDURE Min*(a, b: INTEGER): INTEGER;
-BEGIN IF a < b THEN b := a END;  RETURN b END Min;
-
-PROCEDURE Max*(a, b: INTEGER): INTEGER;
-BEGIN IF a > b THEN b := a END;  RETURN b END Max;
-
-
 (* ---------------------- Line number -> PC annotation ---------------------- *)
 
 PROCEDURE NewBodyAnnotation*(name: ARRAY OF CHAR; VAR a: BodyAnnotation);
@@ -707,7 +700,7 @@ VAR op, reg, immsize: INTEGER;
 BEGIN
   IF (imm >= -80000000H) & (imm < 80000000H) THEN  (* imm fits 32 bits *)
     IF size = 1 THEN op := 0C6H ELSE op := 0C7H END;
-    immsize := Min(size, 4);
+    immsize := H.Min(size, 4);
     OpModRegRm(op, mode, 0, size, n, index, scale, offset, immsize);
     X64.EmitBytes(immsize, imm);
     Disassemble(mode, "StoreImmediate")

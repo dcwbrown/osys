@@ -173,6 +173,12 @@ VAR
 
 PROCEDURE NoLog(s: ARRAY OF BYTE); BEGIN END NoLog;
 
+PROCEDURE Min*(a, b: INTEGER): INTEGER;
+BEGIN IF a < b THEN b := a END;  RETURN b END Min;
+
+PROCEDURE Max*(a, b: INTEGER): INTEGER;
+BEGIN IF a > b THEN b := a END;  RETURN b END Max;
+
 
 (* -------------------------------------------------------------------------- *)
 (* ---------------------- Very basic string functions ----------------------- *)
