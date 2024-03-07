@@ -880,12 +880,14 @@ VAR
   info: infodesc;
 BEGIN
   res := GetFileInformationByHandleEx(hfile, 0, SYSTEM.ADR(info), SYSTEM.SIZE(infodesc));
+  (*
   wsn("* GetFileInformationByHandleEx ->");
   ws("  creation "); WriteTime(info.creation); wsn(".");
   ws("  access   "); WriteTime(info.access);   wsn(".");
   ws("  write    "); WriteTime(info.write);    wsn(".");
   ws("  change   "); WriteTime(info.change);   wsn(".");
   ws("  attribs  "); whz(info.attribs, 4);     wsn("H.");
+  *)
   IF res = 0 THEN AssertWinErr(GetLastError()) END;
 RETURN info.creation END FileTime;
 

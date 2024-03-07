@@ -38,7 +38,7 @@ TYPE
   ObjectFile = POINTER TO ObjectFileDesc;
   ObjectFileDesc = RECORD
     next: ObjectFile;
-    name: ARRAY H.MaxPath OF CHAR
+    file: Files.File
   END;
   Zeroes58 = ARRAY 3AH OF BYTE;
 
@@ -337,18 +337,14 @@ END WriteImports;
 (* -------------------------------------------------------------------------- *)
 (* -------------------------------------------------------------------------- *)
 
-PROCEDURE CopyFile(name: ARRAY OF CHAR);
-VAR  f: Files.File;  r: Files.Rider;  buf: ARRAY 1000H OF BYTE;
+PROCEDURE CopyFile(f: Files.File);
+VAR  r: Files.Rider;  buf: ARRAY 1000H OF BYTE;
 BEGIN
   IF Verbose THEN
-    H.ws("Adding "); H.ws(name); H.ws(" at file offset "); H.wh(Files.Pos(Exe));
+    H.ws("Adding "); H.ws(f.name); H.ws(" at file offset "); H.wh(Files.Pos(Exe));
     H.ws("H, FadrModules + "); H.wh(Files.Pos(Exe) - FadrModules); H.wsn("H.")
   END;
   ASSERT(Files.Pos(Exe) MOD 16 = 0);
-  f := Files.Old(name);
-  IF f = NIL THEN
-    H.ws("Couldn't copy '"); H.ws(name); H.wsn("'."); K.Halt(99)
-  END;
   Files.Set(r, f, 0);
   WHILE ~r.eof DO
     Files.ReadBytes(r, buf, LEN(buf));
@@ -362,7 +358,10 @@ PROCEDURE WriteModules;
 VAR object: ObjectFile;
 BEGIN
   object := Objects;
-  WHILE object # NIL DO CopyFile(object.name);  object := object.next END;
+  WHILE object # NIL DO
+    IF object.file.name # "WinHost.code" THEN CopyFile(object.file) END;
+    object := object.next
+  END;
 
   Files.WriteInt(Exe, 0);  (* Mark end of modules - appears as header.length = 0 *)
 
@@ -507,14 +506,13 @@ END WritePEHeader;
 (* -------------------------------------------------------------------------- *)
 (* -------------------------------------------------------------------------- *)
 
-PROCEDURE AddModule*(fn: ARRAY OF CHAR);
+PROCEDURE AddModule*(f: Files.File);
+VAR obj: ObjectFile;
 BEGIN
-  IF LastObject = NIL THEN
-    NEW(Objects);  Objects.name := fn;  LastObject := Objects
-  ELSE
-    NEW(LastObject.next);  LastObject := LastObject.next;
-    LastObject.name := fn
-  END
+  ASSERT(f # NIL);
+  NEW(obj); obj.file := f;
+  IF Objects = NIL THEN Objects := obj ELSE LastObject.next := obj END;
+  LastObject := obj
 END AddModule;
 
 
@@ -523,8 +521,7 @@ VAR
   f: Files.File;
   r: Files.Rider;
 BEGIN
-  f := Files.Old("WinHost.code");
-  IF f = NIL THEN H.wsn("Couldn't open WinHost.code."); K.Halt(99) END;
+  f := Objects.file;  Objects := Objects.next;  (* First object is the bootstrap *)
   Files.Set(r, f, 0);
   Files.ReadBytes(r, Bootstrap,  SYSTEM.SIZE(BootstrapBuffer));
   (*H.ws("Bootstrap bytes read: "); w.i(Files.Pos(r)); H.wsn(".");*)

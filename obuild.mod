@@ -18,8 +18,10 @@ TYPE
   ModuleDesc = RECORD
     next:         Module;
     modname:      ModuleName;  (* Just the module name: no directory, no extension *)
-    filename:     PathName;
+    filenamex:     PathName;
     codename:     PathName;
+    file:         Files.File;
+    codefile:     Files.File;
     text:         Texts.Text;
     dependencies: Dependency;
     scanned:      BOOLEAN
@@ -29,28 +31,6 @@ TYPE
     next: Dependency;
     mod:  Module
   END;
-
-  (* ---- *)
-
-  Prefix= POINTER TO PrefixDesc;
-  PrefixDesc = RECORD
-    next:   Prefix;
-    prefix: PathName
-  END;
-
-  Module2 = POINTER TO Module2Desc;
-  Module2Desc = RECORD
-    next:     Module2;
-    modname:  ModuleName;  (* Just the module name: no directory, no extension *)
-
-    sourcefn:   PathName;  sourcefile: Files.File;  sourceprefix: Prefix;
-    sourcetime: INTEGER;
-    symfn:      PathName;  symfile:    Files.File;  symprefix:  Prefix;
-    symtime:    INTEGER;   symkey:     INTEGER;
-    codefn:     PathName;  codefile:   Files.File;  codeprefix: Prefix;
-    codetime:   INTEGER;   codekey:    INTEGER;
-  END;
-
 
 VAR
   Modulename:      ModuleName;
@@ -62,166 +42,6 @@ VAR
   LongestModname:  INTEGER;
   LongestFilename: INTEGER;
   LoadFlags:       SET;
-
-  SourcePrefices: Prefix;
-  BinaryPrefices: Prefix;
-
-  Modules2:       Module2;
-
-
-(* ------------- File open with alternative file name prefix -------------- *)
-
-PROCEDURE Open(
-  name:       ARRAY OF CHAR;
-  prefices:   Prefix;
-  VAR file:   Files.File;
-  VAR prefix: Prefix);
-VAR
-  fn: PathName;
-BEGIN
-  file := NIL;  prefix := prefices;
-  IF prefix = NIL THEN
-    file := Files.Old(name)
-  ELSE
-    WHILE (file = NIL) & (prefix # NIL) DO
-      fn := prefix.prefix;
-      H.Append(name, fn);
-      file := Files.Old(fn);
-      IF file = NIL THEN prefix := prefix.next END
-    END
-  END
-END Open;
-
-PROCEDURE Copy(source: ARRAY OF CHAR; VAR target: ARRAY OF CHAR);
-VAR i, lim: INTEGER;
-BEGIN
-  i := 0;
-  IF LEN(source) < LEN(target) THEN
-    lim := LEN(source) - 1
-  ELSE
-    lim := LEN(target) - 1
-  END;
-  WHILE i < lim DO target[i] := source[i]; INC(i) END;
-  target[i] := 0X
-END Copy;
-
-PROCEDURE CopySlice(
-  source:     ARRAY OF CHAR;
-  sourcepos:  INTEGER;
-  len:        INTEGER;
-  VAR target: ARRAY OF CHAR;
-  targetpos:  INTEGER);
-VAR
-  i, j, lim: INTEGER;
-BEGIN
-  i := sourcepos;  j := targetpos;  lim := i + len;
-  WHILE i < lim DO target[j] := source[i]; INC(i); INC(j) END;
-  target[j] := 0X
-END CopySlice;
-
-PROCEDURE ParsePrefices(str: ARRAY OF CHAR; VAR prefix: Prefix);
-VAR lastprefix: Prefix;  i, j: INTEGER;
-BEGIN
-  prefix := NIL;  i := 0;
-  WHILE str[i] # 0X DO
-    WHILE str[i] = ";" DO INC(i) END;
-    j := i;
-    WHILE (str[j] # 0X) & (str[j] # ";") DO INC(j) END;
-    IF prefix = NIL THEN
-      NEW(prefix);  lastprefix := prefix
-    ELSE
-      NEW(lastprefix.next);  lastprefix := lastprefix.next
-    END;
-    CopySlice(str, i, j-i, lastprefix.prefix, 0);
-    i := j
-  END
-END ParsePrefices;
-
-PROCEDURE InitModule(modname: ARRAY OF CHAR; VAR module: Module2);
-VAR
-  fn:      PathName;
-  r:       Files.Rider;
-  symkey:  INTEGER;
-  codekey: INTEGER;
-  last:    Module2;
-BEGIN
-  module := Modules2;  last := NIL;
-  WHILE (module # NIL) & (modname # module.modname) DO
-    last := module; module := module.next
-  END;
-
-  IF module = NIL THEN
-    NEW(module);
-    IF Modules2 = NIL THEN Modules2 := module ELSE last.next := module END;
-    Copy(modname, module.modname);
-    module.symkey := 1;  module.codekey := 2;
-    module.sourcetime := 0; module.symtime := 0; module.codetime := 0;
-
-    Copy(modname, module.sourcefn);  H.Append(".mod", module.sourcefn);
-    Open(module.sourcefn, SourcePrefices, module.sourcefile, module.sourceprefix);
-    IF module.sourcefile # NIL THEN
-      module.sourcetime := Files.Date(module.sourcefile)
-    END;
-
-    Copy(modname, module.symfn);  H.Append(".smb", module.symfn);
-    Open(module.symfn, BinaryPrefices, module.symfile, module.symprefix);
-    IF module.symfile # NIL THEN
-      module.symtime := Files.Date(module.symfile);
-      Files.Set(r, module.symfile, 8);  Files.ReadInt(r, module.symkey)
-    END;
-
-    Copy(modname, module.codefn);  H.Append(".code", module.codefn);
-    Open(module.codefn, BinaryPrefices, module.codefile, module.codeprefix);
-    IF module.codefile # NIL THEN
-      module.codetime := Files.Date(module.codefile);
-      Files.Set(r, module.codefile, 20H); Files.ReadInt(r, module.codekey);
-    END;
-
-    H.ws("InitModule("); H.ws(modname); H.wsn("):");
-    IF module.sourcefile # NIL THEN
-      H.ws("  source: fn ");  H.ws(module.sourcefn);
-      H.ws(",  prefix ");     IF module.sourceprefix = NIL THEN H.ws("NIL") ELSE H.ws(module.sourceprefix.prefix) END;
-      H.ws(", date ");        H.WriteTime(module.sourcetime);
-      H.wsn(".");
-    END;
-    IF module.symfile # NIL THEN
-      H.ws("  sym:    fn ");  H.ws(module.symfn);
-      H.ws(",  prefix ");     IF module.symprefix = NIL THEN H.ws("NIL") ELSE H.ws(module.symprefix.prefix) END;
-      H.ws(", date ");        H.WriteTime(module.symtime);
-      H.ws(", key ");         H.wh(module.symkey);
-      H.wsn(".");
-    END;
-    IF module.codefile # NIL THEN
-      H.ws("  code:   fn ");  H.ws(module.codefn);
-      H.ws(", prefix ");      IF module.codeprefix = NIL THEN H.ws("NIL") ELSE H.ws(module.codeprefix.prefix) END;
-      H.ws(", date ");        H.WriteTime(module.codetime);
-      H.ws(", key ");         H.wh(module.codekey);
-      H.wsn(".");
-    END;
-  END;
-
-  IF (module.sourcefile # NIL)
-   & (module.symfile    # NIL)
-   & (module.codefile   # NIL) THEN
-    IF (module.sourcetime > module.symtime) OR (module.sourcetime > module.codetime) THEN
-      H.wsn("  Use source files as newer.")
-    ELSE
-      H.wsn("  Attempt using pre-compiled binaries as source not modified.")
-    END
-  ELSE
-    IF module.sourcefile # NIL THEN
-      H.wsn("  Use source files as no pre-compiled binaries.")
-    ELSIF (module.symfile # NIL) & (module.codefile # NIL) THEN
-      IF module.symkey = module.codekey THEN
-        H.wsn("  Attempt using pre-compiled binary as no source file.")
-      ELSE
-        H.wsn("  Cannot build as no source file, and pre-compiled binary symbols and code do not match.")
-      END
-    ELSE
-      H.wsn("  Cannot build as neither source files nor suitabe pre-compiled binaries are available.");
-    END
-  END;
-END InitModule;
 
 
 
@@ -266,21 +86,19 @@ END FindFile;
 
 PROCEDURE AddModule(modname: ARRAY OF CHAR);
 VAR mod: Module;  file: Files.File;  filename: ModuleName;
-  dummy:   Module2;
 BEGIN
-  (*---*)InitModule(modname, dummy);(*---*)
-
   NEW(mod);
   mod.modname := modname;  mod.scanned := FALSE;
   filename := modname;  H.Append(".mod", filename);
-  FindFile(filename,   SourcePrefix, file, mod.filename);
+  FindFile(filename,   SourcePrefix, file, mod.filenamex);
   IF file = NIL THEN
     H.ws("Could not find source file "); H.ws(filename); H.ws(" for module '"); H.ws(modname); H.wsn("'.");
     H.ExitProcess(99)
   END;
+  mod.file := file;
   mod.codename := "";  H.Append(modname, mod.codename);  H.Append(".code", mod.codename);
-  IF H.Length(modname)      > LongestModname  THEN LongestModname  := H.Length(modname) END;
-  IF H.Length(mod.filename) > LongestFilename THEN LongestFilename := H.Length(mod.filename) END;
+  IF H.Length(modname)       > LongestModname  THEN LongestModname  := H.Length(modname)       END;
+  IF H.Length(mod.filenamex) > LongestFilename THEN LongestFilename := H.Length(mod.filenamex) END;
   mod.next := Modules;  Modules := mod
 END AddModule;
 
@@ -314,29 +132,29 @@ VAR
   impname: ORS.Ident;
 BEGIN
   NEW(module.text);
-  Texts.Open(module.text, module.filename);
+  Texts.OpenFile(module.text, module.file);
   ORS.Init(module.text, 0);  ORS.Get(sym);
-  IF sym # ORS.module THEN Expected(module.filename, "does not start with MODULE.") END;
+  IF sym # ORS.module THEN Expected(module.filenamex, "does not start with MODULE.") END;
   ORS.Get(sym);
-  IF sym # ORS.ident THEN Expected(module.filename, "expected module id."); END;
+  IF sym # ORS.ident THEN Expected(module.filenamex, "expected module id."); END;
   IF ORS.id # module.modname THEN
-    H.ws("File "); H.ws(module.filename); WriteFilepos; H.ws(" module id '");
+    H.ws("File "); H.ws(module.filenamex); WriteFilepos; H.ws(" module id '");
     H.ws(ORS.id); H.ws("' does not match expected id '");
     H.ws(module.modname); H.wsn("'.");
     H.ExitProcess(99)
   END;
   (*B.Init(S.id);*)
   ORS.Get(sym);
-  IF sym # ORS.semicolon THEN Expected(module.filename, "expected semicolon from module id.") END;
+  IF sym # ORS.semicolon THEN Expected(module.filenamex, "expected semicolon from module id.") END;
   ORS.Get(sym);
   IF sym = ORS.import THEN
     REPEAT
       ORS.Get(sym);
-      IF sym # ORS.ident THEN Expected(module.filename, "expected id (1).") END;
+      IF sym # ORS.ident THEN Expected(module.filenamex, "expected id (1).") END;
       impname := ORS.id;  ORS.Get(sym);
       IF sym = ORS.becomes THEN
         ORS.Get(sym);
-        IF sym # ORS.ident THEN Expected(module.filename, "expected id (2).") END;
+        IF sym # ORS.ident THEN Expected(module.filenamex, "expected id (2).") END;
         impname := ORS.id;  ORS.Get(sym)
       END;
       IF (impname # "SYSTEM") & (impname # "WinHost") & (impname # "Kernel") THEN
@@ -372,15 +190,15 @@ END WriteHuman;
 PROCEDURE Compile(module: Module; VAR newsymbols: BOOLEAN);
 VAR startTime, endTime: INTEGER;
 BEGIN
-  H.wsl(module.modname,  LongestModname  + 2);
-  H.wsl(module.filename, LongestFilename);
+  H.wsl(module.modname,   LongestModname  + 2);
+  H.wsl(module.filenamex, LongestFilename);
   (*
   B.SetSourcePath(SourcePrefix);
   B.SetBuildPath(BinariesPrefix);
   *)
 
   startTime := H.Time();
-  ORS.Init(module.text, 0);  ORP.Module(module.filename, newsymbols);
+  ORS.Init(module.text, 0);  ORP.Module(module.file, newsymbols, module.codefile);
 
   IF ORS.errcnt = 0 THEN
     endTime := H.Time();
@@ -508,6 +326,7 @@ VAR
   maximport:  INTEGER;
   i:          INTEGER;
   newsymbols: BOOLEAN;
+
 BEGIN
   SortModulesIntoBuildOrder;
 
@@ -536,7 +355,8 @@ BEGIN
     maximport := ORG.Max(maximport, ORG.Hdr.length   - ORG.Hdr.imports);
 
     IF ORS.errcnt # 0 THEN H.ExitProcess(99) END;
-    IF Modules.modname # "WinHost" THEN WinPE.AddModule(Modules.codename) END;
+    (*IF Modules.modname # "WinHost" THEN WinPE.AddModule(Modules.codefile) END;*)
+    WinPE.AddModule(Modules.codefile);
     Modules := Modules.next;
     Oberon.GC
   END;
@@ -667,12 +487,8 @@ BEGIN
   LoadFlags       := {};
   LongestModname  := 0;
   LongestFilename := 0;
-  ScanArguments;
 
-  (* --- prototyping --- *)
-  ParsePrefices(SourcePrefix,   SourcePrefices);
-  ParsePrefices(BinariesPrefix, BinaryPrefices);
-  (* --- prototyping --- *)
+  ScanArguments;
 
   (*AddExecutableDirToSourceSearchpath;*)
   Build;

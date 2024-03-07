@@ -21,7 +21,7 @@ TYPE
     next:       POINTER- TO FileDesc;  (* Non-collecting list of open files *)
     tempname:   FileName;
     registered: BOOLEAN;
-    name:       FileName;
+    name*:      FileName;
     handle:     INTEGER;
     pos:        INTEGER;
   END;
@@ -102,10 +102,13 @@ END Unregister;
 PROCEDURE UnregisterByName(name: ARRAY OF CHAR);
 VAR f: File;
 BEGIN f := first;
+  (*H.wn; H.ws("* UnregisterByName('"); H.ws(name); H.ws("'");*)
   WHILE f # NIL DO
-    IF f.registered & (f.name = name) THEN Unregister(f) END;
+    (*H.ws(" consider '"); H.ws(f.name); H.wc("'");*)
+    IF f.registered & (f.name = name) THEN (*H.ws(" unregister");*) Unregister(f) END;
     f := f.next;
-  END
+  END;
+  (*H.wsn(") *")*)
 END UnregisterByName;
 
 PROCEDURE Register*(f: File);
@@ -115,6 +118,7 @@ VAR
   err:         INTEGER;
   disposition: INTEGER;
 BEGIN
+  (*H.wn; H.ws("* Register('"); H.ws(f.name); H.wsn("') *");*)
   IF (f # NIL) & (f.name[0] # 0X) & ~f.registered THEN
     disposition := 0;  (* Remove delete on close flag *)
     res := H.SetFileInformationByHandle(f.handle, 4, SYSTEM.ADR(disposition), 8);
@@ -140,15 +144,16 @@ BEGIN
   ASSERT(res # 0);
 RETURN size END Length;
 
-PROCEDURE Date(f: File): INTEGER;
-BEGIN RETURN H.NanoDate(f.handle) DIV 10000 END Date;
+PROCEDURE Date*(f: File): INTEGER;  (* In 100 nanosecond ticks since 1601 UTC *)
+BEGIN RETURN H.FileTime(f.handle) END Date;
+
 
 (* --------------------------------- Riders --------------------------------- *)
 
 PROCEDURE Set*(VAR r: Rider; f: File; pos: INTEGER);
-VAR res: INTEGER;
 BEGIN
   (*H.ws("Files.Set, r: Rider at "); H.wh(SYSTEM.ADR(r)); H.wsn("H.");*)
+  IF pos < 0 THEN pos := 0 END;
   r.eof   := FALSE;
   r.res   := 0;
   r.file  := f;
@@ -166,6 +171,11 @@ VAR res: INTEGER;
 BEGIN
   IF r.pos # r.file.pos THEN
     res := H.SetFilePointerEx(r.file.handle, r.pos, 0, 0);
+    IF res = 0 THEN
+      H.ws("SyncFilePos failed. File handle "); H.wh(r.file.handle);
+      H.ws("H, pos "); H.wi(r.pos); H.wsn(".");
+      H.AssertWinErr(H.GetLastError())
+    END;
     ASSERT(res # 0);
     r.file.pos := r.pos
   END;

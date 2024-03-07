@@ -20,7 +20,7 @@
 ::
 @echo Copying files from build2 to knowngood
 @mkdir knowngood
-@copy build2\*.mod knowngood >NUL
+@copy *.mod knowngood >NUL
 @copy build2\*.smb knowngood >NUL
 @copy build2\*.code knowngood >NUL
 @copy build2\*.exe knowngood >NUL

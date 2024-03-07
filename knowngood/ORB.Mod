@@ -465,10 +465,10 @@ BEGIN
   WHILE ~R.eof DO sum := sum + x; Files.ReadInt(R, x) END;
 
   F1 := Files.Old(filename); (*sum is new key*)
-  IF F1 # NIL THEN Files.Set(R1, F1, 4); Files.ReadInt(R1, oldkey) ELSE oldkey := sum+1 END;
+  IF F1 # NIL THEN Files.Set(R1, F1, 8); Files.ReadInt(R1, oldkey) ELSE oldkey := sum+1 END;
   IF sum # oldkey THEN
     IF newSF OR (F1 = NIL) THEN
-      key := sum; newSF := TRUE; Files.Set(R, F, 4); Files.WriteInt(R, sum);  (* insert checksum *)
+      key := sum; newSF := TRUE; Files.Set(R, F, 8); Files.WriteInt(R, sum);  (* insert checksum *)
       Files.Register(F)
     ELSE
       ORS.Mark("new symbol file inhibited")

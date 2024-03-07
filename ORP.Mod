@@ -1,6 +1,6 @@
 MODULE ORP;  (*N. Wirth 1.7.97 / 17.9.2018  Oberon compiler for RISC in Oberon-07*)
 
-IMPORT SYSTEM, H := WinHost, Texts, Oberon, ORS, ORB, X64, ORG, l := Listing;
+IMPORT SYSTEM, H := WinHost, Files, Texts, Oberon, ORS, ORB, X64, ORG, l := Listing;
 
   (*Author: Niklaus Wirth, 2014.
     Parser of Oberon-RISC compiler. Uses Scanner ORS to obtain symbols (tokens),
@@ -1187,7 +1187,7 @@ BEGIN ORS.Get(sym);  CheckNative(native);
   END
 END ProcedureDecl;
 
-PROCEDURE Module*(sourcefn: ARRAY OF CHAR; VAR newsymbols: BOOLEAN);
+PROCEDURE Module*(sourcefile: Files.File; VAR newsymbols: BOOLEAN; VAR codefile: Files.File);
 VAR key:    INTEGER;
     impid:  ORS.Ident;
     impid1: ORS.Ident;
@@ -1230,7 +1230,7 @@ BEGIN
       Check(ORS.semicolon, "no ;")
     END;
 
-    ORG.Open(sourcefn, modid);
+    ORG.Open(sourcefile, modid);
     Declarations(dc);
     ORG.SetDataSize((dc + 7) DIV 8 * 8);
 
@@ -1286,7 +1286,7 @@ BEGIN
     END;
 
     IF ORS.errcnt = 0 THEN
-      ORG.Close(modid, key, exno);
+      ORG.Close(modid, key, exno, codefile);
       (*Texts.WriteInt(W, X64.PC, 8);  Texts.WriteInt(W, dc, 8);  Texts.WriteHex(W, key)*)
     ELSE
       Texts.WriteLn(W);  Texts.WriteString(W, "compilation FAILED");
@@ -1340,12 +1340,14 @@ BEGIN Texts.OpenScanner(S, Oberon.Par.text, Oberon.Par.pos);  Texts.Scan(S);
 END Compile;
 *)
 
-PROCEDURE CompileFile*(fn: ARRAY OF CHAR; VAR newsymbols: BOOLEAN);
+(*
+PROCEDURE CompileFile*(f: Files.File; VAR newsymbols: BOOLEAN);
 VAR T: Texts.Text;
 BEGIN
-  NEW(T);  Texts.Open(T, fn);  IF T.len > 0 THEN ORS.Init(T, 0);
-  Module(fn, newsymbols) END;
+  NEW(T);  Texts.OpenFile(T, f);  IF T.len > 0 THEN ORS.Init(T, 0);
+  Module(f, newsymbols) END;
 END CompileFile;
+*)
 
 BEGIN
   Texts.OpenWriter(W);

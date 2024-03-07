@@ -1290,9 +1290,9 @@ END Disassemble;
 ---*)
 
 
-PROCEDURE Init*(sourcefn: ARRAY OF CHAR);
+PROCEDURE Init*(sourcefile: Files.File);
 BEGIN
-  Sourcefile := Files.Old(sourcefn);  Files.Set(Source, Sourcefile, 0);
+  Sourcefile := sourcefile;  Files.Set(Source, Sourcefile, 0);
   SourceBol  := 0;  SourceLine := 1;  (*disasmpc := 0;*)
   GetChar
 END Init;

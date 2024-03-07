@@ -2755,12 +2755,12 @@ END TypeTest;
 
 (* ---- ---- *)
 
-PROCEDURE Open*(sourcefn, modid: ARRAY OF CHAR);
+PROCEDURE Open*(sourcefile: Files.File;  modid: ARRAY OF CHAR);
 VAR i: INTEGER;
 BEGIN
-  l.Init(sourcefn);
+  l.Init(sourcefile);
   Trflags := {TraceAny, TraceMakeItem};  (*{TraceAny, TraceMakeItem};*)
-  Trace(TraceAny, "ORG Open('"); l.s(sourcefn, Tr); l.sn("')", Tr);
+  (*Trace(TraceAny, "ORG Open('"); l.s(sourcefn, Tr); l.sn("')", Tr);*)
   X64.ClearStack;   ClearRegs;
   X64.Init;
   ZeroFill(Hdr);
@@ -2821,14 +2821,13 @@ BEGIN
   X64.Emit(n)
 END EmitUnsigned;
 
-PROCEDURE Close*(modid: ORS.Ident; key, exno: INTEGER);
+PROCEDURE Close*(modid: ORS.Ident; key, exno: INTEGER; VAR codefile: Files.File);
 (* Note: export numbers are 1 .. exno-1 *)
 VAR
   i:      INTEGER;
   reslen: INTEGER;
   obj:    ORB.Object;
   fname:  ARRAY 40 OF CHAR;
-  F:      Files.File;
   R:      Files.Rider;
   bodyan: BodyAnnotation;
   linean: LineAnnotation;
@@ -3018,10 +3017,10 @@ BEGIN
 
   (* Write compiled module *)
   fname := "";  H.Append(modid, fname);  H.Append(".code", fname);
-  F := Files.New(fname);  Files.Set(R, F, 0);
+  codefile := Files.New(fname);  Files.Set(R, codefile, 0);
   Files.WriteBytes(R, Hdr, 0, SYSTEM.SIZE(CodeHeader));
   Files.WriteBytes(R, X64.Text, SYSTEM.SIZE(CodeHeader), X64.PC - SYSTEM.SIZE(CodeHeader));
-  Files.Register(F);
+  Files.Register(codefile);
 
   BodyAnnotations := NIL
 END Close;

@@ -21,7 +21,7 @@ TYPE
     next:       POINTER- TO FileDesc;  (* Non-collecting list of open files *)
     tempname:   FileName;
     registered: BOOLEAN;
-    name:       FileName;
+    name*:      FileName;
     handle:     INTEGER;
     pos:        INTEGER;
   END;
@@ -151,9 +151,9 @@ BEGIN RETURN H.FileTime(f.handle) END Date;
 (* --------------------------------- Riders --------------------------------- *)
 
 PROCEDURE Set*(VAR r: Rider; f: File; pos: INTEGER);
-VAR res: INTEGER;
 BEGIN
   (*H.ws("Files.Set, r: Rider at "); H.wh(SYSTEM.ADR(r)); H.wsn("H.");*)
+  IF pos < 0 THEN pos := 0 END;
   r.eof   := FALSE;
   r.res   := 0;
   r.file  := f;
@@ -171,6 +171,11 @@ VAR res: INTEGER;
 BEGIN
   IF r.pos # r.file.pos THEN
     res := H.SetFilePointerEx(r.file.handle, r.pos, 0, 0);
+    IF res = 0 THEN
+      H.ws("SyncFilePos failed. File handle "); H.wh(r.file.handle);
+      H.ws("H, pos "); H.wi(r.pos); H.wsn(".");
+      H.AssertWinErr(H.GetLastError())
+    END;
     ASSERT(res # 0);
     r.file.pos := r.pos
   END;

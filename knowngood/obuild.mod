@@ -17,9 +17,11 @@ TYPE
 
   ModuleDesc = RECORD
     next:         Module;
-    modname:      ModuleName;
-    filename:     PathName;
+    modname:      ModuleName;  (* Just the module name: no directory, no extension *)
+    filenamex:     PathName;
     codename:     PathName;
+    file:         Files.File;
+    codefile:     Files.File;
     text:         Texts.Text;
     dependencies: Dependency;
     scanned:      BOOLEAN
@@ -32,13 +34,15 @@ TYPE
 
 VAR
   Modulename:      ModuleName;
-  SourcePath:      PathName;
-  BuildPath:       PathName;
+  SourcePrefix:    PathName;
+  BinariesPrefix:  PathName;
+  OutputPrefix:    PathName;
   Verbose:         BOOLEAN;
   Modules:         Module;
   LongestModname:  INTEGER;
   LongestFilename: INTEGER;
   LoadFlags:       SET;
+
 
 
 
@@ -51,19 +55,23 @@ PROCEDURE FindFile(    name:       ARRAY OF CHAR;
                    VAR file:       Files.File;
                    VAR filename:   PathName);
 VAR
-  path: PathName;
-  i, j: INTEGER;
+  path:   PathName;
+  i, j:   INTEGER;
 BEGIN
   i := 0;  file := NIL;
-  WHILE (file = NIL) & (searchpath[i] # 0X) DO
-    j := 0;
-    WHILE (i < LEN(searchpath)) & (searchpath[i] # 0X) & (searchpath[i] # ";") DO
-      path[j] := searchpath[i];  INC(i);  INC(j);
-    END;
-    IF (path[j-1] # "/") & (path[j-1] # 5CX) THEN path[j] := 5CX; INC(j) END;  (* Switch / to \ *)
-    path[j] := 0X;  H.Append(name, path);
-    file := Files.Old(path);
-    WHILE searchpath[i] = ";" DO INC(i) END;
+  IF searchpath = "" THEN
+    file := Files.Old(name)
+  ELSE
+    WHILE (file = NIL) & (searchpath[i] # 0X) DO
+      j := 0;
+      WHILE (i < LEN(searchpath)) & (searchpath[i] # 0X) & (searchpath[i] # ";") DO
+        path[j] := searchpath[i];  INC(i);  INC(j);
+      END;
+      IF (path[j-1] # "/") & (path[j-1] # 5CX) THEN path[j] := 5CX; INC(j) END;  (* Switch / to \ *)
+      path[j] := 0X;  H.Append(name, path);
+      file := Files.Old(path);
+      WHILE searchpath[i] = ";" DO INC(i) END;
+    END
   END;
   IF file # NIL THEN
     filename := path;
@@ -78,17 +86,19 @@ END FindFile;
 
 PROCEDURE AddModule(modname: ARRAY OF CHAR);
 VAR mod: Module;  file: Files.File;  filename: ModuleName;
-BEGIN NEW(mod);
+BEGIN
+  NEW(mod);
   mod.modname := modname;  mod.scanned := FALSE;
   filename := modname;  H.Append(".mod", filename);
-  FindFile(filename, SourcePath, file, mod.filename);
+  FindFile(filename,   SourcePrefix, file, mod.filenamex);
   IF file = NIL THEN
     H.ws("Could not find source file "); H.ws(filename); H.ws(" for module '"); H.ws(modname); H.wsn("'.");
     H.ExitProcess(99)
   END;
+  mod.file := file;
   mod.codename := "";  H.Append(modname, mod.codename);  H.Append(".code", mod.codename);
-  IF H.Length(modname)      > LongestModname  THEN LongestModname  := H.Length(modname) END;
-  IF H.Length(mod.filename) > LongestFilename THEN LongestFilename := H.Length(mod.filename) END;
+  IF H.Length(modname)       > LongestModname  THEN LongestModname  := H.Length(modname)       END;
+  IF H.Length(mod.filenamex) > LongestFilename THEN LongestFilename := H.Length(mod.filenamex) END;
   mod.next := Modules;  Modules := mod
 END AddModule;
 
@@ -122,29 +132,29 @@ VAR
   impname: ORS.Ident;
 BEGIN
   NEW(module.text);
-  Texts.Open(module.text, module.filename);
+  Texts.OpenFile(module.text, module.file);
   ORS.Init(module.text, 0);  ORS.Get(sym);
-  IF sym # ORS.module THEN Expected(module.filename, "does not start with MODULE.") END;
+  IF sym # ORS.module THEN Expected(module.filenamex, "does not start with MODULE.") END;
   ORS.Get(sym);
-  IF sym # ORS.ident THEN Expected(module.filename, "expected module id."); END;
+  IF sym # ORS.ident THEN Expected(module.filenamex, "expected module id."); END;
   IF ORS.id # module.modname THEN
-    H.ws("File "); H.ws(module.filename); WriteFilepos; H.ws(" module id '");
+    H.ws("File "); H.ws(module.filenamex); WriteFilepos; H.ws(" module id '");
     H.ws(ORS.id); H.ws("' does not match expected id '");
     H.ws(module.modname); H.wsn("'.");
     H.ExitProcess(99)
   END;
   (*B.Init(S.id);*)
   ORS.Get(sym);
-  IF sym # ORS.semicolon THEN Expected(module.filename, "expected semicolon from module id.") END;
+  IF sym # ORS.semicolon THEN Expected(module.filenamex, "expected semicolon from module id.") END;
   ORS.Get(sym);
   IF sym = ORS.import THEN
     REPEAT
       ORS.Get(sym);
-      IF sym # ORS.ident THEN Expected(module.filename, "expected id (1).") END;
+      IF sym # ORS.ident THEN Expected(module.filenamex, "expected id (1).") END;
       impname := ORS.id;  ORS.Get(sym);
       IF sym = ORS.becomes THEN
         ORS.Get(sym);
-        IF sym # ORS.ident THEN Expected(module.filename, "expected id (2).") END;
+        IF sym # ORS.ident THEN Expected(module.filenamex, "expected id (2).") END;
         impname := ORS.id;  ORS.Get(sym)
       END;
       IF (impname # "SYSTEM") & (impname # "WinHost") & (impname # "Kernel") THEN
@@ -153,10 +163,9 @@ BEGIN
     UNTIL sym # ORS.comma
   END;
 
-  (* All modules need WinHost, excepting WinHost itself *)
-  IF module.modname # "WinHost" THEN
+  IF module.modname # "WinHost" THEN  (* All modules need WinHost, excepting WinHost itself *)
     AddImport(module, "WinHost");
-    IF module.modname # "Kernel" THEN
+    IF module.modname # "Kernel" THEN (* All modules need Kernel, excepting WinHost and Kernel *)
       AddImport(module, "Kernel")
     END
   END;
@@ -178,24 +187,24 @@ BEGIN
   END
 END WriteHuman;
 
-PROCEDURE Compile(module: Module);
+PROCEDURE Compile(module: Module; VAR newsymbols: BOOLEAN);
 VAR startTime, endTime: INTEGER;
 BEGIN
-  H.wsl(module.modname,  LongestModname  + 2);
-  H.wsl(module.filename, LongestFilename);
+  H.wsl(module.modname,   LongestModname  + 2);
+  H.wsl(module.filenamex, LongestFilename);
   (*
-  B.SetSourcePath(SourcePath);
-  B.SetBuildPath(BuildPath);
+  B.SetSourcePath(SourcePrefix);
+  B.SetBuildPath(BinariesPrefix);
   *)
 
   startTime := H.Time();
-  ORS.Init(module.text, 0);  ORP.Module(module.filename);
+  ORS.Init(module.text, 0);  ORP.Module(module.file, newsymbols, module.codefile);
 
   IF ORS.errcnt = 0 THEN
     endTime := H.Time();
     WriteHuman(X64.PC, 12);
     WriteHuman(ORG.Varsize, 12);
-    WriteHuman(endTime - startTime, 6);
+    WriteHuman((endTime - startTime) DIV 10000, 6);
     WriteHuman(ORG.Hdr.commands - ORG.Hdr.pointers, 11);
     WriteHuman(ORG.Hdr.lines    - ORG.Hdr.commands, 6);
     WriteHuman(ORG.Hdr.exports  - ORG.Hdr.lines,    7);
@@ -262,8 +271,8 @@ VAR
 BEGIN
   AddModule(Modulename);
 
-  IF SourcePath # "./" THEN H.ws(", source path: '");  H.ws(SourcePath); H.wsn("'") END;
-  IF BuildPath  # ""   THEN H.ws(", build path: '");   H.ws(BuildPath);  H.wsn("'") END;
+  IF SourcePrefix   # "" THEN H.ws("Sources path:  '");  H.ws(SourcePrefix);   H.wsn("'") END;
+  IF BinariesPrefix # "" THEN H.ws("Binaries path: '");  H.ws(BinariesPrefix); H.wsn("'") END;
 
   (* Keep scanning and adding modules until all dependencies have been scanned *)
   REPEAT
@@ -316,6 +325,8 @@ VAR
   maxexport:  INTEGER;
   maximport:  INTEGER;
   i:          INTEGER;
+  newsymbols: BOOLEAN;
+
 BEGIN
   SortModulesIntoBuildOrder;
 
@@ -332,7 +343,8 @@ BEGIN
   start     := H.Time();
 
   WHILE Modules # NIL DO
-    Compile(Modules);
+    newsymbols := TRUE;
+    Compile(Modules, newsymbols);
     INC(codesize, X64.PC);
     INC(varsize, ORG.Varsize);
     maxalloc  := ORG.Max(maxalloc,  K.Allocated);
@@ -343,12 +355,15 @@ BEGIN
     maximport := ORG.Max(maximport, ORG.Hdr.length   - ORG.Hdr.imports);
 
     IF ORS.errcnt # 0 THEN H.ExitProcess(99) END;
-    IF Modules.modname # "WinHost" THEN WinPE.AddModule(Modules.codename) END;
+    (*IF Modules.modname # "WinHost" THEN WinPE.AddModule(Modules.codefile) END;*)
+    WinPE.AddModule(Modules.codefile);
     Modules := Modules.next;
     Oberon.GC
   END;
 
-  PEname := ""; H.Append(Modulename, PEname);  H.Append(".exe", PEname);
+  PEname := "";
+  IF OutputPrefix # "" THEN H.Append(OutputPrefix, PEname) END;
+  H.Append(Modulename, PEname);  H.Append(".exe", PEname);
   WinPE.Generate(PEname, LoadFlags);
 
   end := H.Time();
@@ -359,7 +374,7 @@ BEGIN
   H.wsl("Total:", LongestModname + LongestFilename + 2);
 
   WriteHuman(codesize, 12);     WriteHuman(varsize,  12);
-  WriteHuman(end - start, 6);   H.ws("  Max:");
+  WriteHuman((end - start) DIV 10000, 6);   H.ws("  Max:");
 
   IF K.Allocated > maxalloc THEN maxalloc := K.Allocated END;
   WriteHuman(maxptrs,   5);
@@ -403,23 +418,16 @@ BEGIN
     (* 'i'and 'j' are first and limit character of executable directory *)
     (* Find end of source searchpath *)
     k := 0;
-    WHILE (k < LEN(SourcePath)) & (SourcePath[k] # 0X) DO INC(k) END;
-
-    (* Add path separator to source searchpath if none already present *)
-    IF k < LEN(SourcePath) - 1 THEN
-      IF (k > 0) & (SourcePath[k-1] # "/") & (SourcePath[k-1] # '\') THEN
-        SourcePath[k] := "/";  INC(k);
-      END
-    END;
+    WHILE (k < LEN(SourcePrefix)) & (SourcePrefix[k] # 0X) DO BinariesPrefix  (* Add path separator to source searchpath if none already present *)
+    IF k < LEN(SourcePrefix)   - 1 THEN
+      IF (k > 0BinariesPrefixix[k  -1] # "  /") & (So  urcePrefix[k-1] # '\') THEN
+        SourcePrefixBinariesPrefixsPrefixiesPrefix  END;
 
     (* Add executable path to source search path *)
-    IF k + j-i + 3 < LEN(SourcePath) THEN
-      SourcePath[k] := ";";  INC(k);
-      WHILE i < j DO SourcePath[k] := K.ExecutablePath[i];  INC(i);  INC(k) END;
-      SourcePath[k] := '/';  INC(k);
-      SourcePath[k] := 0X;
-    END
-  END
+    IF k + j-i + 3 < LEN(SourcePrefix)   THEN
+      SourcePrefix[k] := BinariesP  refix     BinariesPrefixSourcePrefix[k] := K.ExecutablePath[i];  INC(i);  INC(k) END;
+      SourcePrefix[  k]BinariesPrefix)  ;
+      BinariesPrefix :=BinariesPrefixEND
 END AddExecutableDirToSourceSearchpath;
 *)
 
@@ -437,20 +445,19 @@ END ArgError;
 PROCEDURE ScanArguments;
 VAR i: INTEGER;  arg: ARRAY 1024 OF CHAR;
 BEGIN
-  SourcePath := "./";
-  BuildPath  := "";
-  Modulename := "";
+  SourcePrefix   := "";
+  BinariesPrefix := "";
+  OutputPrefix   := "";
+  Modulename     := "";
 
   i := 1;
   WHILE i < WinArgs.Argcount DO
     WinArgs.GetArg(i, arg);
     IF arg[0] = "/" THEN
-      IF    arg = "/source" THEN INC(i);  WinArgs.GetArg(i, SourcePath)
-      ELSIF arg = "/s"      THEN INC(i);  WinArgs.GetArg(i, SourcePath)
-      ELSIF arg = "/build"  THEN INC(i);  WinArgs.GetArg(i, BuildPath)
-      ELSIF arg = "/b"      THEN INC(i);  WinArgs.GetArg(i, BuildPath)
-      ELSIF arg = "/v"      THEN Verbose := TRUE; INCL(LoadFlags, H.Verbose);
-                                 ASSERT(H.Verbose IN LoadFlags)
+      IF    (arg = "/sources")  OR (arg = "/s") THEN INC(i);  WinArgs.GetArg(i, SourcePrefix)
+      ELSIF (arg = "/binaries") OR (arg = "/b") THEN INC(i);  WinArgs.GetArg(i, BinariesPrefix)
+      ELSIF (arg = "/output")   OR (arg = "/o") THEN INC(i);  WinArgs.GetArg(i, OutputPrefix)
+      ELSIF (arg = "/verbose")  OR (arg = "/v") THEN Verbose := TRUE; INCL(LoadFlags, H.Verbose)
       ELSE
         ArgError(i, arg, "unrecognised option.")
       END
@@ -480,6 +487,7 @@ BEGIN
   LoadFlags       := {};
   LongestModname  := 0;
   LongestFilename := 0;
+
   ScanArguments;
 
   (*AddExecutableDirToSourceSearchpath;*)

@@ -140,17 +140,13 @@ BEGIN f := Files.Base(R); N := 1; Q := Trailer(); p := Q;
   T.trailer := Q; Files.ReadInt(R, T.len); (*Files.Set(R, f, Files.Pos(R) + T.len)*)
 END Load;
 
-PROCEDURE Open* (T: Text; name: ARRAY OF CHAR);
+PROCEDURE OpenFile* (T: Text;  f: Files.File);
 VAR
-  f:    Files.File;
   R:    Files.Rider;
   Q, q: Piece;
   tag:  CHAR;
   len:  INTEGER;
 BEGIN
-  (*H.ws("Texts.Open('"); H.ws(name); H.wsn("').");*)
-  f := Files.Old(name);
-  (*H.ws("  opened, f = "); H.wh(SYSTEM.VAL(INTEGER, f)); H.wsn("H.");*)
   IF f # NIL THEN
     Files.Set(R, f, 0); Files.Read(R, tag);
     (*H.ws("  read tag: "); H.wh(ORD(tag)); H.wsn("H.");*)
@@ -167,7 +163,11 @@ BEGIN
     Q := Trailer(); Q.next := Q; Q.prev := Q; T.trailer := Q; T.len := 0
   END;
   T.changed := FALSE; T.org := -1; T.pce := T.trailer (*init cache*)
-END Open;
+END OpenFile;
+
+PROCEDURE Open* (T: Text;  name: ARRAY OF CHAR);
+VAR f: Files.File;
+BEGIN f := Files.Old(name);  OpenFile(T, f) END Open;
 
 PROCEDURE Store* (VAR W: Files.Rider; T: Text);
 VAR
