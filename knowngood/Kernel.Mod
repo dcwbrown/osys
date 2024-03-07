@@ -256,9 +256,9 @@ BEGIN
   SYSTEM.PUT(SYSTEM.ADR(H.NewPointer), SYSTEM.ADR(New));
 
   IF H.Verbose IN H.LoadFlags THEN
-    H.ws("Heap allocated at "); H.wh(HeapOrg);
-    H.ws("H, commited to ");    H.wh(HeapOrg + commit);
-    H.ws("H, reserved to ");    H.wh(HeapOrg + reserve);  H.wsn("H.")
+    H.ws("* Heap allocated at ");  H.wh(HeapOrg);
+    H.ws("H, commited to ");       H.wh(HeapOrg + commit);
+    H.ws("H, reserved to ");       H.wh(HeapOrg + reserve);  H.wsn("H.")
   END;
 END Init;
 

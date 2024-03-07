@@ -426,9 +426,9 @@ BEGIN
   (* Reserve 2GB memory for the Oberon machine + 2GB for Jcc trap targets *)
   reserveadr := VirtualAlloc(100000000H, 100000000H, MEMRESERVE, PAGEEXECUTEREADWRITE);
   IF reserveadr = 0 THEN
-    wsn("Could not reserve Oberon machine memory.");  ExitProcess(9);
+    wsn("** Could not reserve Oberon machine memory **");  ExitProcess(9);
   ELSIF Verbose IN LoadFlags THEN
-    ws("Reserved 4GB Oberon machine memory at ");  wh(reserveadr);  wsn("H.")
+    ws("* Reserved 4GB Oberon machine memory at ");  wh(reserveadr);  wsn("H.")
   END;
 
   (* Determine loaded size of all modules *)
@@ -457,7 +457,7 @@ BEGIN
   INC(modulesize, 16);  (* Allow 16 bytes ofr a sentinel *)
   OberonAdr := VirtualAlloc(reserveadr, modulesize, MEMCOMMIT, PAGEEXECUTEREADWRITE);
   IF Verbose IN LoadFlags THEN
-    ws("Committed ");  wh(modulesize);  ws("H bytes at ");  wh(OberonAdr);  wsn("H.")
+    ws("* Committed ");  wh(modulesize);  ws("H bytes at ");  wh(OberonAdr);  wsn("H.")
   END
 END PrepareOberonMachine;
 
@@ -957,7 +957,7 @@ VAR
   modulebody:  PROCEDURE;
 BEGIN
   (*
-  ws("Loading ");  WriteModuleName(modadr);
+  ws("* Loading ");  WriteModuleName(modadr);
   ws(" from ");    wh(modadr);
   ws("H to ");     wh(LoadAdr);  wsn("H.");
   WriteModuleHeader(modadr);
@@ -967,13 +967,11 @@ BEGIN
   SYSTEM.COPY(modadr, LoadAdr, hdr.imports);  (* Copy up to but excluding import table *)
 
   loadedsize := (hdr.imports + hdr.varsize + 15) DIV 16 * 16;
-  (*ws("Write loaded size "); wh(loadedsize); ws("H at "); wh(LoadAdr); wsn("H.");*)
   SYSTEM.PUT(LoadAdr, loadedsize);      (* Update length in header to loaded size *)
-  (*ws("Writing sentinel at "); wh(LoadAdr + loadedsize); wsn("H.");*)
   SYSTEM.PUT(LoadAdr + loadedsize, 0);  (* Add sentinel zero length module *)
 
   IF Verbose IN LoadFlags THEN
-    ws("Loaded ");          WriteModuleName(modadr);
+    ws("* Loaded ");        WriteModuleName(modadr);
     ws(" at ");             wh(LoadAdr);
     ws("H, code ");         wh(hdr.imports);
     ws("H bytes, data ");   wh(hdr.varsize);
@@ -1077,9 +1075,9 @@ BEGIN
   moduleadr := (moduleadr + 15) DIV 16 * 16;
 
   IF Verbose IN LoadFlags THEN
-    ws("Load remaining modules starting from "); wh(moduleadr);
+    ws("* Load remaining modules starting from "); wh(moduleadr);
     ws("H, RvaModules + "); wh(moduleadr - SYSTEM.VAL(INTEGER, Header)); wsn("H.");
-    ws("First remaining module: '"); WriteModuleName(moduleadr); wsn("'.")
+    (*ws("* First remaining module: '"); WriteModuleName(moduleadr); wsn("'.")*)
   END;
 
   SYSTEM.GET(moduleadr, modulelength);
@@ -1124,7 +1122,7 @@ BEGIN
   Log := WriteStdout;
 
   IF Verbose IN LoadFlags THEN
-    ws("WinHost starting, Header at "); wh(SYSTEM.VAL(INTEGER, Header)); wsn("H.")
+    ws("* WinHost starting, Header at "); wh(SYSTEM.VAL(INTEGER, Header)); wsn("H.")
   END;
   (*
   ws("Stdout handle "); wh(Stdout);            wsn("H.");
@@ -1137,11 +1135,10 @@ BEGIN
 
   (* Copy boot module into newly committed memory and switch PC to the new code. *)
   SYSTEM.COPY(SYSTEM.VAL(INTEGER, Header), OberonAdr, Header.imports + Header.varsize);
-  (*ws("Transferring PC from original load at ");  wh(GetPC());  wsn("H.");*)
   IncPC(OberonAdr - SYSTEM.VAL(INTEGER, Header));  (* Transfer to copied code *)
   Log := WriteStdout;  (* Correct Log fn address following move *)
   IF Verbose IN LoadFlags THEN
-    ws("Transferred PC to code copied to Oberon memory at ");  wh(GetPC());  wsn("H.")
+    ws("* Transferred PC to code copied to Oberon memory at ");  wh(GetPC());  wsn("H.")
   END;
 
   (* Initialise system fuction handlers *)
