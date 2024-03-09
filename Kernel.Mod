@@ -53,10 +53,13 @@ BEGIN
   IF List1 # 0 THEN p := List1;  SYSTEM.GET(List1+16, List1)
   ELSE
     GetBlock(q, 512);
-    SYSTEM.PUT(q + 256, 256);
-    SYSTEM.PUT(q + 264, -1);
-    SYSTEM.PUT(q + 272, List1);
-    List1 := q + 256;  p := q
+    IF q # 0 THEN
+      SYSTEM.PUT(q + 256, 256);
+      SYSTEM.PUT(q + 264, -1);
+      SYSTEM.PUT(q + 272, List1);
+      List1 := q + 256
+    END;
+    p := q
   END
 END GetBlock256;
 
@@ -66,10 +69,13 @@ BEGIN
   IF List2 # 0 THEN p := List2;  SYSTEM.GET(List2 + 16, List2)
   ELSE
     GetBlock256(q);
-    SYSTEM.PUT(q + 128, 128);
-    SYSTEM.PUT(q + 136, -1);
-    SYSTEM.PUT(q + 144, List2);
-    List2 := q + 128;  p := q
+    IF q # 0 THEN
+      SYSTEM.PUT(q + 128, 128);
+      SYSTEM.PUT(q + 136, -1);
+      SYSTEM.PUT(q + 144, List2);
+      List2 := q + 128
+    END;
+    p := q
   END
 END GetBlock128;
 
@@ -79,10 +85,13 @@ BEGIN
   IF List3 # 0 THEN p := List3;  SYSTEM.GET(List3 + 16, List3)
   ELSE
     GetBlock128(q);
-    SYSTEM.PUT(q + 64, 64);
-    SYSTEM.PUT(q + 72, -1);
-    SYSTEM.PUT(q + 80, List3);
-    List3 := q + 64;  p := q
+    IF q # 0 THEN
+      SYSTEM.PUT(q + 64, 64);
+      SYSTEM.PUT(q + 72, -1);
+      SYSTEM.PUT(q + 80, List3);
+      List3 := q + 64
+    END;
+    p := q
   END
 END GetBlock64;
 

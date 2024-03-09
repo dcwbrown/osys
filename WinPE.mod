@@ -3,7 +3,6 @@ MODULE WinPE;  (* Create exe from a list of compiled Oberon modules *)
 
 IMPORT SYSTEM, H := WinHost, K := Kernel, X64, Files;
 
-
 CONST
   HeaderSize      =  400H;
   MemoryAlignment = 1000H;  (* Sections are a multiple of this size in memory *)

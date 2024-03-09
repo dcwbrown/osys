@@ -1173,7 +1173,7 @@ END StoreStruct;
 PROCEDURE CopyString*(VAR x, y: Item);  (* x := y *)
 VAR sadr, slen, dadr, dlen: INTEGER;
 BEGIN Trace(TraceAny, "CopyString(x: "); l.Item(x, Tr);  l.s(", y: ", Tr); l.Item(y, Tr); l.sn(")", Tr);
-  ASSERT(x.mode IN {Strucp, Eadr, Global, Import});
+  ASSERT(x.mode IN {Strucp, Stkind, Eadr, Global, Import});
   ASSERT(y.type.form = ORB.String);
   ASSERT(y.mode = String);
 

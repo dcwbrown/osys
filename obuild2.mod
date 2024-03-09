@@ -18,8 +18,8 @@ TYPE
     prefix: PathName
   END;
 
-  Module = POINTER TO Module2Desc;
-  Module2Desc = RECORD
+  Module = POINTER TO ModuleDesc;
+  ModuleDesc = RECORD
     next:     Module;
     modname:  ModuleName;  (* Just the module name: no directory, no extension *)
     text:     Texts.Text;
@@ -34,7 +34,7 @@ TYPE
 
   ModuleMaker = PROCEDURE (modname: ARRAY OF CHAR): Module;
 
-  Import = POINTER TO Importdesc;
+  Import     = POINTER TO Importdesc;
   Importdesc = RECORD name: ORS.Ident; next: Import END;
 
 VAR
@@ -55,6 +55,8 @@ VAR
   Modules:        Module;
   Lastmodule:     Module;
   MakeModule:     ModuleMaker;
+
+  PendingModules: Module;
 
 
 (* ------------- File open with alternative file name prefix -------------- *)
@@ -143,17 +145,19 @@ BEGIN
 END WriteHuman;
 
 PROCEDURE Compile(module: Module);
+CONST MaxImports = 32;
 VAR
-  startTime:  INTEGER;
-  endTime:    INTEGER;
-  newsymbols: BOOLEAN;
-  sym:        INTEGER;
-  impname:    ORS.Ident;
-  impmodule:  Module;
-  import:     Import;
-  imports:    Import;
-  lastimport: Import;
+  startTime:   INTEGER;
+  endTime:     INTEGER;
+  newsymbols:  BOOLEAN;
+  sym:         INTEGER;
+  impname:     ORS.Ident;
+  impmodule:   Module;
+  imports:     ARRAY MaxImports OF ORS.Ident;
+  importcount: INTEGER;
+  i:           INTEGER;
 BEGIN
+  importcount := 0;
   IF module.sourcefile = NIL THEN
     H.ws("Compile - missing source file for '"); H.ws(module.sourcefn); H.wsn("'.");
   (*
@@ -192,16 +196,17 @@ BEGIN
         impname := ORS.id;  ORS.Get(sym)
       END;
       IF impname # "SYSTEM" THEN
-        NEW(import);  import.name := impname;
-        IF imports = NIL THEN imports := import ELSE lastimport.next := import END;
-        lastimport := import
+        (* Note: we keep import names in an array rather than a list as we *)
+        (* need to be able to call GC.                                     *)
+        imports[importcount] := impname;
+        INC(importcount)
       END;
     UNTIL sym # ORS.comma
   END;
 
   (* Make imported modules *)
-  import := imports;
-  WHILE import # NIL DO impmodule := MakeModule(import.name); import := import.next END;
+  i := 0;
+  WHILE i < importcount DO impmodule := MakeModule(imports[i]); INC(i) END;
 
   IF TitlePending THEN  (* Cannot write title until longest module and file names have been determined *)
     H.wsl("Module", LongestModname + 2);  H.wsl("File", LongestFilename + 2);
@@ -254,7 +259,7 @@ BEGIN
   IF module = NIL THEN
     (*H.ws("Making module "); H.ws(modname); H.wsn(".");*)
     LongestModname := H.Max(LongestModname, H.Length(modname));
-    NEW(module);
+    NEW(module);  module.next := PendingModules;  PendingModules := module;
     Copy(modname, module.modname);
     module.symkey := 1;  module.codekey := 2;
     module.sourcetime := 0; module.symtime := 0; module.codetime := 0;
@@ -263,6 +268,7 @@ BEGIN
     Open(module.sourcefn, SourcePrefices, module.sourcefile, module.sourceprefix);
     LongestFilename := H.Max(LongestFilename, H.Length(module.sourcefn) + H.Length(module.sourceprefix));
 
+    (*
     IF module.sourcefile = NIL THEN
       H.ws("(couldn't open ");  H.ws(module.sourcefn);
       IF SourcePrefices # NIL THEN
@@ -275,6 +281,7 @@ BEGIN
       END;
       H.wsn(".)");
     END;
+    *)
 
     IF module.sourcefile # NIL THEN
       module.sourcetime := Files.Date(module.sourcefile)
@@ -327,13 +334,20 @@ BEGIN
 
     (*  Compile source if we have been unable to use code or symbol files *)
     IF module.codefile = NIL THEN
-      Compile(module)
+      Compile(module);
+      Oberon.GC
+      (* Note: this module cannot be linked into Modules until all its       *)
+      (* dependencies have been built. Since we're calling GC, we need to be *)
+      (* sure all active records on the heap are referenced from a global    *)
+      (* variable, which is why this module is in a list linked from         *)
+      (* PendingModules until compilation is complete.                       *)
     END;
 
     (* Link made module into list *)
     (*H.ws("Made ");  H.ws(module.modname); H.wsn(".");*)
+    PendingModules := module.next;  module.next := NIL;
     IF Modules = NIL THEN Modules := module ELSE Lastmodule.next := module END;
-    Lastmodule := module;
+    Lastmodule := module
   END
 RETURN module END MakeModuleProc;
 
