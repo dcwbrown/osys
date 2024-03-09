@@ -62,7 +62,7 @@ VAR
   (* Log output control *)
   LongestModname:  INTEGER;
   LongestFilename: INTEGER;
-  TitlePending:    BOOLEAN;
+  FirstCompile:    BOOLEAN;
 
   Modules:         Module;
 
@@ -400,6 +400,7 @@ RETURN result END DetermineNextCompilation;
 PROCEDURE CompileModule(mod: Module);
 VAR startTime, endTime, key: INTEGER;  newsymbols: BOOLEAN;
 BEGIN
+  IF FirstCompile THEN H.wn; FirstCompile := FALSE END;
   H.ws("Compiling "); H.wsl(mod.name, LongestModname);
 
   ASSERT(mod.text # NIL);
@@ -411,7 +412,7 @@ BEGIN
   IF ORS.errcnt = 0 THEN
     endTime := H.Time();
     WriteHuman((endTime - startTime) DIV 10000, 5);
-    H.ws("ms "); WriteHuman(K.Allocated, 10); H.wsn("B.");
+    H.ws("ms "); WriteHuman(K.Allocated, 10); H.wsn("B heap used.");
     MakeFileDesc(mod.name, "smb",  NIL, mod.symbols);  ASSERT(mod.symbols.file # NIL);
     MakeFileDesc(mod.name, "code", NIL, mod.code);     ASSERT(mod.code.file    # NIL);
     GetSymbolFileKey(mod.symbols.file, mod.key);
@@ -420,8 +421,7 @@ BEGIN
       Fail(mod.name, "Following compilation .smb and .code files have differing keys")
     END
   ELSE
-    H.wsn(" *");
-    Fail(mod.name, "Compilation failed.")
+    H.wsn(".");  Fail(mod.name, "Compilation failed.")
   END
 END CompileModule;
 
@@ -437,6 +437,7 @@ BEGIN
   compile := DetermineNextCompilation(target);
   WHILE compile # NIL DO
     CompileModule(compile);
+    Oberon.GC;
     compile := DetermineNextCompilation(target);
   END;
 END Build;
@@ -473,18 +474,23 @@ END AddImports;
 
 
 PROCEDURE Generate;
-VAR mod: Module;  PEname: PathName;
+VAR mod: Module;  PEname: PathName;  i: INTEGER;
 BEGIN
   PEname := "";  Copy(OutputPrefix, PEname);
   H.Append(Modulename, PEname);  H.Append(".exe", PEname);
 
+  H.wn;
   H.wsl("Module", LongestModname);
-  H.wsn("         code      global    ptrs   cmd   annot  export  import");
+  H.wsn("  static-code global-vars recptrs  cmds lineadr  export  import");
+
+  FOR i := 1 TO LongestModname DO H.wc("-") END;
+  H.wsn(" ------------ ----------- ------- ----- ------- ------- -------");
 
   mod := GetModule("WinHost");  AddModule(mod);
   mod := GetModule("Kernel");   AddModule(mod);
   AddImports(GetModule(Modulename));
 
+  H.wb(LongestModname);  H.wsn(" ============ ===========");
   H.wsl("Total", LongestModname + 1);
   WriteHuman(TotalCode, 12);
   WriteHuman(TotalGlobals, 12);
@@ -492,6 +498,7 @@ BEGIN
 
   WinPE.Generate(PEname, LoadFlags);
 
+  H.wn;
   H.ws("Generated "); H.ws(PEname);
   H.ws(" in "); WriteHuman((H.Time() - BuildStart) DIV 10000, 1); H.wsn("ms.");
 
@@ -564,7 +571,7 @@ BEGIN
   LoadFlags       := {};
   LongestModname  := 0;
   LongestFilename := 0;
-  TitlePending    := TRUE;
+  FirstCompile    := TRUE;
   Modules         := NIL;
   TotalCode       := 0;
   TotalGlobals    := 0;

@@ -9,7 +9,7 @@
 :: to build once with just WinHost updated, then again with functionality
 :: dependent on WinHost.
 ::
-@set skip=true
+@set skip=false
 ::
 ::
 @if "%skip%" == "true" goto skipcompilerbuild
@@ -77,11 +77,11 @@ del obuild3.*
 obuild2 /s ../ obuild3
 @if errorlevel 1 goto end
 ::del kernel.*
-:: obuild3 /s ../ Test
+obuild3 /s ../ Test
 :: touch ../WinPE.mod
 :: touch ../Files.mod
-del *.smb *.code
-obuild3 /s ../ obuild
+:: del *.smb *.code
+:: obuild3 /s ../ obuild
 @if errorlevel 1 goto end
 @if exist Test.exe goto Testexists
 ::
