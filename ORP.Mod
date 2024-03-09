@@ -1187,7 +1187,7 @@ BEGIN ORS.Get(sym);  CheckNative(native);
   END
 END ProcedureDecl;
 
-PROCEDURE Module*(sourcefile: Files.File; VAR newsymbols: BOOLEAN; VAR codefile: Files.File);
+PROCEDURE Module*(sourcefile: Files.File; VAR newsymbols: BOOLEAN);
 VAR key:    INTEGER;
     impid:  ORS.Ident;
     impid1: ORS.Ident;
@@ -1286,7 +1286,7 @@ BEGIN
     END;
 
     IF ORS.errcnt = 0 THEN
-      ORG.Close(modid, key, exno, codefile);
+      ORG.Close(modid, key, exno);
       (*Texts.WriteInt(W, X64.PC, 8);  Texts.WriteInt(W, dc, 8);  Texts.WriteHex(W, key)*)
     ELSE
       Texts.WriteLn(W);  Texts.WriteString(W, "compilation FAILED");

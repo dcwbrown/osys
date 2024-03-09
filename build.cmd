@@ -62,7 +62,7 @@
 @echo --------------------------------- Build tests ----------------------------------
 @mkdir buildtest >NUL 2>NUL
 @cd buildtest
-..\build2\obuild /s ../ Test
+..\build2\obuild /s ../ /b ../build2/ Test
 @if errorlevel 1 goto end
 @if exist Test.exe goto Testexists
 ::

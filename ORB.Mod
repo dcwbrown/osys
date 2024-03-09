@@ -132,6 +132,12 @@ VAR
 
   typtab: ARRAY maxTypTab OF Type;
 
+  FindSymbolFile: PROCEDURE(name: ORS.Ident): Files.File;
+
+
+PROCEDURE SetSymbolFileFinder*(proc: PROCEDURE(name: ORS.Ident): Files.File);
+BEGIN FindSymbolFile := proc END SetSymbolFileFinder;
+
 PROCEDURE NewObj*(VAR obj: Object; id: ORS.Ident; class: INTEGER);
 (*insert new Object with name id*)
 VAR new, x: Object;
@@ -308,7 +314,10 @@ BEGIN
   IF modid1 = "SYSTEM" THEN
     thismod := ThisModule(modid, modid1, TRUE, key); DEC(nofmod);
     thismod.lev := 0; thismod.dsc := system; thismod.rdo := TRUE
-  ELSE MakeFileName(fname, modid1, ".smb"); F := Files.Old(fname);
+  ELSE
+    F := NIL;
+    IF FindSymbolFile # NIL THEN F := FindSymbolFile(modid1) END;
+    IF F = NIL THEN MakeFileName(fname, modid1, ".smb"); F := Files.Old(fname) END;
     IF F # NIL THEN
       Files.Set(R, F, 0); Files.ReadInt(R, key); Files.ReadInt(R, key); Files.ReadString(R, modname);
       IF modid1 # modname THEN

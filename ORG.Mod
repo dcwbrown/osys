@@ -2814,18 +2814,19 @@ BEGIN
   X64.Emit(n)
 END EmitUnsigned;
 
-PROCEDURE Close*(modid: ORS.Ident; key, exno: INTEGER; VAR codefile: Files.File);
+PROCEDURE Close*(modid: ORS.Ident; key, exno: INTEGER);
 (* Note: export numbers are 1 .. exno-1 *)
 VAR
-  i:      INTEGER;
-  reslen: INTEGER;
-  obj:    ORB.Object;
-  fname:  ARRAY 40 OF CHAR;
-  R:      Files.Rider;
-  bodyan: BodyAnnotation;
-  linean: LineAnnotation;
-  line:   INTEGER;
-  pc:     INTEGER;
+  i:        INTEGER;
+  reslen:   INTEGER;
+  obj:      ORB.Object;
+  fname:    ARRAY 40 OF CHAR;
+  codefile: Files.File;
+  R:        Files.Rider;
+  bodyan:   BodyAnnotation;
+  linean:   LineAnnotation;
+  line:     INTEGER;
+  pc:       INTEGER;
 BEGIN
   (*
   PopReg(15);   PopReg(14);   PopReg(13);   PopReg(12);

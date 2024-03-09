@@ -6,7 +6,7 @@ MODULE obuild;
 (* imports, compiles them, and combines all objects into a single executable. *)
 
 IMPORT
-  SYSTEM, H := WinHost, K := Kernel, Files, Texts, Oberon, ORS, X64, ORG, ORP, WinPE, WinArgs;
+  SYSTEM, H := WinHost, K := Kernel, Files, Texts, Oberon, ORS, ORB, X64, ORG, ORP, WinPE, WinArgs;
 
 TYPE
   PathName   = ARRAY H.MaxPath OF CHAR;
@@ -407,7 +407,7 @@ BEGIN
   startTime := H.Time();
   ORS.Init(mod.text, 0);  (* Rewind text to beginning for full compilation *)
   newsymbols := TRUE;
-  ORP.Module(mod.source.file, newsymbols, mod.code.file);
+  ORP.Module(mod.source.file, newsymbols);
 
   IF ORS.errcnt = 0 THEN
     endTime := H.Time();
@@ -501,8 +501,15 @@ BEGIN
   H.wn;
   H.ws("Generated "); H.ws(PEname);
   H.ws(" in "); WriteHuman((H.Time() - BuildStart) DIV 10000, 1); H.wsn("ms.");
-
 END Generate;
+
+
+PROCEDURE FindSymbolFile(name: ORS.Ident): Files.File;
+VAR mod: Module; result: Files.File;
+BEGIN mod := Modules;
+  WHILE (mod # NIL) & (mod.name # name) DO mod := mod.next END;
+  IF mod # NIL THEN result := mod.symbols.file END;
+RETURN result END FindSymbolFile;
 
 
 (* -------------------------------------------------------------------------- *)
@@ -587,6 +594,7 @@ BEGIN
     H.wsn("Binary prefixes:");  WritePrefices(BinaryPrefices)
   END;
 
+  ORB.SetSymbolFileFinder(FindSymbolFile);
   Build;
   Generate;
 END obuild.
