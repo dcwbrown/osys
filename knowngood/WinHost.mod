@@ -895,7 +895,7 @@ BEGIN
   ws("  attribs  "); whz(info.attribs, 4);     wsn("H.");
   *)
   IF res = 0 THEN AssertWinErr(GetLastError()) END;
-RETURN info.creation END FileTime;
+RETURN info.write END FileTime;
 
 
 (* -------------------------------------------------------------------------- *)
