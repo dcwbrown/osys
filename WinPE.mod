@@ -14,7 +14,7 @@ CONST
 
   BootstrapVarBytes   = 24;  (* preloaded bootstrap VAR size preceeding imported proc addresses *)
   Kernel32ImportCount = 35;
-  Gdi32ImportCount    =  6;
+  Gdi32ImportCount    = 12;
   User32ImportCount   = 24;
 
 TYPE
@@ -276,8 +276,14 @@ BEGIN
   AddImport(Idt.Gdi32Lookups, n, i, dll, importhints, "BitBlt");
   AddImport(Idt.Gdi32Lookups, n, i, dll, importhints, "CreateBitmap");
   AddImport(Idt.Gdi32Lookups, n, i, dll, importhints, "CreateCompatibleDC");
+  AddImport(Idt.Gdi32Lookups, n, i, dll, importhints, "CreateDCA");
   AddImport(Idt.Gdi32Lookups, n, i, dll, importhints, "CreateDIBSection");
+  AddImport(Idt.Gdi32Lookups, n, i, dll, importhints, "CreateFontA");
   AddImport(Idt.Gdi32Lookups, n, i, dll, importhints, "DeleteObject");
+  AddImport(Idt.Gdi32Lookups, n, i, dll, importhints, "GetGlyphOutlineW");
+  AddImport(Idt.Gdi32Lookups, n, i, dll, importhints, "GetCharABCWidthsW");
+  AddImport(Idt.Gdi32Lookups, n, i, dll, importhints, "GetDeviceCaps");
+  AddImport(Idt.Gdi32Lookups, n, i, dll, importhints, "GetOutlineTextMetricsW");
   AddImport(Idt.Gdi32Lookups, n, i, dll, importhints, "SelectObject");
   ASSERT(n = Gdi32ImportCount);
   INC(target, 8 * n);

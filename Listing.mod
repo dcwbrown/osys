@@ -666,6 +666,14 @@ BEGIN
     s(",", Args);
     BaseIndexScaleDisp(indirect, reg, regsize, base, index, scale, disp, itemmode, Args)
 
+  ELSIF opcode = 99H THEN (* CWD/CDQ/CQO *)
+
+    IF    regsize = 2 THEN s("cwd", Inst);
+    ELSIF regsize = 4 THEN s("cdq", Inst);
+    ELSIF regsize = 8 THEN s("cqo", Inst);
+    ELSE                   s("??", Inst);
+    END
+
   ELSIF opcode = 0A4H THEN
 
     s("movsb", Inst);

@@ -164,11 +164,7 @@ BEGIN
   IF (a.firstline = NIL)
   OR (a.lastline.line # ORS.linenum) & (a.lastline.pc # X64.PC) THEN
     NEW(la);  la.line := ORS.linenum;  la.pc := X64.PC;
-    IF a.firstline = NIL THEN
-      a.firstline := la
-    ELSE
-      a.lastline.next := la
-    END;
+    IF a.firstline = NIL THEN a.firstline := la ELSE a.lastline.next := la END;
     a.lastline := la
   END
 END AddLineAnnotation;
@@ -887,7 +883,7 @@ VAR srcreg: INTEGER;
 BEGIN
   ASSERT(mode IN {Reg, Eadr, Code, String, Global, Import});
   srcreg := -1;
-  IF (mode # reg) & (size < 8) THEN
+  IF (mode # Reg) & (size < 8) THEN
     srcreg := Reserve(-1, {});
     LoadMem(srcreg, mode, signed, size, n, index, scale, offset);
     mode := Reg;  n := srcreg;  index := -1;  scale := 0;  offset := 0;
@@ -1492,6 +1488,7 @@ BEGIN
     Disassemble(Eadr, "Save native procedure parameters to stack.");
   END;
 
+  (* Clear local variables *)
   ASSERT(locsize MOD 8 = 0);
   count := locsize DIV 8;
   IF count > 0 THEN
@@ -1533,7 +1530,12 @@ BEGIN
   IF ~ORS.ListAssembly THEN Disasmpc := X64.PC END
 END EmitStrings;
 
-PROCEDURE Return*(form: INTEGER;  VAR x: Item;  parmsize, locsize: INTEGER);
+PROCEDURE Return*(
+  form:      INTEGER;
+  VAR x:     Item;
+  parmsize:  INTEGER;
+  locsize:   INTEGER;
+  native:    BOOLEAN);
 BEGIN
   Trace(TraceAny, "Return("); l.Form(form, Tr);
   l.s(", x: ", Tr);       l.Item(x, Tr);
@@ -1552,7 +1554,7 @@ BEGIN
     Disassemble(0, "release local variable space")
   END;
 
-  IF parmsize = 0 THEN
+  IF (parmsize = 0) OR native THEN
     X64.Emit(0C3H)  (* ret *)
   ELSE
     X64.Emit(0C2H);  X64.EmitBytes(2, parmsize)  (* retn *)
@@ -2257,6 +2259,7 @@ VAR
   saveRAX:  BOOLEAN;
   saveRDX:  BOOLEAN;
   reg:      INTEGER;
+  reg2:     INTEGER;
 BEGIN
   IF op = ORS.div THEN name := "DIV" ELSE name := "MOD" END;
   Trace(TraceAny, "DivOp("); l.s(name, Tr);
@@ -2294,17 +2297,24 @@ BEGIN
         Disassemble(0, "DivOp load numerator to rax")
       END;
 
-      IF ~(RDX IN Free) THEN
+      IF (y.mode IN {Reg, Eadr}) & (y.n = RDX) THEN
+        reg2 := Reserve(-1, {});
+        IF y.mode = Reg THEN
+          MoveReg(reg2, RDX)
+        ELSE
+          LoadReg(reg2, y)
+        END;
+        y.n := reg2;
+        Release(RDX)
+      ELSIF ~(RDX IN Free) THEN
         Depar(y);
         saveRDX := TRUE;
-        PushReg(RDX);  X64.AdjustStack(1);  Release(RDX);
-        IF (y.mode = Reg) & (y.n = RDX) THEN
-          y.mode := Eadr;
-          y.n    := RSP;
-          y.n    := -8 * X64.SPO;
-        END
+        PushReg(RDX);  X64.AdjustStack(1);
+        Release(RDX)
       END;
-      LoadImmediate(RDX, 0);  ReserveReg(RDX);
+      (*LoadImmediate(RDX, 0);*)
+      X64.Emit(48H); X64.Emit(99H);  (* cqo - sign extend rax into rdx *)
+      ReserveReg(RDX);
       Disassemble(0, "DivOp prepare rdx");
 
       IF y.mode = Const THEN
@@ -2884,29 +2894,34 @@ BEGIN
   Hdr.lines := X64.PC;
   bodyan := BodyAnnotations;
   WHILE bodyan # NIL DO
-    X64.EmitString(bodyan.name);
     linean := bodyan.firstline;
-    line   := linean.line;
-    pc     := linean.pc;
-    X64.EmitBytes(8, line);
-    X64.EmitBytes(8, pc);
-    (*
-    H.ws("Emit body annotation for '"); H.ws(bodyan.name);
-    H.ws("', first line "); H.wi(line);
-    H.ws(", first PC "); H.wh(pc); H.wsn("H.");
-    *)
-    linean := linean.next;
-    WHILE linean # NIL DO
+    IF linean = NIL THEN
+      H.wn; H.ws("** Warning: body with no lines: "); H.ws(bodyan.name); H.wsn(" **");
+      ASSERT(FALSE);
+    ELSE
+      X64.EmitString(bodyan.name);
+      line   := linean.line;
+      pc     := linean.pc;
+      X64.EmitBytes(8, line);
+      X64.EmitBytes(8, pc);
       (*
-      H.ws("  line "); H.wi(linean.line);
-      H.ws(", PC "); H.wh(linean.pc); H.wsn("H.");
+      H.ws("Emit body annotation for '"); H.ws(bodyan.name);
+      H.ws("', first line "); H.wi(line);
+      H.ws(", first PC "); H.wh(pc); H.wsn("H.");
       *)
-      ASSERT(linean.pc > pc);
-      EmitUnsigned(linean.pc   - pc);    pc   := linean.pc;
-      EmitUnsigned(linean.line - line);  line := linean.line;
-      linean := linean.next
+      linean := linean.next;
+      WHILE linean # NIL DO
+        (*
+        H.ws("  line "); H.wi(linean.line);
+        H.ws(", PC "); H.wh(linean.pc); H.wsn("H.");
+        *)
+        ASSERT(linean.pc > pc);
+        EmitUnsigned(linean.pc   - pc);    pc   := linean.pc;
+        EmitUnsigned(linean.line - line);  line := linean.line;
+        linean := linean.next
+      END;
+      X64.Emit(0);
     END;
-    X64.Emit(0);
     bodyan := bodyan.next
   END;
   X64.Emit(0);

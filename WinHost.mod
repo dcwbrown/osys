@@ -115,38 +115,48 @@ VAR
   WriteFile*:                      PROCEDURE-(hFile, lpBuffer, nNumberOfBytesToWrite, lpNumberOfBytesWritten, lpOverlapped: INTEGER): INTEGER;
 
   (* Pre-loaded Gdi32 imports *)
-  BitBlt:                          PROCEDURE-(dc, x, y, cx, cy, sc, x1, y1, op: INTEGER): INTEGER;
-  CreateBitmap:                    PROCEDURE-(w, h, pl, de, bs: INTEGER): INTEGER;
-  CreateCompatibleDC:              PROCEDURE-(dc: INTEGER): INTEGER;
-  CreateDIBSection:                PROCEDURE-(dc, bi, us, bs, sc, of: INTEGER): INTEGER;
-  DeleteObject:                    PROCEDURE-(ob: INTEGER): INTEGER;
-  SelectObject:                    PROCEDURE-(dc, ob: INTEGER): INTEGER;
+  BitBlt*:                         PROCEDURE-(dc, x, y, cx, cy, sc, x1, y1, op: INTEGER): INTEGER;
+  CreateBitmap*:                   PROCEDURE-(w, h, pl, de, bs: INTEGER): INTEGER;
+  CreateCompatibleDC*:             PROCEDURE-(dc: INTEGER): INTEGER;
+  CreateDCA*:                      PROCEDURE-(drive, device, port, devmode: INTEGER): INTEGER;
+  CreateDIBSection*:               PROCEDURE-(dc, bi, us, bs, sc, of: INTEGER): INTEGER;
+  CreateFontA*:                    PROCEDURE-(cHeight,  cWidth,        cEscapement,    cOrientation,
+                                             cWeight,  bItalic,       bUnderline,     bStrikeOut,
+                                             iCharSet, iOutPrecision, iClipPrecision, iQuality,
+                                             iPitchAndFamily,         pszFaceName: INTEGER): INTEGER;
+  DeleteObject*:                   PROCEDURE-(ob: INTEGER): INTEGER;
+  GetGlyphOutlineW*:               PROCEDURE-(hdc, uChar, fuFormat, lpgm, cjBuffer, pvBuffer, lpmat2: INTEGER): INTEGER;
+  GetCharABCWidthsW*:              PROCEDURE-(hdc, first, last, abcadr: INTEGER): INTEGER;
+  GetDeviceCaps*:                  PROCEDURE-(hdc, index: INTEGER): INTEGER;
+  GetOutlineTextMetricsW*:         PROCEDURE-(hdc, bufsize, buffer: INTEGER): INTEGER;
+  SelectObject*:                   PROCEDURE-(dc, ob: INTEGER): INTEGER;
+
 
   (* Pre-loaded User32 imports *)
-  BeginPaint:                      PROCEDURE-(wn, ps: INTEGER): INTEGER;
-  CreateIconIndirect:              PROCEDURE-(ic: INTEGER): INTEGER;
-  CreateWindowExW:                 PROCEDURE-(es, cn, wn, st, x, y, w, h, pa, me, in, lp: INTEGER): INTEGER;
-  DefWindowProcW:                  PROCEDURE-(wn, ms, wp, lp: INTEGER): INTEGER;
-  DispatchMessageW:                PROCEDURE-(ms: INTEGER): INTEGER;
-  EndPaint:                        PROCEDURE-(wn, ps: INTEGER): INTEGER;
-  GetDpiForWindow:                 PROCEDURE-(wn: INTEGER): INTEGER;
-  GetMessageW:                     PROCEDURE-(lm, wn, mn, mx: INTEGER): INTEGER;
-  GetQueueStatus:                  PROCEDURE-(fl: INTEGER): INTEGER;
-  LoadCursorW:                     PROCEDURE-(in, cn: INTEGER): INTEGER;
-  MessageBoxA:                     PROCEDURE-(w, t, c, u: INTEGER)(*: INTEGER*);
-  MessageBoxW:                     PROCEDURE-(w, t, c, u: INTEGER): INTEGER;
-  MoveWindow:                      PROCEDURE-(wn, x, y, w, h, repaint: INTEGER);
-  MsgWaitForMultipleObjects:       PROCEDURE-(cn, hs, wa, ms, wm: INTEGER);
-  PeekMessageW:                    PROCEDURE-(lm, wn, mn, mx, rm: INTEGER): INTEGER;
-  PostQuitMessage:                 PROCEDURE-(rc: INTEGER);
-  RegisterClassExW:                PROCEDURE-(wc: INTEGER): INTEGER;
-  ReleaseCapture:                  PROCEDURE-;
-  SetCapture:                      PROCEDURE-(wn: INTEGER);
-  SetProcessDpiAwarenessContext:   PROCEDURE-(cx: INTEGER): INTEGER;
-  ShowCursor:                      PROCEDURE-(sh: INTEGER);
-  ShowWindow:                      PROCEDURE-(wn, cm: INTEGER);
-  TranslateMessage:                PROCEDURE-(ms: INTEGER): INTEGER;
-  InvalidateRect:                  PROCEDURE-(wn, rc, er: INTEGER): INTEGER;
+  BeginPaint*:                     PROCEDURE-(wn, ps: INTEGER): INTEGER;
+  CreateIconIndirect*:             PROCEDURE-(ic: INTEGER): INTEGER;
+  CreateWindowExW*:                PROCEDURE-(es, cn, wn, st, x, y, w, h, pa, me, in, lp: INTEGER): INTEGER;
+  DefWindowProcW*:                 PROCEDURE-(wn, ms, wp, lp: INTEGER): INTEGER;
+  DispatchMessageW*:               PROCEDURE-(ms: INTEGER): INTEGER;
+  EndPaint*:                       PROCEDURE-(wn, ps: INTEGER): INTEGER;
+  GetDpiForWindow*:                PROCEDURE-(wn: INTEGER): INTEGER;
+  GetMessageW*:                    PROCEDURE-(lm, wn, mn, mx: INTEGER): INTEGER;
+  GetQueueStatus*:                 PROCEDURE-(fl: INTEGER): INTEGER;
+  LoadCursorW*:                    PROCEDURE-(in, cn: INTEGER): INTEGER;
+  MessageBoxA*:                    PROCEDURE-(w, t, c, u: INTEGER)(*: INTEGER*);
+  MessageBoxW*:                    PROCEDURE-(w, t, c, u: INTEGER): INTEGER;
+  MoveWindow*:                     PROCEDURE-(wn, x, y, w, h, repaint: INTEGER);
+  MsgWaitForMultipleObjects*:      PROCEDURE-(cn, hs, wa, ms, wm: INTEGER);
+  PeekMessageW*:                   PROCEDURE-(lm, wn, mn, mx, rm: INTEGER): INTEGER;
+  PostQuitMessage*:                PROCEDURE-(rc: INTEGER);
+  RegisterClassExW*:               PROCEDURE-(wc: INTEGER): INTEGER;
+  ReleaseCapture*:                 PROCEDURE-;
+  SetCapture*:                     PROCEDURE-(wn: INTEGER);
+  SetProcessDpiAwarenessContext*:  PROCEDURE-(cx: INTEGER): INTEGER;
+  ShowCursor*:                     PROCEDURE-(sh: INTEGER);
+  ShowWindow*:                     PROCEDURE-(wn, cm: INTEGER);
+  TranslateMessage*:               PROCEDURE-(ms: INTEGER): INTEGER;
+  InvalidateRect*:                 PROCEDURE-(wn, rc, er: INTEGER): INTEGER;
 
   (* End of pre-loaded variables *)
 
@@ -581,8 +591,7 @@ BEGIN
         GetString(adr, name)
       END;
     END
-  END;
-
+  END
 END LocateLine;
 
 PROCEDURE LocateAddress(adr: INTEGER; p: ExceptionPointers);  (* Writes location info about address, if any *)
@@ -596,7 +605,7 @@ BEGIN
   END;
   wsn(". **");
 
-  LocateLine(modadr, adr - modadr);
+  IF modadr # 0 THEN LocateLine(modadr, adr - modadr) END;
 
   IF (modadr # 0) & (PostMortemDump # NIL) & (ExceptionDepth < 2) THEN
     INC(ExceptionDepth);
@@ -618,6 +627,7 @@ END LocateAddress;
 PROCEDURE- ExceptionHandler(p: ExceptionPointers);  (* Called by Windows *)
 VAR modadr, excpadr, excpcode: INTEGER;
 BEGIN
+  INC(ExceptionDepth);
   excpcode := p.exception.ExceptionCode;
   excpadr  := p.exception.ExceptionAddress;
   wn;
@@ -631,7 +641,12 @@ BEGIN
   ELSIF excpcode = 0C0000094H THEN ws("** Integer divide by zero");
   ELSE ws("** Exception ");  wh(excpcode);  wc("H")
   END;
-  LocateAddress(excpadr, p);
+
+  IF ExceptionDepth < 2 THEN
+    LocateAddress(excpadr, p)
+  ELSE
+    wsn(": nested exception **")
+  END;
   ExitProcess(99)
 END ExceptionHandler;
 
@@ -1106,6 +1121,8 @@ END LoadRemainingModules;
 
 (* -------------------------------------------------------------------------- *)
 
+PROCEDURE SetHWnd*(h: INTEGER);
+BEGIN HWnd := h END SetHWnd;
 
 BEGIN
   HWnd                  := 0;

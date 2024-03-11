@@ -268,7 +268,7 @@ PROCEDURE ParamList(VAR x: X64.Item);
 VAR n: INTEGER;  par: ORB.Object;
 BEGIN par := x.type.dsc;  n := 0;
   IF sym # ORS.rparen THEN
-    ASSERT(par.type # NIL);
+    IF par # NIL THEN ASSERT(par.type # NIL) END;
     Parameter(par, x.type.native);  n := 1;
     WHILE sym <= ORS.comma DO
       Check(sym, "comma?");
@@ -388,8 +388,7 @@ BEGIN (*sync*)
   ELSIF sym = ORS.lbrace THEN ORS.Get(sym);  set(x);         Check(ORS.rbrace, "no }")
   ELSIF sym = ORS.not    THEN ORS.Get(sym);  factor(x);  CheckBool(x);  ORG.Not(x)
   ELSE ORS.Mark("not a factor");  ORG.MakeConstItem(x, ORB.intType, 0)
-  END;
-
+  END
 END factor;
 
 PROCEDURE term(VAR x: X64.Item);
@@ -993,7 +992,7 @@ BEGIN (*sync*) pbsList := NIL;
       IF (x.mode = X64.Const) OR (x.type.form = ORB.String) THEN
         obj.type := x.type;
         IF x.type.form = ORB.String THEN
-          obj.val := 0;    obj.lev := x.n
+          obj.val := x.offset;    obj.lev := x.n
         ELSE
           obj.val := x.n;  obj.lev := 0
         END
@@ -1169,10 +1168,12 @@ BEGIN ORS.Get(sym);  CheckNative(native);
     ORG.Enter(parmsize, locsize, native);
     IF sym = ORS.begin THEN ORS.Get(sym);  StatSequence(ann) END;
     IF sym = ORS.return THEN
+      ORG.AddLineAnnotation(ann);
       ORS.Get(sym);  expression(x);
       IF type.base = ORB.noType THEN ORS.Mark("this is not a function")
       ELSIF ~CompTypes(type.base, x.type, FALSE) THEN ORS.Mark("wrong result type")
-      END
+      END;
+      ORG.AddLineAnnotation(ann)
     ELSIF type.base.form # ORB.NoTyp THEN
       ORS.Mark("function without result");  type.base := ORB.noType
     END;
@@ -1182,7 +1183,8 @@ BEGIN ORS.Get(sym);  CheckNative(native);
       ORS.Get(sym)
     ELSE ORS.Mark("no proc id")
     END;
-    ORG.Return(type.base.form, x, parmsize, locsize);
+    ORG.Return(type.base.form, x, parmsize, locsize, native);
+    ORG.AddLineAnnotation(ann);
     ORB.CloseScope;  DEC(level)
   END
 END ProcedureDecl;

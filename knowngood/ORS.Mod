@@ -15,7 +15,7 @@ CONST
   IdLen*        = 32;
   NKW           = 34;  (* nof keywords *)
   maxExp        = 38;
-  stringBufSize = 256;
+  stringBufSize = 2048;
 
   (* lexical symbols *)
   null    = 0;  times*     = 1;  rdiv*      = 2;  div*    = 3;  mod*    = 4;
