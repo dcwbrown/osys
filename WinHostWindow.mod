@@ -63,8 +63,8 @@ TYPE
 
   ARGB* = SYSTEM.CARD32;
 
-  Bitmap* = POINTER TO BitmapDesc;
-  BitmapDesc* = RECORD
+  Bitmap* = POINTER- TO BitmapDesc;
+  BitmapDesc* = RECORD-
     width*:   INTEGER;
     height*:  INTEGER;
     address*: INTEGER;    (* Address of bitmap data                                  *)
@@ -77,8 +77,8 @@ TYPE
   DrawHandler      = PROCEDURE(x, y, width, height: INTEGER;  bitmap: Bitmap);
   MouseHandler     = PROCEDURE(x, y: INTEGER; flags: SET);
 
-  Window* = POINTER TO WindowDesc;
-  WindowDesc = RECORD
+  Window* = POINTER- TO WindowDesc;
+  WindowDesc = RECORD-
     hwnd:     INTEGER;
     bmp*:     Bitmap;
     x*:       INTEGER;
@@ -94,7 +94,7 @@ TYPE
     next:     Window
   END;
 
-  MSG = RECORD
+  MSG* = RECORD-
     hwnd:     INTEGER;
     message:  UINT32;
     pad1:     UINT32;

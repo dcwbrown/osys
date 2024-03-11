@@ -369,6 +369,18 @@ END WriteTime;
 
 
 (* -------------------------------------------------------------------------- *)
+(* --------------------------- Trivial Stdin read --------------------------- *)
+(* -------------------------------------------------------------------------- *)
+
+PROCEDURE GetChar*(): CHAR;
+VAR ch: CHAR;  res, bytesread: INTEGER;
+BEGIN
+  ch := 0X;
+  res := ReadFile(Stdin, SYSTEM.ADR(ch), 1, bytesread, 0);
+RETURN ch END GetChar;
+
+
+(* -------------------------------------------------------------------------- *)
 
 PROCEDURE DumpMem*(indent, adr, start, len: INTEGER);
 VAR
@@ -1119,10 +1131,14 @@ BEGIN
   (*wsn("LoadRemainingModules complete.")*)
 END LoadRemainingModules;
 
+
 (* -------------------------------------------------------------------------- *)
 
 PROCEDURE SetHWnd*(h: INTEGER);
 BEGIN HWnd := h END SetHWnd;
+
+
+(* -------------------------------------------------------------------------- *)
 
 BEGIN
   HWnd                  := 0;

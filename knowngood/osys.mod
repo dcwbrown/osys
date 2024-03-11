@@ -1,5 +1,5 @@
 MODULE osys;
-IMPORT SYSTEM, H := WinHost, Display;
+IMPORT SYSTEM, H := WinHost, Display, HostWindow := WinHostWindow;
 
 (*
 Display, Viewers, System, Oberon, Texts,
