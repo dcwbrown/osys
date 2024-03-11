@@ -327,14 +327,12 @@ BEGIN str := "";
   ELSIF msg = 390H THEN str := "_COALESCE_FIRST"
   ELSIF msg = 39FH THEN str := "_COALESCE_LAST"
   ELSIF msg = 400H THEN str := "USER"
-  (*
   ELSIF (msg >= 0C000H) & (msg <= 0FFFFH) THEN
     (* registered cross-application name *)
     name[0] := 23H;  (* '#' *)
-    IF GetClipboardFormatNameW(msg, SYSTEM.ADR(name)+2, LEN(name)-1) > 0 THEN
-      res := K.Utf16ToUtf8(name, str)
+    IF H.GetClipboardFormatNameW(msg, SYSTEM.ADR(name)+2, LEN(name)-1) > 0 THEN
+      res := H.Utf16ToUtf8(name, str)
     END
-  *)
   END;
   IF str = "" THEN H.ws("WM $"); H.wh(msg) ELSE H.ws("WM"); H.ws(str) END
 END WriteWindowsMessageName;
@@ -776,11 +774,8 @@ BEGIN
   ELSIF  msg =  102H  (* WM_CHAR          *) THEN Char(hwnd, wp)
   ELSIF (msg >= 200H) (* WM_MOUSEMOVE     *)
      &  (msg <= 209H) (* WM_MBUTTONDBLCLK *) THEN Mouse(hwnd, msg, lp MOD 10000H, lp DIV 10000H MOD 10000H, wp)
-  ELSE H.wsn("*2");
-       res := H.DefWindowProcW(hwnd, msg, wp, lp);
-       H.wsn("*3");
+  ELSE                                            res := H.DefWindowProcW(hwnd, msg, wp, lp);
   END;
-H.wsn("*4");
 RETURN res END WndProc;
 
 
@@ -848,7 +843,6 @@ BEGIN
   H.ws("SYSTEM.GET(SYSTEM.ADR(WndProc)): "); H.wh(i);                            H.wsn("H.");
   H.ws("SYSTEM.VAL(INTEGER, WndProc):    "); H.wh(SYSTEM.VAL(INTEGER, WndProc)); H.wsn("H.");
 
-H.wsn("*1");
   hwnd := H.CreateWindowExW(
     0,                       (* Extended window style *)
     SYSTEM.ADR(classname),
@@ -857,7 +851,6 @@ H.wsn("*1");
     x, y, width, height,     (* Initial position *)
     0, 0, 0, 0               (* hWndParent, hMenu, hInstance, lpParam *)
   );
-H.wsn("*2");
   ASSERT(hwnd # 0);
 
   H.ws("Created window. hwnd $");  H.wh(hwnd);  H.wsn(".");
@@ -907,7 +900,7 @@ BEGIN quit := FALSE;
       res := H.PeekMessageW(SYSTEM.ADR(msg), 0,0,0,1); (* Get and remove messgae if available *)
     END
   END;
-  (*
+(*
   (* There may still be a WM_PAINT in the queue, but only GetMessage can return that. *)
   IF ~quit & (GetQueueStatus(20H) # 0) THEN  (* Check for pending WM_PAINT *)
     H.wsn("** GetQueueStatus reported WM_PAINT available **");
@@ -918,7 +911,7 @@ BEGIN quit := FALSE;
       res := H.DispatchMessageW(SYSTEM.ADR(msg))
     END
   END
-  *)
+*)
 RETURN ~quit END MessagePump;
 
 

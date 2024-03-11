@@ -139,6 +139,7 @@ VAR
   DefWindowProcW*:                 PROCEDURE-(wn, ms, wp, lp: INTEGER): INTEGER;
   DispatchMessageW*:               PROCEDURE-(ms: INTEGER): INTEGER;
   EndPaint*:                       PROCEDURE-(wn, ps: INTEGER): INTEGER;
+  GetClipboardFormatNameW*:        PROCEDURE-(format, name, maxcount: INTEGER): INTEGER;
   GetDpiForWindow*:                PROCEDURE-(wn: INTEGER): INTEGER;
   GetMessageW*:                    PROCEDURE-(lm, wn, mn, mx: INTEGER): INTEGER;
   GetQueueStatus*:                 PROCEDURE-(fl: INTEGER): INTEGER;

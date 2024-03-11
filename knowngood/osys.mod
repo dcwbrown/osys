@@ -1,5 +1,5 @@
 MODULE osys;
-IMPORT SYSTEM, H := WinHost, Display, HostWindow := WinHostWindow;
+IMPORT SYSTEM, H := WinHost, Kernel, Display, HostWindow := WinHostWindow;
 
 (*
 Display, Viewers, System, Oberon, Texts,
@@ -53,10 +53,44 @@ BEGIN
 END DumpDisplay;
 *)
 
+(* Temp impl *)
+
+PROCEDURE Loop*;
+VAR res: INTEGER;
+BEGIN
+  REPEAT
+    res := HostWindow.ProcessOneMessage();
+    IF res = 0 THEN  (* Empty queue *)
+    (*
+      (* Find first ready task, or soonest ready if none ready now. *)
+      time    := Kernel.Time();
+      prev    := CurTask;
+      wait    := CurTask.nextTime - time;
+      CurTask := CurTask.next;
+      WHILE (CurTask # prev) & (CurTask.nextTime > time) DO
+        IF CurTask.nextTime - time < wait THEN wait := CurTask.nextTime - time END;
+        CurTask := CurTask.next
+      END;
+      IF CurTask.nextTime <= time THEN  (* There is a task ready to run *)
+        CurTask.nextTime := time + CurTask.period;
+        CurTask.state := active;  CurTask.handle;  CurTask.state := idle
+      ELSE (* There is nothing to do but wait for time or message *)
+        CurTask := CurTask.next;
+        (*o.s("Waiting "); o.i(wait); o.sl("ms.");*)
+        Windows.WaitMsgOrTime(wait)
+      END
+    *)
+      HostWindow.WaitMsgOrTime(1000)
+    END
+  UNTIL res > 1  (* => WM_QUIT *)
+END Loop;
+
 BEGIN
   H.wsn("Oberon system starting.");
   (*
   Oberon.SetDumpDisplay(DumpDisplay);
   Oberon.Loop
   *)
+  Loop;
+  H.wsn("Oberon system closing.");
 END osys.

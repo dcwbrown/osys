@@ -225,7 +225,7 @@ BEGIN (*Heap.Finalise;*)  H.ExitProcess(exitCode) END Halt;
 (* ------------------------ Miscellaneous procedures ------------------------ *)
 
 PROCEDURE Time*(): INTEGER;   (* In milliseconds since system-dependent origin *)
-BEGIN RETURN H.Time() END Time;
+BEGIN RETURN H.Time() DIV 10000 END Time;
 
 PROCEDURE Clock*(): INTEGER;  (* 32 bit packed date and time *)
 BEGIN RETURN H.Clock() END Clock;

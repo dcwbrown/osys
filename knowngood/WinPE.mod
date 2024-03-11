@@ -15,7 +15,7 @@ CONST
   BootstrapVarBytes   = 24;  (* preloaded bootstrap VAR size preceeding imported proc addresses *)
   Kernel32ImportCount = 35;
   Gdi32ImportCount    = 12;
-  User32ImportCount   = 24;
+  User32ImportCount   = 25;
 
 TYPE
   CodeHeader = H.CodeHeader;
@@ -299,6 +299,7 @@ BEGIN
   AddImport(Idt.User32Lookups, n, i, dll, importhints, "DefWindowProcW");
   AddImport(Idt.User32Lookups, n, i, dll, importhints, "DispatchMessageW");
   AddImport(Idt.User32Lookups, n, i, dll, importhints, "EndPaint");
+  AddImport(Idt.User32Lookups, n, i, dll, importhints, "GetClipboardFormatNameW");
   AddImport(Idt.User32Lookups, n, i, dll, importhints, "GetDpiForWindow");
   AddImport(Idt.User32Lookups, n, i, dll, importhints, "GetMessageW");
   AddImport(Idt.User32Lookups, n, i, dll, importhints, "GetQueueStatus");
