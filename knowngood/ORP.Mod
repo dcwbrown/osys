@@ -1102,7 +1102,11 @@ BEGIN ORS.Get(sym);  CheckNative(native);
     Check(ORS.semicolon, "no ;");
 
     parmsize := type.len;
-    locsize  := 0; (* Local start at RSP + 0 *)
+    IF ~native THEN
+      locsize  := 0; (* Local start at RSP + 0 *)
+    ELSE
+      locsize := 64; (* Locals start after X64 ABI saved regs *)
+    END;
     Declarations(locsize);
 
     framesize := parmsize + locsize + 8;  (* Frame includes return address *)

@@ -1486,6 +1486,11 @@ BEGIN
     StoreRegToMem(8,   Eadr, 8, RSP, -1, 0, 18H);
     StoreRegToMem(9,   Eadr, 8, RSP, -1, 0, 20H);
     Disassemble(Eadr, "Save native procedure parameters to stack.");
+    ASSERT(locsize >= 64);
+    (* Save X64 ABI non-volatile registers *)
+    PushReg(RBX);  PushReg(RSI);  PushReg(RDI);  PushReg(RBP);
+    PushReg(12);   PushReg(13);   PushReg(14);   PushReg(15);
+    DEC(locsize, 64)
   END;
 
   (* Clear local variables *)
@@ -1549,15 +1554,25 @@ BEGIN
     Disassemble(x.mode, "Load function result")
   END;
 
-  IF locsize > 0 THEN
-    AluOpFromImmediate(Plus, Reg, locsize, 8, RSP, -1, 0, 0);
-    Disassemble(0, "release local variable space")
-  END;
-
-  IF (parmsize = 0) OR native THEN
+  IF native THEN
+    ASSERT(locsize >= 64);
+    IF locsize > 64 THEN
+      AluOpFromImmediate(Plus, Reg, locsize - 64, 8, RSP, -1, 0, 0);
+      Disassemble(0, "release local variable space")
+    END;
+    PopReg(15);   PopReg(14);   PopReg(13);   PopReg(12);
+    PopReg(RBP);  PopReg(RDI);  PopReg(RSI);  PopReg(RBX);
     X64.Emit(0C3H)  (* ret *)
   ELSE
-    X64.Emit(0C2H);  X64.EmitBytes(2, parmsize)  (* retn *)
+    IF locsize > 0 THEN
+      AluOpFromImmediate(Plus, Reg, locsize, 8, RSP, -1, 0, 0);
+      Disassemble(0, "release local variable space")
+    END;
+    IF parmsize = 0 THEN
+      X64.Emit(0C3H)  (* ret *)
+    ELSE
+      X64.Emit(0C2H);  X64.EmitBytes(2, parmsize)  (* retn *)
+    END
   END;
   Disassemble(0, "Return");
 
