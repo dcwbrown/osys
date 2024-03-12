@@ -552,7 +552,9 @@ BEGIN
     offset := x.offset;
     IF (x.mode = Eadr) & (x.n = RSP) THEN INC(offset, X64.SPO * 8) END;
     LoadMem(reg, x.mode, X64.IsSigned(x.type), x.type.size, x.n, x.index, x.scale, offset)
-  ELSE ASSERT(FALSE)
+  ELSE
+    H.wn; H.ws("** LoadReg, x.mode "); H.wi(x.mode); H.wsn(".");
+    ASSERT(FALSE)
   END;
   FreeRegs(x);  x.mode := Reg;  x.n := reg;  ReserveReg(x.n);
   Disassemble(x.mode, "Load")
@@ -2804,11 +2806,6 @@ PROCEDURE Header*;
 BEGIN
   Trace(TraceAny, "Header - module initialisation code entry point."); l.n(Tr);
   Hdr.initcode := X64.PC;  (* Set entry point address *)
-  (*
-  (* Save non-volatile registers (for testing from Patchouli Oberon) *)
-  PushReg(RBX);  PushReg(RBP);  PushReg(RSI);  PushReg(RDI);
-  PushReg(12);   PushReg(13);   PushReg(14);   PushReg(15);
-  *)
 END Header;
 
 PROCEDURE wsize(size: INTEGER);
@@ -2853,12 +2850,8 @@ VAR
   line:     INTEGER;
   pc:       INTEGER;
 BEGIN
-  (*
-  PopReg(15);   PopReg(14);   PopReg(13);   PopReg(12);
-  PopReg(RDI);  PopReg(RSI);  PopReg(RBP);  PopReg(RBX);
-  *)
   X64.Emit(0C3H);  (* ret *)
-  Disassemble(0, "Return");
+  Disassemble(0, "Return from module body");
   X64.Emit(2EH);  (* Mark end of code with ignored instruction 'seg cs' *)
   EmitStrings;
 

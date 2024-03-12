@@ -1141,6 +1141,11 @@ BEGIN HWnd := h END SetHWnd;
 
 (* -------------------------------------------------------------------------- *)
 
+PROCEDURE GetRSP(): INTEGER;
+VAR result: INTEGER;
+BEGIN result := SYSTEM.ADR(result) + 8
+RETURN result END GetRSP;
+
 BEGIN
   HWnd                  := 0;
   Log                   := NoLog;
@@ -1162,7 +1167,8 @@ BEGIN
   Log := WriteStdout;
 
   IF Verbose IN LoadFlags THEN
-    ws("* WinHost starting, Header at "); wh(SYSTEM.VAL(INTEGER, Header)); wsn("H.")
+    ws("* WinHost starting, Header at "); wh(SYSTEM.VAL(INTEGER, Header)); wsn("H.");
+    ws("* Initial RSP "); wh(GetRSP()); wsn("H.");
   END;
   (*
   ws("Stdout handle "); wh(Stdout);            wsn("H.");

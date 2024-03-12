@@ -63,8 +63,8 @@ TYPE
 
   ARGB* = SYSTEM.CARD32;
 
-  Bitmap* = POINTER- TO BitmapDesc;
-  BitmapDesc* = RECORD-
+  Bitmap* = POINTER TO BitmapDesc;
+  BitmapDesc* = RECORD
     width*:   INTEGER;
     height*:  INTEGER;
     address*: INTEGER;    (* Address of bitmap data                                  *)
@@ -73,12 +73,12 @@ TYPE
     oldh:     INTEGER     (* Old handle for restoration following context operations *)
   END;
 
-  CharacterHandler = PROCEDURE(ch: INTEGER);  (* Receives full UTF-32 codepoint *)
-  DrawHandler      = PROCEDURE(x, y, width, height: INTEGER;  bitmap: Bitmap);
-  MouseHandler     = PROCEDURE(x, y: INTEGER; flags: SET);
+  CharacterHandler* = PROCEDURE(ch: INTEGER);  (* Receives full UTF-32 codepoint *)
+  DrawHandler*      = PROCEDURE(x, y, width, height: INTEGER;  bitmap: Bitmap);
+  MouseHandler*     = PROCEDURE(x, y: INTEGER; flags: SET);
 
-  Window* = POINTER- TO WindowDesc;
-  WindowDesc = RECORD-
+  Window* = POINTER TO WindowDesc;
+  WindowDesc = RECORD
     hwnd:     INTEGER;
     bmp*:     Bitmap;
     x*:       INTEGER;
@@ -106,7 +106,8 @@ TYPE
   END;
 
 VAR
-  FirstWindow: Window;
+  FirstWindow:  Window;
+  WndProcDepth: INTEGER;
 
 
 PROCEDURE LastError;
@@ -763,10 +764,14 @@ END Mouse;
 PROCEDURE- WndProc(hwnd, msg, wp, lp: INTEGER): INTEGER;
 VAR res: INTEGER;
 BEGIN
-  H.ws("WndProc: hwnd $"); H.wh(hwnd); H.ws(", msg "); WriteWindowsMessageName(msg); H.wn;
+  H.wb(WndProcDepth);
+  H.ws("WndProc: hwnd $"); H.wh(hwnd);
+  H.ws(", msg "); WriteWindowsMessageName(msg); H.wsn(".");
+  INC(WndProcDepth, 2);
+
   IF FirstWindow.hwnd = 0 THEN FirstWindow.hwnd := hwnd END;
   res := 0;
-  IF     msg =   02H  (* WM_DESTROY       *) THEN H.PostQuitMessage(0)
+  IF     msg =   02H  (* WM_DESTROY       *) THEN H.wsn("*1"); H.PostQuitMessage(0); H.wsn("*2")
   ELSIF  msg =   0FH  (* WM_PAINT         *) THEN Paint(hwnd)
   ELSIF  msg =   14H  (* WM_ERASEBKGND    *) THEN
   ELSIF  msg =   05H  (* WM_SIZE          *) THEN Size(lp MOD 10000H, lp DIV 10000H MOD 10000H)
@@ -774,8 +779,9 @@ BEGIN
   ELSIF  msg =  102H  (* WM_CHAR          *) THEN Char(hwnd, wp)
   ELSIF (msg >= 200H) (* WM_MOUSEMOVE     *)
      &  (msg <= 209H) (* WM_MBUTTONDBLCLK *) THEN Mouse(hwnd, msg, lp MOD 10000H, lp DIV 10000H MOD 10000H, wp)
-  ELSE                                            res := H.DefWindowProcW(hwnd, msg, wp, lp);
+  ELSE res := H.DefWindowProcW(hwnd, msg, wp, lp);
   END;
+  H.wsn("*3");  DEC(WndProcDepth, 2)
 RETURN res END WndProc;
 
 
@@ -837,11 +843,6 @@ BEGIN
   H.ws(", height ");           H.wi(height); H.wsn(".");
   H.wsn("classname:");  H.DumpMem(2, SYSTEM.ADR(classname),  SYSTEM.ADR(classname),  16);
   H.wsn("windowname:"); H.DumpMem(2, SYSTEM.ADR(windowname), SYSTEM.ADR(windowname), 16);
-
-  H.ws("SYSTEM.ADR(WndProc):             "); H.wh(SYSTEM.ADR(WndProc));          H.wsn("H.");
-  SYSTEM.GET(SYSTEM.ADR(WndProc), i);
-  H.ws("SYSTEM.GET(SYSTEM.ADR(WndProc)): "); H.wh(i);                            H.wsn("H.");
-  H.ws("SYSTEM.VAL(INTEGER, WndProc):    "); H.wh(SYSTEM.VAL(INTEGER, WndProc)); H.wsn("H.");
 
   hwnd := H.CreateWindowExW(
     0,                       (* Extended window style *)
@@ -920,16 +921,21 @@ VAR
   msg:  MSG;
   res:  INTEGER;
 BEGIN
+  H.wsn("ProcessOneMessage entry.");
   res := H.PeekMessageW(SYSTEM.ADR(msg), 0,0,0,1); (* Get and remove message if available *)
+  H.ws("PeekMessage result "); H.wh(res); H.wsn("H.");
   IF res # 0  THEN
     IF msg.message = 12H THEN
+      H.wsn("* WM_QUIT *");
       res :=  2  (* 12H = WM_QUIT *)
     ELSE
+      H.ws("Translate and Dispatch msg "); WriteWindowsMessageName(msg.message); H.wn;
       res := H.TranslateMessage(SYSTEM.ADR(msg));
       res := H.DispatchMessageW(SYSTEM.ADR(msg));
       res := 1;
     END
-  END
+  END;
+  H.wsn("ProcessOneMessage complete.");
 RETURN res END ProcessOneMessage;
 
 PROCEDURE WaitMsgOrTime*(time: INTEGER);  (* Waits for time (ms) OR message in queue *)
@@ -972,6 +978,7 @@ BEGIN InvalidateRect(w, 0, 0, w.bmp.width, w.bmp.height) END Invalidate;
 
 
 BEGIN
+  WndProcDepth := 0;
   H.wsn("Hello teapots.");
   TestSRGB;
   ASSERT(H.SetProcessDpiAwarenessContext(-3) # 0)  (* DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE *)

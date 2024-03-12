@@ -137,7 +137,7 @@ Test
 @rd /s /q buildsys 2>NUL
 @md buildsys
 @cd buildsys
-..\build2\obuild /s ../ /b ../build2/ osys
+..\build2\obuild /v /s ../ /b ../build2/ osys
 @if errorlevel 1 goto osysbuildfailed
 @cd ..
 ::
