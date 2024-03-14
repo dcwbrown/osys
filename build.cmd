@@ -12,8 +12,6 @@
 @if errorlevel 1 goto buildcompiler
 @fc knowngood\Texts.mod   Texts.mod   >NUL
 @if errorlevel 1 goto buildcompiler
-@fc knowngood\Oberon.mod  Oberon.mod  >NUL
-@if errorlevel 1 goto buildcompiler
 @fc knowngood\ORS.mod     ORS.mod     >NUL
 @if errorlevel 1 goto buildcompiler
 @fc knowngood\ORB.mod     ORB.mod     >NUL

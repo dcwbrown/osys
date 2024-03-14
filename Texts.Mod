@@ -126,7 +126,7 @@ BEGIN f := Files.Base(R); N := 1; Q := Trailer(); p := Q;
   WHILE fno # 0 DO
     IF fno = N THEN
       Files.ReadString(R, FName);
-      Dict[N] := Fonts.Load(FName); INC(N)
+      Dict[N] := Fonts.This(FName); INC(N)
     END;
     NEW(q); q.fnt := Dict[fno];
     Files.ReadByte(R, bt); q.col := bt;
@@ -178,7 +178,7 @@ VAR
   pos:  INTEGER;
   N, n: INTEGER;
   ch:   CHAR;
-  Dict: ARRAY 32, 64 OF CHAR;
+  Dict: ARRAY 32, 32 OF CHAR;
 BEGIN pos := Files.Pos(W); Files.WriteInt(W, 0); (*place holder*)
   N := 1; p := T.trailer.next;
   WHILE p # T.trailer DO
