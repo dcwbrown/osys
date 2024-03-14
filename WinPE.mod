@@ -10,12 +10,12 @@ CONST
 
   ImageBase   = 400000H;
   FadrImport  = 0400H;  RvaImport  = 1000H;  (* Import directory table *)
-  FadrModules = 0C00H;  RvaModules = 2000H;  (* Oberon modules *)
+  FadrModules = 0E00H;  RvaModules = 2000H;  (* Oberon modules *)
 
   BootstrapVarBytes   = 24;  (* preloaded bootstrap VAR size preceeding imported proc addresses *)
   Kernel32ImportCount = 35;
   Gdi32ImportCount    = 12;
-  User32ImportCount   = 25;
+  User32ImportCount   = 26;
 
 TYPE
   CodeHeader = H.CodeHeader;
@@ -168,9 +168,6 @@ VAR
 PROCEDURE spos(p: INTEGER);
 BEGIN Files.Set(Exe, ExeFile, p) END spos;
 
-PROCEDURE ZeroFill(VAR buf: ARRAY OF BYTE);  VAR i: INTEGER;
-BEGIN FOR i := 0 TO LEN(buf)-1 DO buf[i] := 0 END END ZeroFill;
-
 
 (* -------------------------------------------------------------------------- *)
 (* -------------------------------------------------------------------------- *)
@@ -219,7 +216,7 @@ VAR
   END AddImport;
 
 BEGIN
-  ZeroFill(Idt);
+  H.ZeroFill(Idt);
   target := RvaModules + Bootstrap.Header.imports + BootstrapVarBytes;
 
   (* **NOTE** these imports must be in exactly the same order as the *)
@@ -309,6 +306,7 @@ BEGIN
   AddImport(Idt.User32Lookups, n, i, dll, importhints, "MoveWindow");
   AddImport(Idt.User32Lookups, n, i, dll, importhints, "MsgWaitForMultipleObjects");
   AddImport(Idt.User32Lookups, n, i, dll, importhints, "PeekMessageW");
+  AddImport(Idt.User32Lookups, n, i, dll, importhints, "PostMessageW");
   AddImport(Idt.User32Lookups, n, i, dll, importhints, "PostQuitMessage");
   AddImport(Idt.User32Lookups, n, i, dll, importhints, "RegisterClassExW");
   AddImport(Idt.User32Lookups, n, i, dll, importhints, "ReleaseCapture");
@@ -404,7 +402,7 @@ VAR
   shdr: SectionHeader;
 
 BEGIN
-  ZeroFill(shdr);
+  H.ZeroFill(shdr);
   shdr.Name             := name;
   shdr.VirtualSize      := vsize;
   shdr.VirtualAddress   := rva;
@@ -438,7 +436,7 @@ BEGIN
   H.ws("Size of Zeroes58:   "); H.wh(SYSTEM.SIZE(Zeroes58));                                   H.wsn("H.");
   H.ws("Size of PEheader:   "); H.wh(SYSTEM.SIZE(PEheader));                                   H.wsn("H.");
   *)
-  ZeroFill(hdr);
+  H.ZeroFill(hdr);
 
   (* MSDOS stub *)
   hdr.eMagic               := 5A4DH;

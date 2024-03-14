@@ -149,6 +149,7 @@ VAR
   MoveWindow*:                     PROCEDURE-(wn, x, y, w, h, repaint: INTEGER);
   MsgWaitForMultipleObjects*:      PROCEDURE-(cn, hs, wa, ms, wm: INTEGER);
   PeekMessageW*:                   PROCEDURE-(lm, wn, mn, mx, rm: INTEGER): INTEGER;
+  PostMessageW*:                   PROCEDURE-(hwnd, msg, wp, lp: INTEGER): INTEGER;
   PostQuitMessage*:                PROCEDURE-(rc: INTEGER);
   RegisterClassExW*:               PROCEDURE-(wc: INTEGER): INTEGER;
   ReleaseCapture*:                 PROCEDURE-;
@@ -235,6 +236,9 @@ BEGIN
     WHILE i < j DO ch:=s[i]; s[i]:=s[j]; s[j]:=ch; INC(i); DEC(j) END
   END
 END IntToDecimal;
+
+PROCEDURE ZeroFill*(VAR buf: ARRAY OF BYTE);  VAR i: INTEGER;
+BEGIN FOR i := 0 TO LEN(buf)-1 DO buf[i] := 0 END END ZeroFill;
 
 
 (* -------------------------------------------------------------------------- *)
@@ -1120,11 +1124,16 @@ BEGIN
     SYSTEM.PUT(SYSTEM.ADR(body), bodyadr);
     moduleadr := (moduleadr + modulelength + 15) DIV 16 * 16;
     SYSTEM.GET(moduleadr, modulelength);
-    IF modulelength = 0 THEN
-      (* This is the last module. We have no further need for the executable *)
-      (* image so unmap it before running the module body.                   *)
-      res := UnmapViewOfFile(Exeadr)
-    END;
+    (*  At this point we would like to unmap the exe file as it is should no  *)
+    (*  longer be needed. However it turns out that on the first keypress     *)
+    (*  with a window created, windows loads OLE32 which tries to access the  *)
+    (*  exe header. Thus we have to leave the exe mapped.                     *)
+    (*                                                                        *)
+    (*  IF modulelength = 0 THEN                                              *)
+    (*    (* This is the last module. We have no further need for the      *) *)
+    (*    (* executable image so unmap it before running the module body.  *) *)
+    (*    res := UnmapViewOfFile(Exeadr)                                      *)
+    (*  END;                                                                  *)
     body
   END;
 
@@ -1141,7 +1150,7 @@ BEGIN HWnd := h END SetHWnd;
 
 (* -------------------------------------------------------------------------- *)
 
-PROCEDURE GetRSP(): INTEGER;
+PROCEDURE GetRSP*(): INTEGER;
 VAR result: INTEGER;
 BEGIN result := SYSTEM.ADR(result) + 8
 RETURN result END GetRSP;

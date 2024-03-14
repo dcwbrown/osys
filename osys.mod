@@ -1,44 +1,38 @@
 MODULE osys;
-IMPORT SYSTEM, H := WinHost, Kernel, HostWindow := WinHostWindow, Display;
+IMPORT SYSTEM, H := WinHost, Kernel, Display;
 
 
 PROCEDURE DoCharacter(ch: INTEGER);
 BEGIN
   IF ch = 1BH THEN (* ESC - TestOberon specific ... *)
-    HostWindow.Quit
+    Display.Close
   END
 END DoCharacter;
 
 PROCEDURE DoMouse(x, y: INTEGER;  flags: SET);  (* {0} MR, {1} MM, {2} ML *)
-BEGIN END DoMouse;
+BEGIN
+  H.ws("DoMouse x "); H.wi(x);
+  H.ws(", y "); H.wi(y);
+  IF 2 IN flags THEN H.ws(" ML") END;
+  IF 1 IN flags THEN H.ws(" MM") END;
+  IF 0 IN flags THEN H.ws(" MR") END;
+  H.wsn(".")
+END DoMouse;
 
-PROCEDURE PreDraw(x, y, width, height: INTEGER;  bitmap: HostWindow.Bitmap);
+PROCEDURE PreDraw(x, y, width, height: INTEGER;  bitmap: Display.HostBitmap);
 BEGIN END PreDraw;
 
-PROCEDURE PostDraw(x, y, width, height: INTEGER;  bitmap: HostWindow.Bitmap);
+PROCEDURE PostDraw(x, y, width, height: INTEGER;  bitmap: Display.HostBitmap);
 BEGIN END PostDraw;
 
-
-PROCEDURE Loop*;
-VAR res: INTEGER;
-BEGIN
-  REPEAT
-    res := HostWindow.ProcessOneMessage();
-    IF res = 0 THEN  (* Empty queue *)
-      HostWindow.WaitMsgOrTime(10000)
-    END
-  UNTIL res > 1  (* => WM_QUIT *)
-END Loop;
 
 (*$la-lc-*)
 BEGIN
   H.wsn("Oberon system starting.");
-
-  HostWindow.SetCharacterHandler(Display.Window, DoCharacter);
-  HostWindow.SetMouseHandler(Display.Window, DoMouse);
-  HostWindow.SetDrawHandlers(Display.Window, PreDraw, PostDraw);
-
-  Loop;
+  Display.SetCharacterHandler(DoCharacter);
+  Display.SetMouseHandler(DoMouse);
+  Display.SetDrawHandlers(PreDraw, PostDraw);
+  Display.Loop;
   H.wsn("Oberon system closing.");
 END osys.
 (*$la-lc-*)

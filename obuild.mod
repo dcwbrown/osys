@@ -145,10 +145,9 @@ END ParsePrefices;
 
 PROCEDURE WritePrefices(p: Prefix);
 BEGIN
-  WHILE p # NIL DO
-    H.ws("  '");  H.ws(p.prefix);  H.wsn("'.");
-    p := p.next
-  END
+  IF p # NIL THEN H.wc("'");  H.ws(p.prefix);  H.wc("'") END;
+  p := p.next;
+  WHILE p # NIL DO H.ws(", '");  H.ws(p.prefix);  H.wc("'");  p := p.next END
 END WritePrefices;
 
 
@@ -587,11 +586,11 @@ BEGIN
 
   ParsePrefices(SourcePrefix,   SourcePrefices);
   IF (H.Verbose IN LoadFlags) & (SourcePrefices # NIL) THEN
-    H.wsn("Source prefixes:");  WritePrefices(SourcePrefices)
+    H.ws("Source prefixes: ");  WritePrefices(SourcePrefices); H.wsn(".")
   END;
   ParsePrefices(BinariesPrefix, BinaryPrefices);
   IF (H.Verbose IN LoadFlags) & (BinaryPrefices # NIL) THEN
-    H.wsn("Binary prefixes:");  WritePrefices(BinaryPrefices)
+    H.ws("Binary prefixes: ");  WritePrefices(BinaryPrefices); H.wsn(".")
   END;
 
   ORB.SetSymbolFileFinder(FindSymbolFile);

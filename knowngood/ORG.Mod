@@ -966,20 +966,13 @@ END Dyadic;
 
 (* ---- Item construction ---- *)
 
-PROCEDURE ZeroFill*(VAR obj: ARRAY OF BYTE);  VAR i: INTEGER;
-BEGIN
-  (*IF w.HO THEN w.s("ORG.ZeroFill. LEN(obj) "); w.h(LEN(obj)); w.sl("H.") END;*)
-  FOR i := 0 TO LEN(obj)-1 DO obj[i] := 0 END;
-  (*w.sl("ORG.ZeroFill complete.")*)
-END ZeroFill;
-
 PROCEDURE MakeItem*(VAR x: Item; y: ORB.Object; curlev: INTEGER);
 VAR base: INTEGER;
 BEGIN
   Trace(TraceMakeItem, "MakeItem(y: "); l.Object(y, Tr); l.s(", curlev: ", Tr);
   l.i(curlev, Tr); l.s(")", Tr);
   ASSERT(y.class IN {ORB.Const, ORB.Var, ORB.Par, ORB.SProc, ORB.Typ});
-  ZeroFill(x);
+  H.ZeroFill(x);
   X64.ClearMode(x);
   x.mode     := y.class;
   x.type     := y.type;
@@ -1019,7 +1012,7 @@ PROCEDURE MakeConstItem*(VAR x: Item;  t: ORB.Type;  v: INTEGER);
 BEGIN
   Trace(TraceMakeItem, "MakeConstItem, value: ");
   l.i(v, Tr); l.s(", type ", Tr); l.Type(t, Tr); l.n(Tr);
-  ZeroFill(x);
+  H.ZeroFill(x);
   X64.ClearMode(x);
   x.mode := Const;  x.type  := t;  x.n := v;
 END MakeConstItem;
@@ -1027,7 +1020,7 @@ END MakeConstItem;
 PROCEDURE MakeRealItem*(VAR x: Item; v: REAL);
 BEGIN
   Trace(TraceMakeItem, "MakeRealItem."); l.n(Tr);
-  ZeroFill(x);  X64.ClearMode(x);
+  H.ZeroFill(x);  X64.ClearMode(x);
   x.mode := Const;  x.type  := ORB.realType;  x.n := SYSTEM.VAL(INTEGER, v)
 END MakeRealItem;
 
@@ -1038,7 +1031,7 @@ BEGIN
   i := 0;  WHILE (i < len) & (ORS.str[i] # 0X) DO l.c(ORS.str[i], Tr); INC(i) END;
   l.sn("')", Tr);
 
-  ZeroFill(x);
+  H.ZeroFill(x);
   X64.ClearMode(x);
   x.mode := String;  x.type   := ORB.strType;  x.readonly := TRUE;
   x.n    := len;     x.offset := Strx;
@@ -2454,7 +2447,7 @@ BEGIN Trace(TraceAny, "Index(x: "); l.Item(x, Tr); l.s(", y: ", Tr); l.Item(y, T
       ORS.Mark("Bad index")
     ELSIF (y.mode # Const) OR (x.type.len < 0) THEN
       IF x.type.len < 0 THEN  ASSERT(x.mode = Strucp);
-        ZeroFill(xlength);
+        H.ZeroFill(xlength);
         xlength.type   := ORB.intType;
         xlength.mode   := Eadr;
         xlength.n      := RSP;
@@ -2507,7 +2500,9 @@ END Index;
 PROCEDURE DeRef*(VAR x: Item);
 BEGIN Trace(TraceAny, "DeRef(x), x: "); l.Item(x, Tr); l.n(Tr);
   ASSERT(x.type.form = ORB.Pointer);
-  ASSERT(x.mode IN {Stkind, Eadr, Code, String, Global, Import});
+  IF ~(x.mode IN {Stkind, Eadr, Code, String, Global, Import}) THEN
+    ORS.Mark("Variable expected");
+  END;
   Load(x);  x.mode := Eadr;
   Disassemble(0, "DeRef");
   IF ~ORS.Hasty THEN
@@ -2783,7 +2778,7 @@ BEGIN
   (*Trace(TraceAny, "ORG Open('"); l.s(sourcefn, Tr); l.sn("')", Tr);*)
   X64.ClearStack;   ClearRegs;
   X64.Init;
-  ZeroFill(Hdr);
+  H.ZeroFill(Hdr);
   BodyAnnotations := NIL;
   Strx            := 0;
   StrFInx         := 0;
