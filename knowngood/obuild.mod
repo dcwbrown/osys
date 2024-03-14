@@ -6,7 +6,7 @@ MODULE obuild;
 (* imports, compiles them, and combines all objects into a single executable. *)
 
 IMPORT
-  SYSTEM, H := WinHost, K := Kernel, Files, Texts, Oberon, ORS, ORB, X64, ORG, ORP, WinPE, WinArgs;
+  SYSTEM, H := WinHost, K := Kernel, Files, Texts, ORS, ORB, X64, ORG, ORP, WinPE, WinArgs;
 
 TYPE
   PathName   = ARRAY H.MaxPath OF CHAR;
@@ -425,6 +425,23 @@ BEGIN
 END CompileModule;
 
 
+PROCEDURE CollectGarbage;
+VAR
+  modadr: INTEGER;
+  hdr:    H.CodeHeaderPtr;
+BEGIN
+  modadr := H.OberonAdr;
+  hdr    := SYSTEM.VAL(H.CodeHeaderPtr, modadr);
+  REPEAT
+    K.Mark(modadr + hdr.pointers);
+    INC(modadr, hdr.length);
+    hdr := SYSTEM.VAL(H.CodeHeaderPtr, modadr);
+  UNTIL hdr.length = 0;
+  Files.CloseCollectableFiles;
+  K.Scan;
+END CollectGarbage;
+
+
 PROCEDURE Build;
 VAR compile, target: Module;
 BEGIN
@@ -436,7 +453,7 @@ BEGIN
   compile := DetermineNextCompilation(target);
   WHILE compile # NIL DO
     CompileModule(compile);
-    Oberon.GC;
+    CollectGarbage;
     compile := DetermineNextCompilation(target);
   END;
 END Build;

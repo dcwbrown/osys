@@ -1,6 +1,6 @@
 MODULE ORP;  (*N. Wirth 1.7.97 / 17.9.2018  Oberon compiler for RISC in Oberon-07*)
 
-IMPORT SYSTEM, H := WinHost, Files, Texts, Oberon, ORS, ORB, X64, ORG, l := Listing;
+IMPORT SYSTEM, H := WinHost, Files, ORS, ORB, X64, ORG, l := Listing;
 
   (*Author: Niklaus Wirth, 2014.
     Parser of Oberon-RISC compiler. Uses Scanner ORS to obtain symbols (tokens),
@@ -23,7 +23,6 @@ VAR
   modid:   ORS.Ident;
   pbsList: PtrBase;             (* list of names of pointer base types *)
   dummy:   ORB.Object;
-  W:       Texts.Writer;
 
   (* Forward procedures *)
   expression:  PROCEDURE(VAR x: X64.Item);
@@ -1295,8 +1294,11 @@ BEGIN
       ORG.Close(modid, key, exno);
       (*Texts.WriteInt(W, X64.PC, 8);  Texts.WriteInt(W, dc, 8);  Texts.WriteHex(W, key)*)
     ELSE
+      H.wn;  H.ws("compilation FAILED")
+      (*
       Texts.WriteLn(W);  Texts.WriteString(W, "compilation FAILED");
       Texts.Append(Oberon.Log, W.buf);
+      *)
     END;
 
     (*Texts.WriteLn(W);  Texts.Append(Oberon.Log, W.buf);*)
@@ -1356,10 +1358,8 @@ END CompileFile;
 *)
 
 BEGIN
-  Texts.OpenWriter(W);
   IF H.Verbose IN H.LoadFlags THEN
-    Texts.WriteString(W, "OR Compiler  09.02.2024");
-    Texts.WriteLn(W);  Texts.Append(Oberon.Log, W.buf)
+    H.wsn("OR Compiler  09.02.2024")
   END;
   l.InitBuf(Tr);
   NEW(dummy);  dummy.class := ORB.Var;  dummy.type := ORB.intType;

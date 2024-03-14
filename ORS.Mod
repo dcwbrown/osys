@@ -1,6 +1,6 @@
 MODULE ORS; (* NW 19.9.93 / 15.3.2017  Scanner in Oberon-07*)
 
-IMPORT SYSTEM, Texts, Oberon;
+IMPORT SYSTEM, H := WinHost, Texts;  (* DB: dependency Oberon removed *)
 
 (* Oberon Scanner does lexical analysis. Input is Oberon-Text, output is
   sequence of symbols, i.e identifiers, numbers, strings, and special symbols.
@@ -48,7 +48,6 @@ VAR
   linebeg*: INTEGER;   (* Position at start of current line *)
   linenum*: INTEGER;   (* Line number of current line *)
   R:        Texts.Reader;
-  W:        Texts.Writer;
   k:        INTEGER;
   KWX:      ARRAY 10 OF INTEGER;
   keyTab:   ARRAY NKW OF RECORD sym: INTEGER; id: ARRAY 12 OF CHAR END;
@@ -82,23 +81,18 @@ PROCEDURE Mark*(msg: ARRAY OF CHAR);
 VAR p: INTEGER;
 BEGIN p := Pos();
   IF (p > errpos) & (errcnt < 25) THEN
-    Texts.WriteLn(W);
-    Texts.WriteString(W, "  [");
-    Texts.WriteInt(W, linenum, 1);
-    Texts.WriteString(W, ":");
-    Texts.WriteInt(W, p - linebeg, 1);
-    Texts.WriteString(W, "] pos ");
-    Texts.WriteInt(W, p, 1);
-    Texts.Write(W, " ");
-    Texts.WriteString(W, msg);
-    Texts.Append(Oberon.Log, W.buf)
+    H.wn;
+    H.ws("  [");     H.wi(linenum);
+    H.ws(":");       H.wi(p - linebeg);
+    H.ws("] pos ");  H.wi(p);
+    H.wc(" ");       H.ws(msg)
   END;
   INC(errcnt); errpos := p + 4
 END Mark;
 
 
 PROCEDURE Identifier(VAR sym: INTEGER);
-  VAR i, k: INTEGER;
+VAR i, k: INTEGER;
 BEGIN i := 0;
   REPEAT
     IF i < IdLen-1 THEN id[i] := ch; INC(i) END;  GetCh
@@ -360,7 +354,6 @@ END EnterKW;
 
 BEGIN
   ch := 0X;
-  Texts.OpenWriter(W);
 
   k      := 0;
   KWX[0] := 0;

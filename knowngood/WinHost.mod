@@ -1126,8 +1126,8 @@ BEGIN
     SYSTEM.GET(moduleadr, modulelength);
     (*  At this point we would like to unmap the exe file as it is should no  *)
     (*  longer be needed. However it turns out that on the first keypress     *)
-    (*  with a window created, windows loads OLE32 which tries to access the  *)
-    (*  exe header. Thus we have to leave the exe mapped.                     *)
+    (*  with a window created, OLE32 tries to access the exe header. Thus we  *)
+    (*  must leave the exe mapped.                                            *)
     (*                                                                        *)
     (*  IF modulelength = 0 THEN                                              *)
     (*    (* This is the last module. We have no further need for the      *) *)
