@@ -129,17 +129,17 @@ Test
 ::
 :buildsystem
 ::
-:: Build Oberon system - osys.exe
+:: Build Oberon system - System.exe
 ::
 ::
 @rd /s /q buildsys 2>NUL
 @md buildsys
 @cd buildsys
-..\build2\obuild /v /s ../ /b ../build2/ osys
+..\build2\obuild /v /s ../ /b ../build2/ System
 @if errorlevel 1 goto osysbuildfailed
 @cd ..
 ::
-buildsys\osys
+buildsys\System
 @goto end
 ::
 ::

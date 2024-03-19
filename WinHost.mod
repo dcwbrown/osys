@@ -72,7 +72,7 @@ TYPE
 
 
 VAR
-  (* Start of pre-loaded variables (initialised by WinPE.mod) *)
+  (* Start of pre-loaded variables (preset by WinPE.mod) *)
   Exeadr:     INTEGER;
   Header:     CodeHeaderPtr;
   LoadFlags*: SET;
@@ -466,21 +466,10 @@ BEGIN
 
   (* Determine loaded size of all modules *)
   bootsize   := Header.imports + Header.varsize;
-  (*ws("bootsize "); wh(bootsize); wsn("H.");*)
   modulesize := bootsize;
-  (*ws("modulesize "); wh(modulesize); wsn("H.");*)
   moduleadr  := (SYSTEM.VAL(INTEGER, Header) + bootsize + 15) DIV 16 * 16;  (* Address of first module for Oberon machine *)
-  (*
-  ws("Looking for modules to load starting at "); wh(moduleadr); wsn("H.");
-  WriteModuleHeader(moduleadr);
-  *)
   hdr        := SYSTEM.VAL(CodeHeaderPtr, moduleadr);
-  (*ws("Potential first module length "); wh(hdr.length); wsn("H.");*)
   WHILE hdr.length > 0 DO
-    (*
-    ws("Module at "); wh(moduleadr); ws("H, length "); wh(hdr.length); wsn("H.");
-    WriteModuleHeader(moduleadr);
-    *)
     INC(modulesize, (hdr.imports + hdr.varsize + 15) DIV 16 * 16);
     INC(moduleadr, hdr.length);
     hdr := SYSTEM.VAL(CodeHeaderPtr, moduleadr);
@@ -588,17 +577,9 @@ BEGIN
     WHILE name[0] # 0X DO
       SYSTEM.GET(adr, line);  INC(adr, 8);
       SYSTEM.GET(adr, pc);    INC(adr, 8);
-      (*
-      ws("Locate line: body name "); ws(name);
-      ws(", first line "); wi(line);
-      ws(", first pc ");   wh(pc);  wsn("H.");
-      (*DumpMem(2, adr, 0, 80H);*)
-      *)
       GetUnsigned(adr, i);
-      (*ws("  got "); wh(i); wsn("H.");*)
       WHILE (i # 0) & (offset > pc + i) DO
         INC(pc, i);  GetUnsigned(adr, i);  INC(line, i);
-        (*ws("  line "); wi(line); ws(", pc "); wh(pc); ws("H, offset "); wh(offset); wsn("H.");*)
         GetUnsigned(adr, i)
       END;
       IF (offset > pc) & (offset <= pc + i) THEN
@@ -674,7 +655,8 @@ PROCEDURE Trap*(desc: ARRAY OF CHAR);
 VAR adr, modadr: INTEGER;
 BEGIN
   ws(desc);
-  SYSTEM.GET(SYSTEM.ADR(LEN(desc)) + 8, adr);  (* Get caller address of trap caller *)
+  (* Get caller address of trap caller - Note: assume caller has no local vars *)
+  SYSTEM.GET(SYSTEM.ADR(LEN(desc)) + 8, adr);
   LocateAddress(adr, NIL);
   IF (modadr # 0) & (PostMortemDump # NIL) & (ExceptionDepth < 2) THEN
     INC(ExceptionDepth);
@@ -893,6 +875,7 @@ BEGIN
   END
 RETURN res END FileOpen;
 
+
 PROCEDURE MoveFile*(source, dest: ARRAY OF CHAR): INTEGER;
 VAR
   sourcew: ARRAY MaxPath OF SYSTEM.CARD16;
@@ -904,6 +887,7 @@ BEGIN
   res := MoveFileExW(SYSTEM.ADR(sourcew), SYSTEM.ADR(destw), 3);  (* 1 => replace existing, 2 => copy allowed *)
   IF res = 0 THEN res := GetLastError() ELSE res := 0 END
 RETURN res END MoveFile;
+
 
 PROCEDURE FileTime*(hfile: INTEGER): INTEGER;
 TYPE infodesc = RECORD-
@@ -994,13 +978,6 @@ VAR
   ptroff:      INTEGER;
   modulebody:  PROCEDURE;
 BEGIN
-  (*
-  ws("* Loading ");  WriteModuleName(modadr);
-  ws(" from ");    wh(modadr);
-  ws("H to ");     wh(LoadAdr);  wsn("H.");
-  WriteModuleHeader(modadr);
-  *)
-
   hdr := SYSTEM.VAL(CodeHeaderPtr, modadr);
   SYSTEM.COPY(modadr, LoadAdr, hdr.imports);  (* Copy up to but excluding import table *)
 
@@ -1028,24 +1005,15 @@ BEGIN
   END;
   modules[i] := 0;
 
-  (*wsn("Built list of imported module header addresses.");*)
-
   adr := (adr + 15) DIV 16 * 16;
   SYSTEM.GET(adr, importcount);  INC(adr, 4);
-  (*ws("Import count "); wh(importcount); wsn("H.");*)
   i := 0;
   WHILE i < importcount DO
     SYSTEM.GET(adr, offset); INC(adr, 4);
     SYSTEM.GET(adr, impno);  INC(adr, 2);
     SYSTEM.GET(adr, modno);  INC(adr, 2);
-    (*
-    ws("  import from module "); wh(modno);
-    ws("H, impno "); wh(impno);
-    ws("H, to offset "); wh(offset); wsn("H.");
-    *)
     IF modno = 0 THEN  (* system function *)
       SYSTEM.GET(LoadAdr + offset, disp);
-      (*ws("disp    -"); wh(-disp); wsn("H.");*)
       IF    impno = NewProc                   THEN disp := SYSTEM.ADR(NewPointer)            + disp - LoadAdr
       ELSIF impno = AssertionFailureProc      THEN disp := SYSTEM.ADR(AssertionFailure)      + disp - LoadAdr
       ELSIF impno = ArraySizeMismatchProc     THEN disp := SYSTEM.ADR(ArraySizeMismatch)     + disp - LoadAdr
@@ -1054,21 +1022,13 @@ BEGIN
       ELSIF impno = NilPointerDereferenceProc THEN disp := SYSTEM.ADR(NilPointerDereference) + disp - LoadAdr
       ELSE  assert(FALSE) (*, "LoadModule: Unexpected system function import number.")*)
       END;
-      (*ws("disp'   -"); wh(-disp); wsn("H.");*)
       SYSTEM.PUT(LoadAdr + offset, disp)
     ELSE
-      assert(modno > 0); (*, "LoadModule: modno is < 0.");*)
+      assert(modno > 0);
       impmodadr := modules[modno-1];
       expadr := ExportedAddress(SYSTEM.VAL(CodeHeaderPtr, impmodadr), impno-1);
-      (*
-      ws("expadr  "); wh(expadr); wsn("H.");
-      ws("LoadAdr "); wh(LoadAdr); wsn("H.");
-      ws("offset  "); wh(offset); wsn("H.");
-      *)
       SYSTEM.GET(LoadAdr + offset, disp);
-      (*ws("disp    -"); wh(-disp); wsn("H.");*)
       disp := expadr + disp - LoadAdr;
-      (*ws("disp'   -"); wh(-disp); wsn("H.");*)
       SYSTEM.PUT(LoadAdr + offset, disp)
     END;
     INC(i)
@@ -1154,6 +1114,7 @@ PROCEDURE GetRSP*(): INTEGER;
 VAR result: INTEGER;
 BEGIN result := SYSTEM.ADR(result) + 8
 RETURN result END GetRSP;
+
 
 BEGIN
   HWnd                  := 0;

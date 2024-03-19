@@ -1,0 +1,891 @@
+MODULE Display;  (*NW 5.11.2013 / 17.1.2019 / AP 15.9.20 Extended Oberon / DCWB 8May23 *)
+IMPORT SYSTEM, H := WinHost;
+
+CONST
+  Black* = 0FF000000H;        (*black = background*)
+  White* = 0FFFFFFFFH;
+
+  SRGB = $
+    21 00  A7 00  D4 00  F5 00  0F 00  27 00  3B 00  4E 00  60 00  70 00  7F 00  8D 00  9A 00  A7 00  B4 00  BF 00
+    CB 00  D6 00  E0 00  EA 00  F4 00  FE 00  07 01  10 01  19 01  22 01  2A 01  33 01  3B 01  43 01  4B 01  52 01
+    5A 01  61 01  68 01  6F 01  76 01  7D 01  84 01  8B 01  91 01  98 01  9E 01  A4 01  AB 01  B1 01  B7 01  BD 01
+    C3 01  C8 01  CE 01  D4 01  DA 01  DF 01  E5 01  EA 01  EF 01  F5 01  FA 01  FF 01  04 02  0A 02  0F 02  14 02
+    19 02  1E 02  22 02  27 02  2C 02  31 02  36 02  3A 02  3F 02  43 02  48 02  4D 02  51 02  56 02  5A 02  5E 02
+    63 02  67 02  6B 02  70 02  74 02  78 02  7C 02  80 02  85 02  89 02  8D 02  91 02  95 02  99 02  9D 02  A1 02
+    A5 02  A9 02  AC 02  B0 02  B4 02  B8 02  BC 02  BF 02  C3 02  C7 02  CB 02  CE 02  D2 02  D6 02  D9 02  DD 02
+    E0 02  E4 02  E8 02  EB 02  EF 02  F2 02  F6 02  F9 02  FC 02  00 03  03 03  07 03  0A 03  0D 03  11 03  14 03
+    17 03  1B 03  1E 03  21 03  25 03  28 03  2B 03  2E 03  31 03  35 03  38 03  3B 03  3E 03  41 03  44 03  47 03
+    4B 03  4E 03  51 03  54 03  57 03  5A 03  5D 03  60 03  63 03  66 03  69 03  6C 03  6F 03  72 03  75 03  77 03
+    7A 03  7D 03  80 03  83 03  86 03  89 03  8C 03  8E 03  91 03  94 03  97 03  9A 03  9C 03  9F 03  A2 03  A5 03
+    A8 03  AA 03  AD 03  B0 03  B2 03  B5 03  B8 03  BB 03  BD 03  C0 03  C3 03  C5 03  C8 03  CB 03  CD 03  D0 03
+    D2 03  D5 03  D8 03  DA 03  DD 03  DF 03  E2 03  E4 03  E7 03  EA 03  EC 03  EF 03  F1 03  F4 03  F6 03  F9 03
+    FB 03  FE 03  00 04  03 04  05 04  08 04  0A 04  0C 04  0F 04  11 04  14 04  16 04  19 04  1B 04  1D 04  20 04
+    22 04  25 04  27 04  29 04  2C 04  2E 04  30 04  33 04  35 04  37 04  3A 04  3C 04  3E 04  41 04  43 04  45 04
+    48 04  4A 04  4C 04  4E 04  51 04  53 04  55 04  57 04  5A 04  5C 04  5E 04  60 04  63 04  65 04  67 04  69 04
+    6C 04  6E 04  70 04  72 04  74 04  77 04  79 04  7B 04  7D 04  7F 04  81 04  84 04  86 04  88 04  8A 04  8C 04
+    8E 04  90 04  92 04  95 04  97 04  99 04  9B 04  9D 04  9F 04  A1 04  A3 04  A5 04  A7 04  AA 04  AC 04  AE 04
+    B0 04  B2 04  B4 04  B6 04  B8 04  BA 04  BC 04  BE 04  C0 04  C2 04  C4 04  C6 04  C8 04  CA 04  CC 04  CE 04
+    D0 04  D2 04  D4 04  D6 04  D8 04  DA 04  DC 04  DE 04  E0 04  E2 04  E4 04  E6 04  E8 04  EA 04  EC 04  EE 04
+    F0 04  F2 04  F4 04  F5 04  F7 04  F9 04  FB 04  FD 04  FF 04  01 05  03 05  05 05  07 05  09 05  0A 05  0C 05
+    0E 05  10 05  12 05  14 05  16 05  18 05  19 05  1B 05  1D 05  1F 05  21 05  23 05  25 05  26 05  28 05  2A 05
+    2C 05  2E 05  30 05  31 05  33 05  35 05  37 05  39 05  3B 05  3C 05  3E 05  40 05  42 05  44 05  45 05  47 05
+    49 05  4B 05  4C 05  4E 05  50 05  52 05  54 05  55 05  57 05  59 05  5B 05  5C 05  5E 05  60 05  62 05  63 05
+    65 05  67 05  69 05  6A 05  6C 05  6E 05  70 05  71 05  73 05  75 05  76 05  78 05  7A 05  7C 05  7D 05  7F 05
+    81 05  82 05  84 05  86 05  87 05  89 05  8B 05  8C 05  8E 05  90 05  92 05  93 05  95 05  97 05  98 05  9A 05
+    9C 05  9D 05  9F 05  A1 05  A2 05  A4 05  A5 05  A7 05  A9 05  AA 05  AC 05  AE 05  AF 05  B1 05  B3 05  B4 05
+    B6 05  B7 05  B9 05  BB 05  BC 05  BE 05  C0 05  C1 05  C3 05  C4 05  C6 05  C8 05  C9 05  CB 05  CC 05  CE 05
+    D0 05  D1 05  D3 05  D4 05  D6 05  D8 05  D9 05  DB 05  DC 05  DE 05  DF 05  E1 05  E3 05  E4 05  E6 05  E7 05
+    E9 05  EA 05  EC 05  ED 05  EF 05  F1 05  F2 05  F4 05  F5 05  F7 05  F8 05  FA 05  FB 05  FD 05  FE 05  00 06
+    02 06  03 06  05 06  06 06  08 06  09 06  0B 06  0C 06  0E 06  0F 06  11 06  12 06  14 06  15 06  17 06  18 06
+    1A 06  1B 06  1D 06  1E 06  20 06  21 06  23 06  24 06  26 06  27 06  29 06  2A 06  2C 06  2D 06  2F 06  30 06
+  $;
+  Lin12 = $
+    00 00  01 00  02 00  04 00  05 00  06 00  07 00  09 00  0A 00  0B 00  0C 00  0E 00  0F 00  10 00  12 00  14 00
+    15 00  17 00  19 00  1B 00  1D 00  1F 00  21 00  23 00  25 00  28 00  2A 00  2D 00  30 00  32 00  35 00  38 00
+    3B 00  3E 00  42 00  45 00  48 00  4C 00  4F 00  53 00  57 00  5B 00  5F 00  63 00  67 00  6B 00  70 00  74 00
+    79 00  7E 00  83 00  88 00  8D 00  92 00  97 00  9C 00  A2 00  A8 00  AD 00  B3 00  B9 00  BF 00  C5 00  CC 00
+    D2 00  D8 00  DF 00  E6 00  ED 00  F4 00  FB 00  02 01  09 01  11 01  18 01  20 01  28 01  30 01  38 01  40 01
+    49 01  51 01  5A 01  62 01  6B 01  74 01  7D 01  86 01  90 01  99 01  A3 01  AC 01  B6 01  C0 01  CA 01  D5 01
+    DF 01  EA 01  F4 01  FF 01  0A 02  15 02  20 02  2B 02  37 02  42 02  4E 02  5A 02  66 02  72 02  7F 02  8B 02
+    98 02  A4 02  B1 02  BE 02  CB 02  D8 02  E6 02  F3 02  01 03  0F 03  1D 03  2B 03  39 03  48 03  56 03  65 03
+    74 03  83 03  92 03  A1 03  B1 03  C0 03  D0 03  E0 03  F0 03  00 04  11 04  21 04  32 04  43 04  54 04  65 04
+    76 04  87 04  99 04  AB 04  BD 04  CF 04  E1 04  F3 04  06 05  18 05  2B 05  3E 05  51 05  65 05  78 05  8C 05
+    A0 05  B3 05  C8 05  DC 05  F0 05  05 06  1A 06  2E 06  43 06  59 06  6E 06  84 06  99 06  AF 06  C5 06  DB 06
+    F2 06  08 07  1F 07  36 07  4D 07  64 07  7C 07  93 07  AB 07  C3 07  DB 07  F3 07  0B 08  24 08  3D 08  55 08
+    6F 08  88 08  A1 08  BB 08  D4 08  EE 08  08 09  23 09  3D 09  58 09  73 09  8E 09  A9 09  C4 09  DF 09  FB 09
+    17 0A  33 0A  4F 0A  6C 0A  88 0A  A5 0A  C2 0A  DF 0A  FC 0A  19 0B  37 0B  55 0B  73 0B  91 0B  AF 0B  CE 0B
+    EC 0B  0B 0C  2A 0C  4A 0C  69 0C  89 0C  A8 0C  C8 0C  E8 0C  09 0D  29 0D  4A 0D  6B 0D  8C 0D  AD 0D  CF 0D
+    F0 0D  12 0E  34 0E  56 0E  79 0E  9B 0E  BE 0E  E1 0E  04 0F  27 0F  4B 0F  6E 0F  92 0F  B6 0F  DB 0F  FF 0F
+  $;
+
+TYPE
+  ARGB*     = SYSTEM.CARD32;
+  Frame*    = POINTER TO FrameDesc;
+  FrameMsg* = RECORD END;
+  Handler*  = PROCEDURE (F: Frame; VAR M: FrameMsg);
+  FrameDesc* = RECORD
+    next*, dsc*:    Frame;
+    X*, Y*, W*, H*: INTEGER;
+    handle*:        Handler;
+  END;
+
+  HostBitmap* = POINTER TO HostBitmapDesc;
+  HostBitmapDesc* = RECORD
+    width*:   INTEGER;
+    height*:  INTEGER;
+    address*: INTEGER;    (* Address of bitmap data                                  *)
+    hdib:     INTEGER;    (* Device independant bitmap handle                        *)
+    context:  INTEGER;    (* Device context that currently contains the bitmap       *)
+    oldh:     INTEGER     (* Old handle for restoration following context operations *)
+  END;
+
+  HostCharacterHandler* = PROCEDURE(ch: INTEGER);  (* Receives full UTF-32 codepoint *)
+  HostDrawHandler*      = PROCEDURE(x, y, width, height: INTEGER;  bitmap: HostBitmap);
+  HostMouseHandler*     = PROCEDURE(x, y: INTEGER; flags: SET);
+
+HostWindow* = POINTER TO HostWindowDesc;
+  HostWindowDesc = RECORD
+    hwnd:     INTEGER;
+    bmp*:     HostBitmap;
+    x*:       INTEGER;
+    y*:       INTEGER;
+    width*:   INTEGER;
+    height*:  INTEGER;
+    DPI*:     INTEGER;
+    highch:   INTEGER;  (* Leading/high surrogate codepoint of a pair *)
+    dochar:   HostCharacterHandler;
+    predraw:  HostDrawHandler;
+    postdraw: HostDrawHandler;
+    domouse:  HostMouseHandler;
+    next:     HostWindow
+  END;
+
+  HostMessage* = RECORD-
+    hwnd:     INTEGER;
+    message:  SYSTEM.CARD32;
+    pad:      SYSTEM.CARD32;
+    wParam:   INTEGER;
+    lParam:   INTEGER;
+    time:     SYSTEM.CARD32;
+    x, y:     SYSTEM.CARD32;
+    lPrivate: SYSTEM.CARD32;
+  END;
+
+VAR
+  Width*:  INTEGER;
+  Height*: INTEGER;
+
+  arrow*:  INTEGER;
+  star*:   INTEGER;
+  hook*:   INTEGER;
+  updown*: INTEGER;
+  block*:  INTEGER;
+  cross*:  INTEGER;
+  grey*:   INTEGER;
+
+  Window*: HostWindow;
+
+
+(* ----------------------------- alpha blending ----------------------------- *)
+
+PROCEDURE ToSRGB8(lin: INTEGER): BYTE;
+VAR val: SYSTEM.CARD16;  result: BYTE;
+BEGIN
+  IF    lin <= 0    THEN result := 0
+  ELSIF lin >= 4095 THEN result := 255
+  ELSIF lin <  10   THEN result := (lin * 13 + 10) DIV 16
+  ELSIF lin <  512  THEN SYSTEM.GET(SYSTEM.ADR(SRGB) + lin * 2, val);
+                         result := (val + 8) DIV 16
+                    ELSE SYSTEM.GET(SYSTEM.ADR(SRGB) + lin DIV 8 * 2, val);
+                         result := 21 + ((9718 * val - 35000) DIV 65536)
+  END
+RETURN result END ToSRGB8;
+
+
+PROCEDURE Lin12Lookup(srgb: BYTE): INTEGER;
+VAR result: SYSTEM.CARD16;
+BEGIN SYSTEM.GET(SYSTEM.ADR(Lin12) + srgb * 2, result)
+RETURN result END Lin12Lookup;
+
+
+PROCEDURE AlphaMultiplyPixel(pixel: INTEGER; alpha: BYTE): INTEGER;
+VAR result: INTEGER;
+BEGIN
+  IF    alpha = 0   THEN result := 0
+  ELSIF alpha = 255 THEN result := pixel
+  ELSE
+    result := (ToSRGB8(Lin12Lookup((pixel DIV 10000H) MOD 100H) * alpha DIV 256) * 10000H)
+            + (ToSRGB8(Lin12Lookup((pixel DIV   100H) MOD 100H) * alpha DIV 256) *   100H)
+            + (ToSRGB8(Lin12Lookup( pixel             MOD 100H) * alpha DIV 256)         )
+            + 0FF000000H;
+  END
+RETURN result END AlphaMultiplyPixel;
+
+
+(*   BlendChannel - Blend alpha * foreground with 1-alpha * background *)
+(*   entry  fg    - 8 bit gamma encoded foreground intensity           *)
+(*          bg    - 8 bit gamma encoded background intensity           *)
+(*          alpha - 8 bit linear alpha                                 *)
+PROCEDURE BlendChannel(fg, bg, alpha: BYTE): BYTE;
+BEGIN RETURN ToSRGB8((Lin12Lookup(fg) * alpha + Lin12Lookup(bg) * (255 - alpha)) DIV 256)
+END BlendChannel;
+
+
+PROCEDURE BlendPixel*(fg, bg: ARGB; alpha: BYTE): ARGB;
+VAR result: ARGB;
+BEGIN
+  IF    bg    = 0   THEN result := AlphaMultiplyPixel(fg, alpha)
+  ELSIF alpha = 255 THEN result := fg
+  ELSIF alpha = 0   THEN result := bg
+  ELSE
+    result := (BlendChannel((fg DIV 10000H) MOD 100H, (bg DIV 10000H) MOD 100H, alpha) * 10000H)
+            + (BlendChannel((fg DIV   100H) MOD 100H, (bg DIV   100H) MOD 100H, alpha) *   100H)
+            + (BlendChannel( fg             MOD 100H,  bg             MOD 100H, alpha)         )
+            + 0FF000000H;
+  END
+RETURN result END BlendPixel;
+
+PROCEDURE RenderAlphaMap*(
+  x:         INTEGER;  (* In 1/4 pixels   *)
+  y:         INTEGER;  (* In whole pixels *)
+  width:     INTEGER;  (* In 1/4 pixels   *)
+  height:    INTEGER;  (* In whole pixels *)
+  mapadr:    INTEGER;
+  paint:     ARGB
+);
+VAR
+  bitmapaddress: INTEGER;
+  bitmaplimit:   INTEGER;
+  stride:        INTEGER;
+  alpha, len:    BYTE;
+  sp,    mp:     INTEGER;
+  pixel:         ARGB;
+  subpixel:      INTEGER;
+  alphasum:      INTEGER;
+BEGIN
+  bitmapaddress := Window.bmp.address;
+  bitmaplimit   := Window.bmp.address + 4 * Window.bmp.width * Window.bmp.height;
+  stride        := Window.bmp.width;
+
+  mp       := bitmapaddress + 4 * (stride * y + x DIV 4);
+  subpixel := x MOD 4;
+  alphasum := 0;
+  sp       := 0;
+
+  SYSTEM.GET(mapadr, len);  INC(mapadr);
+  WHILE (mp < bitmaplimit) & (len # 0) DO
+    IF    len < 64  THEN alpha := len;        len := 1
+    ELSIF len < 128 THEN len := len MOD 40H;  alpha := 0;
+    ELSIF len < 192 THEN len := len MOD 40H;  alpha := 40H;
+    ELSE                 len := len MOD 40H;  SYSTEM.GET(mapadr, alpha);  INC(mapadr);
+    END;
+
+    WHILE len > 0 DO
+      INC(alphasum, alpha); INC(subpixel);
+      IF subpixel > 3 THEN
+        IF (alphasum > 0) & (mp >= bitmapaddress) & (mp+3 < bitmaplimit) THEN
+          IF alphasum >= 255 THEN
+            SYSTEM.PUT(mp, paint);
+          ELSE
+            SYSTEM.GET(mp, pixel);
+            SYSTEM.PUT(mp, BlendPixel(paint, pixel, alphasum));
+          END
+        END;
+        subpixel := 0;
+        alphasum := 0;
+        INC(mp, 4);
+      END;
+      INC(sp);
+      IF sp >= width THEN
+        IF (alphasum > 0) & (mp >= bitmapaddress) & (mp+3 < bitmaplimit) THEN  (* write remaining partial pixel *)
+          SYSTEM.GET(mp, pixel);
+          SYSTEM.PUT(mp, BlendPixel(paint, pixel, alphasum));
+        END;
+        INC(y);
+        mp := bitmapaddress + 4 * (stride * y + x DIV 4);
+        sp := 0;
+        alphasum := 0;
+        subpixel := x MOD 4;
+      END;
+      DEC(len)
+    END;
+    SYSTEM.GET(mapadr, len);  INC(mapadr);
+  END
+END RenderAlphaMap;
+
+
+(* ------------------------------ Display api ------------------------------- *)
+
+PROCEDURE Handle*(F: Frame; VAR M: FrameMsg);
+BEGIN IF (F # NIL) & (F.handle # NIL) THEN F.handle(F, M) END
+END Handle;
+
+(* raster ops *)
+
+PROCEDURE Clip(x, limit: INTEGER): INTEGER;
+BEGIN RETURN H.Max(0, H.Min(x, limit)) END Clip;
+
+PROCEDURE Dot(colour: ARGB; x, y: INTEGER);
+BEGIN
+  x := Clip(x, Window.bmp.width);
+  y := Clip(y, Window.bmp.height);
+  SYSTEM.PUT(Window.bmp.address + y * Window.bmp.width * 4 + x * 4, colour)
+END Dot;
+
+PROCEDURE InvalidateRect* (x, y, width, height: INTEGER);
+VAR rect: RECORD- left, top, right, bottom: SYSTEM.INT32 END;
+BEGIN
+  rect.left := x;  rect.right  := x + width;
+  rect.top  := y;  rect.bottom := y + height;
+  ASSERT(H.InvalidateRect(Window.hwnd, SYSTEM.ADR(rect), 0) # 0)
+END InvalidateRect;
+
+PROCEDURE Invalidate;  (* Invalidate entire window *)
+BEGIN  InvalidateRect(0, 0, Window.width, Window.height) END Invalidate;
+
+PROCEDURE ReplConst*(colour: ARGB; x, y, w, h: INTEGER);
+VAR xs, ys, xl, yl: INTEGER;
+BEGIN
+  xs := Clip(x, Window.bmp.width-1);   xl := Clip(x+w-1, Window.bmp.width-1);
+  ys := Clip(y, Window.bmp.height-1);  yl := Clip(y+h-1, Window.bmp.height-1);
+  FOR y := ys TO yl DO
+    FOR x := xs TO xl DO
+      SYSTEM.PUT(Window.bmp.address + y * Window.bmp.width * 4 + x * 4, colour)
+    END
+  END;
+  InvalidateRect(x, y, w, h)
+END ReplConst;
+
+PROCEDURE Close*;
+VAR res: INTEGER;
+BEGIN
+  IF Window # NIL THEN
+   res := H.PostMessageW(Window.hwnd, 16 (* WM_CLOSE *), 0, 0)
+ END
+END Close;
+
+
+(* ----------------------- Windows bitmap management ------------------------ *)
+
+PROCEDURE EnsureBitmap(w, h: INTEGER; VAR bitmap: HostBitmap);
+TYPE
+  BITMAPINFOHEADER = RECORD-
+    size:          SYSTEM.CARD32;
+    width:         SYSTEM.CARD32;
+    height:        SYSTEM.CARD32;
+    planes:        SYSTEM.CARD16;
+    bitCount:      SYSTEM.CARD16;
+    compression:   SYSTEM.CARD32;
+    sizeImage:     SYSTEM.CARD32;
+    xPelsPerMeter: SYSTEM.CARD32;
+    yPelsPerMeter: SYSTEM.CARD32;
+    clrUsed:       SYSTEM.CARD32;
+    clrImportant:  SYSTEM.CARD32
+  END;
+VAR
+  res: INTEGER;
+  bmi: BITMAPINFOHEADER;
+BEGIN
+  IF bitmap = NIL THEN NEW(bitmap); H.ZeroFill(bitmap^) END;
+
+  IF (bitmap.width < w) OR (bitmap.height < h) THEN
+    IF bitmap.hdib # 0 THEN
+      res := H.SelectObject(bitmap.context, bitmap.oldh);
+      res := H.DeleteObject(bitmap.hdib)
+    END;
+    bitmap.width   := 0;  bitmap.height := 0;
+    bitmap.address := 0;  bitmap.hdib   := 0;
+    bitmap.oldh    := 0;
+
+    H.ZeroFill(bmi);
+    bmi.size     := SYSTEM.SIZE(BITMAPINFOHEADER);
+    bmi.width    := w;
+    bmi.height   := -h;  (* Negative height => y=0 at top *)
+    bmi.planes   := 1;
+    bmi.bitCount := 32;  (* 4 bytes per pixel: RGBA *)
+    bitmap.hdib  := H.CreateDIBSection(0, SYSTEM.ADR(bmi), 0, SYSTEM.ADR(bitmap.address), 0, 0);
+    H.ws("Created DIB section: hdib "); H.wh(bitmap.hdib);
+    H.ws("H, bitmap address ");         H.wh(bitmap.address); H.wsn("H.");
+
+    ASSERT(bitmap.hdib    # 0);
+    ASSERT(bitmap.address # 0);
+    bitmap.width  := w;
+    bitmap.height := h;
+
+    IF bitmap.context = 0 THEN  (* If no context to reuse *)
+      bitmap.context := H.CreateCompatibleDC(0);  ASSERT(bitmap.context # 0);
+      H.ws("Created compatible DC: w ");  H.wi(w);
+      H.ws(", h ");                       H.wi(h);
+      H.ws(", hdc ");                     H.wh(bitmap.context); H.wsn("H.");
+    END;
+
+    bitmap.oldh := H.SelectObject(bitmap.context, bitmap.hdib)
+  END
+END EnsureBitmap;
+
+
+(* -------------------------- Host window handlers -------------------------- *)
+
+PROCEDURE Paint(hwnd: INTEGER);
+TYPE
+  PAINTSTRUCT = RECORD-
+    hdc:         INTEGER;
+    fErase:      SYSTEM.CARD32;
+    left:        SYSTEM.CARD32;
+    top:         SYSTEM.CARD32;
+    right:       SYSTEM.CARD32;
+    bottom:      SYSTEM.CARD32;
+    fRestore:    SYSTEM.CARD32;
+    fIncUpdate:  SYSTEM.CARD32;
+    rgbReserved: ARRAY 36 OF BYTE
+  END;
+VAR
+  res:    INTEGER;
+  ps:     PAINTSTRUCT;
+  x, y:   INTEGER;
+  width:  INTEGER;
+  height: INTEGER;
+  hdc:    INTEGER;
+BEGIN
+  ASSERT(Window.hwnd = hwnd);
+
+  EnsureBitmap(Window.width, Window.height, Window.bmp);
+
+  res    := H.BeginPaint(hwnd, SYSTEM.ADR(ps));
+  x      := ps.left;
+  y      := ps.top;
+  width  := ps.right  - ps.left + 1;
+  height := ps.bottom - ps.top  + 1;
+
+  H.ws("Paint(x ");   H.wi(x);
+  H.ws(", y ");       H.wi(y);
+  H.ws(", width ");   H.wi(width);
+  H.ws(", height ");  H.wi(height);  H.wsn(".");
+
+  IF Window.predraw # NIL THEN Window.predraw(x, y, width, height, Window.bmp) END;
+
+  (* Testing: paint the whole bitmap
+    res := H.BitBlt(ps.hdc, 0, 0, Window.width, Window.height, Window.bmp.context, 0, 0, 0CC0020H);  (* SRCCPY *)
+  *)
+
+  res := H.BitBlt(ps.hdc, x, y, width, height, Window.bmp.context, x, y, 0CC0020H);  (* SRCCPY *)
+  IF res = 0 THEN H.AssertWinErr(H.GetLastError()) END;
+
+  IF Window.postdraw # NIL THEN Window.postdraw(x, y, width, height, Window.bmp) END;
+
+  res := H.EndPaint(hwnd, SYSTEM.ADR(ps));
+END Paint;
+
+
+PROCEDURE Size(wi, h: INTEGER);
+BEGIN H.ws("size := "); H.wi(wi); H.wc(","); H.wi(h); H.wsn(".");
+END Size;
+
+
+PROCEDURE Char(hwnd, ch: INTEGER);  (* UTF-16 value *)
+BEGIN
+  H.ws("Char "); H.wh(ch); H.wsn("H.");
+  ASSERT(Window.hwnd = hwnd);
+  IF Window.dochar # NIL THEN
+    IF (ch >= 0D800H) & (ch <= 0DBFFH) THEN
+      Window.highch := ch
+    ELSIF (ch >= 0DC00H) & (ch <= 0DFFFH) THEN
+      Window.dochar(LSL(Window.highch MOD 400H, 10) + 10000H + ch MOD 400H)
+    ELSE
+      Window.dochar(ch)
+    END
+  END
+END Char;
+
+
+PROCEDURE Key(hwnd, key: INTEGER);
+BEGIN
+  ASSERT(Window.hwnd = hwnd);
+  H.ws("Key "); H.wh(key); H.wsn("H.");
+  IF Window.dochar # NIL THEN
+    IF    key = 25H THEN (* VK_LEFT  *) Window.dochar(11H)
+    ELSIF key = 26H THEN (* VK_UP    *) Window.dochar(13H)
+    ELSIF key = 27H THEN (* VK_RIGHT *) Window.dochar(12H)
+    ELSIF key = 28H THEN (* VK_DOWN  *) Window.dochar(14H)
+    END
+  END
+END Key;
+
+
+PROCEDURE Mouse(hwnd, msg, x, y: INTEGER; flags: SET);
+VAR buttons: SET;
+BEGIN
+  IF x > 32767 THEN x := x - 10000H END; (* Sign extend 16 bit value *)
+  IF y > 32767 THEN y := y - 10000H END; (* Sign extend 16 bit value *)
+  ASSERT(Window.hwnd = hwnd);
+  IF    msg = 201H (* WM_LBUTTONDOWN *) THEN H.SetCapture(hwnd)
+  ELSIF msg = 202H (* WM_LBUTTONUP   *) THEN H.ReleaseCapture
+  END;
+  (* Windows button flags:
+       MK_LBUTTON  0x0001  {0}   The left mouse button is down.
+       MK_MBUTTON  0x0010  {16}  The middle mouse button is down.
+       MK_RBUTTON  0x0002  {1}   The right mouse button is down.
+     Oberon button flags:
+       {0}  MR
+       {1}  MM
+       {2}  ML
+  *)
+  buttons := {};
+  IF 1 IN flags THEN INCL(buttons, 0) END; (* MR *)
+  IF 4 IN flags THEN INCL(buttons, 1) END; (* MM *)
+  IF 0 IN flags THEN INCL(buttons, 2) END; (* ML *)
+  IF Window.domouse # NIL THEN Window.domouse(x, y, buttons) END;
+END Mouse;
+
+
+(* ---------------- Windows message names for debug logging ----------------- *)
+
+PROCEDURE WriteWindowsMessageName*(msg: INTEGER);
+VAR
+  str:  ARRAY 1024 OF CHAR;
+  name: ARRAY 1024 OF SYSTEM.CARD16;
+  res:  INTEGER;
+BEGIN str := "";
+  IF    msg = 000H THEN str := "_NULL"
+  ELSIF msg = 001H THEN str := "_CREATE"
+  ELSIF msg = 002H THEN str := "_DESTROY"
+  ELSIF msg = 003H THEN str := "_MOVE"
+  ELSIF msg = 005H THEN str := "_SIZE"
+  ELSIF msg = 006H THEN str := "_ACTIVATE"
+  ELSIF msg = 007H THEN str := "_SETFOCUS"
+  ELSIF msg = 008H THEN str := "_KILLFOCUS"
+  ELSIF msg = 00AH THEN str := "_ENABLE"
+  ELSIF msg = 00BH THEN str := "_SETREDRAW"
+  ELSIF msg = 00CH THEN str := "_SETTEXT"
+  ELSIF msg = 00DH THEN str := "_GETTEXT"
+  ELSIF msg = 00EH THEN str := "_GETTEXTLENGTH"
+  ELSIF msg = 00FH THEN str := "_PAINT"
+  ELSIF msg = 010H THEN str := "_CLOSE"
+  ELSIF msg = 011H THEN str := "_QUERYENDSESSION"
+  ELSIF msg = 012H THEN str := "_QUIT"
+  ELSIF msg = 013H THEN str := "_QUERYOPEN"
+  ELSIF msg = 014H THEN str := "_ERASEBKGND"
+  ELSIF msg = 015H THEN str := "_SYSCOLORCHANGE"
+  ELSIF msg = 016H THEN str := "_ENDSESSION"
+  ELSIF msg = 017H THEN str := "_SYSTEMERROR"
+  ELSIF msg = 018H THEN str := "_SHOWWINDOW"
+  ELSIF msg = 019H THEN str := "_CTLCOLOR"
+  ELSIF msg = 01AH THEN str := "_WININICHANGE"
+  ELSIF msg = 01BH THEN str := "_DEVMODECHANGE"
+  ELSIF msg = 01CH THEN str := "_ACTIVATEAPP"
+  ELSIF msg = 01DH THEN str := "_FONTCHANGE"
+  ELSIF msg = 01EH THEN str := "_TIMECHANGE"
+  ELSIF msg = 01FH THEN str := "_CANCELMODE"
+  ELSIF msg = 020H THEN str := "_SETCURSOR"
+  ELSIF msg = 021H THEN str := "_MOUSEACTIVATE"
+  ELSIF msg = 022H THEN str := "_CHILDACTIVATE"
+  ELSIF msg = 023H THEN str := "_QUEUESYNC"
+  ELSIF msg = 024H THEN str := "_GETMINMAXINFO"
+  ELSIF msg = 026H THEN str := "_PAINTICON"
+  ELSIF msg = 027H THEN str := "_ICONERASEBKGND"
+  ELSIF msg = 028H THEN str := "_NEXTDLGCTL"
+  ELSIF msg = 02AH THEN str := "_SPOOLERSTATUS"
+  ELSIF msg = 02BH THEN str := "_DRAWITEM"
+  ELSIF msg = 02CH THEN str := "_MEASUREITEM"
+  ELSIF msg = 02DH THEN str := "_DELETEITEM"
+  ELSIF msg = 02EH THEN str := "_VKEYTOITEM"
+  ELSIF msg = 02FH THEN str := "_CHARTOITEM"
+  ELSIF msg = 030H THEN str := "_SETFONT"
+  ELSIF msg = 031H THEN str := "_GETFONT"
+  ELSIF msg = 032H THEN str := "_SETHOTKEY"
+  ELSIF msg = 037H THEN str := "_QUERYDRAGICON"
+  ELSIF msg = 039H THEN str := "_COMPAREITEM"
+  ELSIF msg = 03DH THEN str := "_GETOBJECT"
+  ELSIF msg = 041H THEN str := "_COMPACTING"
+  ELSIF msg = 044H THEN str := "_COMMNOTIFY"
+  ELSIF msg = 046H THEN str := "_WINDOWPOSCHANGING"
+  ELSIF msg = 047H THEN str := "_WINDOWPOSCHANGED"
+  ELSIF msg = 048H THEN str := "_POWER"
+  ELSIF msg = 04AH THEN str := "_COPYDATA"
+  ELSIF msg = 04BH THEN str := "_CANCELJOURNAL"
+  ELSIF msg = 04EH THEN str := "_NOTIFY"
+  ELSIF msg = 050H THEN str := "_INPUTLANGCHANGEREQUEST"
+  ELSIF msg = 051H THEN str := "_INPUTLANGCHANGE"
+  ELSIF msg = 052H THEN str := "_TCARD"
+  ELSIF msg = 053H THEN str := "_HELP"
+  ELSIF msg = 054H THEN str := "_USERCHANGED"
+  ELSIF msg = 055H THEN str := "_NOTIFYFORMAT"
+  ELSIF msg = 07BH THEN str := "_CONTEXTMENU"
+  ELSIF msg = 07CH THEN str := "_STYLECHANGING"
+  ELSIF msg = 07DH THEN str := "_STYLECHANGED"
+  ELSIF msg = 07EH THEN str := "_DISPLAYCHANGE"
+  ELSIF msg = 07FH THEN str := "_GETICON"
+  ELSIF msg = 080H THEN str := "_SETICON"
+  ELSIF msg = 081H THEN str := "_NCCREATE"
+  ELSIF msg = 082H THEN str := "_NCDESTROY"
+  ELSIF msg = 083H THEN str := "_NCCALCSIZE"
+  ELSIF msg = 084H THEN str := "_NCHITTEST"
+  ELSIF msg = 085H THEN str := "_NCPAINT"
+  ELSIF msg = 086H THEN str := "_NCACTIVATE"
+  ELSIF msg = 087H THEN str := "_GETDLGCODE"
+  ELSIF msg = 090H THEN str := "_UAHDESTROYWINDOW"
+  ELSIF msg = 091H THEN str := "_UAHDRAWMENU"
+  ELSIF msg = 092H THEN str := "_UAHDRAWMENUITEM"
+  ELSIF msg = 093H THEN str := "_UAHINITMENU"
+  ELSIF msg = 094H THEN str := "_UAHMEASUREMENUITEM"
+  ELSIF msg = 095H THEN str := "_UAHNCPAINTMENUPOPUP"
+  ELSIF msg = 0A0H THEN str := "_NCMOUSEMOVE"
+  ELSIF msg = 0A1H THEN str := "_NCLBUTTONDOWN"
+  ELSIF msg = 0A2H THEN str := "_NCLBUTTONUP"
+  ELSIF msg = 0A3H THEN str := "_NCLBUTTONDBLCLK"
+  ELSIF msg = 0A4H THEN str := "_NCRBUTTONDOWN"
+  ELSIF msg = 0A5H THEN str := "_NCRBUTTONUP"
+  ELSIF msg = 0A6H THEN str := "_NCRBUTTONDBLCLK"
+  ELSIF msg = 0A7H THEN str := "_NCMBUTTONDOWN"
+  ELSIF msg = 0A8H THEN str := "_NCMBUTTONUP"
+  ELSIF msg = 0A9H THEN str := "_NCMBUTTONDBLCLK"
+  ELSIF msg = 100H THEN str := "_KEYDOWN"
+  ELSIF msg = 101H THEN str := "_KEYUP"
+  ELSIF msg = 102H THEN str := "_CHAR"
+  ELSIF msg = 103H THEN str := "_DEADCHAR"
+  ELSIF msg = 104H THEN str := "_SYSKEYDOWN"
+  ELSIF msg = 105H THEN str := "_SYSKEYUP"
+  ELSIF msg = 106H THEN str := "_SYSCHAR"
+  ELSIF msg = 107H THEN str := "_SYSDEADCHAR"
+  ELSIF msg = 108H THEN str := "_KEYLAST"
+  ELSIF msg = 109H THEN str := "_UNICHAR"
+  ELSIF msg = 110H THEN str := "_INITDIALOG"
+  ELSIF msg = 111H THEN str := "_COMMAND"
+  ELSIF msg = 112H THEN str := "_SYSCOMMAND"
+  ELSIF msg = 113H THEN str := "_TIMER"
+  ELSIF msg = 114H THEN str := "_HSCROLL"
+  ELSIF msg = 115H THEN str := "_VSCROLL"
+  ELSIF msg = 116H THEN str := "_INITMENU"
+  ELSIF msg = 117H THEN str := "_INITMENUPOPUP"
+  ELSIF msg = 119H THEN str := "_GESTURE"
+  ELSIF msg = 11AH THEN str := "_GESTURENOTIFY"
+  ELSIF msg = 11FH THEN str := "_MENUSELECT"
+  ELSIF msg = 120H THEN str := "_MENUCHAR"
+  ELSIF msg = 121H THEN str := "_ENTERIDLE"
+  ELSIF msg = 122H THEN str := "_MENURBUTTONUP"
+  ELSIF msg = 123H THEN str := "_MENUDRAG"
+  ELSIF msg = 124H THEN str := "_MENUGETOBJECT"
+  ELSIF msg = 125H THEN str := "_UNINITMENUPOPUP"
+  ELSIF msg = 126H THEN str := "_MENUCOMMAND"
+  ELSIF msg = 132H THEN str := "_CTLCOLORMSGBOX"
+  ELSIF msg = 133H THEN str := "_CTLCOLOREDIT"
+  ELSIF msg = 134H THEN str := "_CTLCOLORLISTBOX"
+  ELSIF msg = 135H THEN str := "_CTLCOLORBTN"
+  ELSIF msg = 136H THEN str := "_CTLCOLORDLG"
+  ELSIF msg = 137H THEN str := "_CTLCOLORSCROLLBAR"
+  ELSIF msg = 138H THEN str := "_CTLCOLORSTATIC"
+  ELSIF msg = 200H THEN str := "_MOUSEMOVE"
+  ELSIF msg = 201H THEN str := "_LBUTTONDOWN"
+  ELSIF msg = 202H THEN str := "_LBUTTONUP"
+  ELSIF msg = 203H THEN str := "_LBUTTONDBLCLK"
+  ELSIF msg = 204H THEN str := "_RBUTTONDOWN"
+  ELSIF msg = 205H THEN str := "_RBUTTONUP"
+  ELSIF msg = 206H THEN str := "_RBUTTONDBLCLK"
+  ELSIF msg = 207H THEN str := "_MBUTTONDOWN"
+  ELSIF msg = 208H THEN str := "_MBUTTONUP"
+  ELSIF msg = 209H THEN str := "_MBUTTONDBLCLK"
+  ELSIF msg = 20AH THEN str := "_MOUSEWHEEL"
+  ELSIF msg = 210H THEN str := "_PARENTNOTIFY"
+  ELSIF msg = 211H THEN str := "_ENTERMENULOOP"
+  ELSIF msg = 212H THEN str := "_EXITMENULOOP"
+  ELSIF msg = 213H THEN str := "_NEXTMENU"
+  ELSIF msg = 214H THEN str := "_SIZING"
+  ELSIF msg = 215H THEN str := "_CAPTURECHANGED"
+  ELSIF msg = 216H THEN str := "_MOVING"
+  ELSIF msg = 218H THEN str := "_POWERBROADCAST"
+  ELSIF msg = 219H THEN str := "_DEVICECHANGE"
+  ELSIF msg = 220H THEN str := "_MDICREATE"
+  ELSIF msg = 221H THEN str := "_MDIDESTROY"
+  ELSIF msg = 222H THEN str := "_MDIACTIVATE"
+  ELSIF msg = 223H THEN str := "_MDIRESTORE"
+  ELSIF msg = 224H THEN str := "_MDINEXT"
+  ELSIF msg = 225H THEN str := "_MDIMAXIMIZE"
+  ELSIF msg = 226H THEN str := "_MDITILE"
+  ELSIF msg = 227H THEN str := "_MDICASCADE"
+  ELSIF msg = 228H THEN str := "_MDIICONARRANGE"
+  ELSIF msg = 229H THEN str := "_MDIGETACTIVE"
+  ELSIF msg = 230H THEN str := "_MDISETMENU"
+  ELSIF msg = 231H THEN str := "_ENTERSIZEMOVE"
+  ELSIF msg = 232H THEN str := "_EXITSIZEMOVE"
+  ELSIF msg = 233H THEN str := "_DROPFILES"
+  ELSIF msg = 234H THEN str := "_MDIREFRESHMENU"
+  ELSIF msg = 281H THEN str := "_IME_SETCONTEXT"
+  ELSIF msg = 282H THEN str := "_IME_NOTIFY"
+  ELSIF msg = 283H THEN str := "_IME_CONTROL"
+  ELSIF msg = 284H THEN str := "_IME_COMPOSITIONFULL"
+  ELSIF msg = 285H THEN str := "_IME_SELECT"
+  ELSIF msg = 286H THEN str := "_IME_CHAR"
+  ELSIF msg = 290H THEN str := "_IME_KEYDOWN"
+  ELSIF msg = 291H THEN str := "_IME_KEYUP"
+  ELSIF msg = 2A1H THEN str := "_MOUSEHOVER"
+  ELSIF msg = 2A3H THEN str := "_MOUSELEAVE"
+  ELSIF msg = 300H THEN str := "_CUT"
+  ELSIF msg = 301H THEN str := "_COPY"
+  ELSIF msg = 302H THEN str := "_PASTE"
+  ELSIF msg = 303H THEN str := "_CLEAR"
+  ELSIF msg = 304H THEN str := "_UNDO"
+  ELSIF msg = 305H THEN str := "_RENDERFORMAT"
+  ELSIF msg = 306H THEN str := "_RENDERALLFORMATS"
+  ELSIF msg = 307H THEN str := "_DESTROYCLIPBOARD"
+  ELSIF msg = 308H THEN str := "_DRAWCLIPBOARD"
+  ELSIF msg = 309H THEN str := "_PAINTCLIPBOARD"
+  ELSIF msg = 30AH THEN str := "_VSCROLLCLIPBOARD"
+  ELSIF msg = 30BH THEN str := "_SIZECLIPBOARD"
+  ELSIF msg = 30CH THEN str := "_ASKCBFORMATNAME"
+  ELSIF msg = 30DH THEN str := "_CHANGECBCHAIN"
+  ELSIF msg = 30EH THEN str := "_HSCROLLCLIPBOARD"
+  ELSIF msg = 30FH THEN str := "_QUERYNEWPALETTE"
+  ELSIF msg = 310H THEN str := "_PALETTEISCHANGING"
+  ELSIF msg = 311H THEN str := "_PALETTECHANGED"
+  ELSIF msg = 312H THEN str := "_HOTKEY"
+  ELSIF msg = 317H THEN str := "_PRINT"
+  ELSIF msg = 318H THEN str := "_PRINTCLIENT"
+  ELSIF msg = 31FH THEN str := "_DWMNCRENDERINGCHANGED"
+  ELSIF msg = 358H THEN str := "_HANDHELDFIRST"
+  ELSIF msg = 35FH THEN str := "_HANDHELDLAST"
+  ELSIF msg = 360H THEN str := "_AFXFIRST"
+  ELSIF msg = 37FH THEN str := "_AFXLAST"
+  ELSIF msg = 380H THEN str := "_PENWINFIRST"
+  ELSIF msg = 38FH THEN str := "_PENWINLAST"
+  ELSIF msg = 390H THEN str := "_COALESCE_FIRST"
+  ELSIF msg = 39FH THEN str := "_COALESCE_LAST"
+  ELSIF msg = 400H THEN str := "USER"
+  ELSIF (msg >= 0C000H) & (msg <= 0FFFFH) THEN
+    (* registered cross-application name *)
+    name[0] := 23H;  (* '#' *)
+    IF H.GetClipboardFormatNameW(msg, SYSTEM.ADR(name)+2, LEN(name)-1) > 0 THEN
+      res := H.Utf16ToUtf8(name, str)
+    END
+  END;
+  IF str = "" THEN H.ws("WM "); H.wh(msg); H.wc("H") ELSE H.ws("WM"); H.ws(str) END
+END WriteWindowsMessageName;
+
+
+(* ------- Host window message handling callback procedure - wndproc -------- *)
+
+PROCEDURE- WndProc(hwnd, msg, wp, lp: INTEGER): INTEGER;
+VAR res: INTEGER;
+BEGIN
+  (*
+  H.ws("WndProc: hwnd "); H.wh(hwnd);
+  H.ws("H, msg "); WriteWindowsMessageName(msg); H.wsn(".");
+  *)
+
+  IF Window.hwnd = 0 THEN Window.hwnd := hwnd ELSE ASSERT(Window.hwnd = hwnd) END;
+  res := 0;
+  IF     msg =   02H  (* WM_DESTROY       *) THEN H.PostQuitMessage(0)
+  ELSIF  msg =   0FH  (* WM_PAINT         *) THEN Paint(hwnd)
+  ELSIF  msg =   14H  (* WM_ERASEBKGND    *) THEN
+  ELSIF  msg =   05H  (* WM_SIZE          *) THEN Size(lp MOD 10000H, lp DIV 10000H MOD 10000H)
+  ELSIF  msg =  100H  (* WM_KEYDOWN       *) THEN Key(hwnd, wp)
+  ELSIF  msg =  102H  (* WM_CHAR          *) THEN Char(hwnd, wp)
+  ELSIF (msg >= 200H) (* WM_MOUSEMOVE     *)
+     &  (msg <= 209H) (* WM_MBUTTONDBLCLK *) THEN Mouse(hwnd, msg,
+                                                        lp MOD 10000H, lp DIV 10000H MOD 10000H,
+                                                        SYSTEM.VAL(SET, wp))
+  ELSE res := H.DefWindowProcW(hwnd, msg, wp, lp);
+  END;
+RETURN res END WndProc;
+
+
+(* ------------------------ Host window message loop ------------------------ *)
+
+
+(*
+PROCEDURE DumpMessage(str: ARRAY OF CHAR; msg: HostMessage);
+BEGIN
+  H.wsn(str);
+  H.DumpMem(2, SYSTEM.ADR(msg), 0, SYSTEM.SIZE(HostMessage));
+  H.ws("  hwnd ");     H.wh(msg.hwnd);
+  H.ws("H, message "); WriteWindowsMessageName(msg.message);
+  H.ws(", pad ");      H.wh(msg.pad);
+  H.ws("H, wParam ");  H.wh(msg.wParam);
+  H.ws("H, lParam ");  H.wh(msg.lParam); H.wsn("H");
+  H.ws("  time ");     H.wh(msg.time);
+  H.ws("H, x ");       H.wi(msg.x);
+  H.ws(", y ");        H.wi(msg.y);
+  H.ws(", lPrivate "); H.wh(msg.lPrivate);
+  H.wsn("H.")
+END DumpMessage;
+*)
+
+
+PROCEDURE ProcessOneMessage* (): INTEGER;  (* 0 - none available, 1 - processed, 2 - WM_QUIT received *)
+VAR
+  msg: HostMessage;
+  res: INTEGER;
+BEGIN
+  res := H.PeekMessageW(SYSTEM.ADR(msg), 0,0,0,1); (* Get and remove message if available *)
+  IF res # 0  THEN
+    IF msg.message = 12H THEN
+      (*H.wsn("* WM_QUIT *");*)
+      res :=  2  (* 12H = WM_QUIT *)
+    ELSE
+      (*H.ws("Translate and Dispatch msg "); WriteWindowsMessageName(msg.message); H.wn;*)
+      res := H.TranslateMessage(SYSTEM.ADR(msg));
+      res := H.DispatchMessageW(SYSTEM.ADR(msg));
+      res := 1;
+    END
+  END
+RETURN res END ProcessOneMessage;
+
+
+PROCEDURE WaitMsgOrTime*(time: INTEGER);  (* Waits for time (ms) OR message in queue *)
+BEGIN
+  (*H.ws("Wait for message (or "); H.wi(time); H.wsn(" ms).");*)
+  H.MsgWaitForMultipleObjects(0, 0, 0, time, 1CFFH); (* 1DFF? *)
+END WaitMsgOrTime;
+
+
+PROCEDURE Loop*;
+VAR res: INTEGER;
+BEGIN
+  REPEAT
+    res := ProcessOneMessage();
+    IF res = 0 THEN  (* Queue empty *) WaitMsgOrTime(10000) END
+  UNTIL res > 1  (* => WM_QUIT *)
+END Loop;
+
+
+(* -------------------------- Host window creation -------------------------- *)
+
+PROCEDURE CreateWindow*(x, y, width, height: INTEGER);
+TYPE
+  wndclassexw = RECORD-
+    cbsize:        SYSTEM.CARD32;
+    style:         SYSTEM.CARD32;
+    wndproc:       INTEGER;
+    cbClsExtra:    SYSTEM.INT32;
+    cbWndExtra:    SYSTEM.INT32;
+    hInstance:     INTEGER;
+    hIcon:         INTEGER;
+    hCursor:       INTEGER;
+    hbrBackground: INTEGER;
+    lpszMenuName:  INTEGER;
+    className:     INTEGER;
+    hIconSm:       INTEGER
+  END;
+
+VAR
+  class:      wndclassexw;
+  classAtom:  INTEGER;
+  classname:  ARRAY 16  OF SYSTEM.CARD16;
+  windowname: ARRAY 256 OF SYSTEM.CARD16;
+  i:          INTEGER;
+BEGIN
+  i := H.Utf8ToUtf16("Oberon", classname);
+  i := H.Utf8ToUtf16("Oberon", windowname);
+  H.ZeroFill(class);
+  class.cbsize    := SYSTEM.SIZE(wndclassexw);
+  class.style     := 3;  (* CS_HREDRAW | CS_VREDRAW *)
+  class.wndproc   := SYSTEM.ADR(WndProc);
+  class.className := SYSTEM.ADR(classname);
+  class.hIcon     := 0; (*MakeIcon();*)
+  classAtom       := H.RegisterClassExW(SYSTEM.ADR(class));
+  ASSERT(classAtom # 0);
+
+  NEW(Window);
+  Window.hwnd      := 0;
+  Window.bmp       := NIL;
+  Window.x         := x;
+  Window.y         := y;
+  Window.width     := width;
+  Window.height    := height;
+  Window.dochar    := NIL;
+  Window.predraw   := NIL;
+  Window.postdraw  := NIL;
+  Window.domouse   := NIL;
+  Window.next      := NIL;
+
+  H.ws("CreateWindowExW: x "); H.wi(x);
+  H.ws(", y ");                H.wi(y);
+  H.ws(", width ");            H.wi(width);
+  H.ws(", height ");           H.wi(height); H.wsn(".");
+  H.wsn("classname:");  H.DumpMem(2, SYSTEM.ADR(classname),  SYSTEM.ADR(classname),  16);
+  H.wsn("windowname:"); H.DumpMem(2, SYSTEM.ADR(windowname), SYSTEM.ADR(windowname), 16);
+
+  Window.hwnd := H.CreateWindowExW(
+    0,                       (* Extended window style *)
+    SYSTEM.ADR(classname),
+    SYSTEM.ADR(windowname),
+    80000000H,               (* WS_POPUP *)
+    x, y, width, height,     (* Initial position *)
+    0, 0, 0, 0               (* hWndParent, hMenu, hInstance, lpParam *)
+  );
+  ASSERT(Window.hwnd # 0);
+  H.ws("Created window. hwnd ");  H.wh(Window.hwnd);  H.wsn("H.");
+
+  H.SetHWnd(Window.hwnd);  (* Make sure kernel error message boxes stop the message pump *)
+
+  EnsureBitmap(width, height, Window.bmp);
+
+  Window.DPI := H.GetDpiForWindow(Window.hwnd);
+  H.ws("GetDpiForWindow -> ");  H.wi(Window.DPI);  H.wsn(".");
+
+  H.ShowCursor(0);
+  H.ShowWindow(Window.hwnd, 1);
+
+  H.wsn("CreateWindow complete.");
+END CreateWindow;
+
+
+PROCEDURE SetCharacterHandler* (h: HostCharacterHandler);
+BEGIN Window.dochar := h END SetCharacterHandler;
+
+PROCEDURE SetMouseHandler* (h: HostMouseHandler);
+BEGIN Window.domouse := h END SetMouseHandler;
+
+PROCEDURE SetDrawHandlers* (pre, post: HostDrawHandler);
+BEGIN Window.predraw := pre;  Window.postdraw := post END SetDrawHandlers;
+
+
+(* ------------------------- Display initialisation ------------------------- *)
+
+BEGIN
+  H.wsn("Display initialising.");
+  ASSERT(H.SetProcessDpiAwarenessContext(-3) # 0);  (* DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE *)
+  Width  := 1800;
+  Height := 1280;
+  CreateWindow(700, 50, Width, Height);
+  H.wsn("Display initialised.");
+END Display.
