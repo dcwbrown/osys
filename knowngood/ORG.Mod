@@ -1837,15 +1837,38 @@ END Copy;
 (* ---- Sets ---- *)
 
 PROCEDURE Set*(VAR x, y: Item);   (* x := {x .. y} *)
+VAR rx, ry, rcxsave: INTEGER;
 BEGIN
   Trace(TraceAny, "Set(x: "); l.Item(x, Tr);
-  l.s(", y: ", Tr);          l.Item(y, Tr);
+  l.s(", y: ", Tr);           l.Item(y, Tr);
   IF (x.mode = Const) & (y.mode = Const) THEN
     IF x.n <= y.n THEN
       x.n := LSL(2, y.n) - LSL(1, x.n) ELSE x.n := 0
     END
   ELSE
-    ASSERT(FALSE)
+    IF RCX IN Free THEN rcxsave := -1 ELSE
+      rcxsave := Reserve(-1, {});  MoveReg(rcxsave, RCX);
+      IF    (x.mode IN {Reg, Eadr}) & (x.n     = RCX) THEN x.n     := rcxsave
+      ELSIF (x.mode = Eadr)         & (x.index = RCX) THEN x.index := rcxsave
+      ELSIF (y.mode IN {Reg, Eadr}) & (y.n     = RCX) THEN y.n     := rcxsave
+      ELSIF (y.mode = Eadr)         & (y.index = RCX) THEN y.index := rcxsave
+      END
+    END;
+    rx := Reserve(-1, {RCX});
+    ry := Reserve(-1, {RCX});
+    IF x.mode = Const THEN LoadImmediate(rx, LSL(-1, x.n)) ELSE
+      LoadImmediate(rx, -1);  LoadReg(RCX, x);
+      OpModRegRm(0D3H, Reg, 4, 8, rx, -1, 0, 0, 0);   (* shl rx,cl *)
+    END;
+    IF y.mode = Const THEN LoadImmediate(ry, LSL(-2, y.n)) ELSE
+      LoadImmediate(ry, -2);  LoadReg(RCX, y);
+      OpModRegRm(0D3H, Reg, 4, 8, ry, -1, 0, 0, 0);   (* shl ry,cl *)
+    END;
+    AluOpToReg(Xor, Reg, rx, FALSE, 8, ry, -1, 0, 0); (* and rx,ry *)
+    FreeRegs(x);  FreeRegs(y);  Release(ry);  ReserveReg(rx);
+    x.mode := Reg;  x.n := rx;
+    IF rcxsave >= 0 THEN MoveReg(RCX, rcxsave);  Release(rcxsave) END;
+    Disassemble(0, "{x .. y}");
   END;
   l.s(") -> ", Tr); l.h(x.n, Tr);  l.sn("H.", Tr);
 END Set;

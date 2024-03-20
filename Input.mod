@@ -1,29 +1,32 @@
 MODULE Input; (*NW 5.10.86 / 15.11.90 Ceres-2; PDR 21.4.12 / NW 15.5.2013 Ceres-4*)
+(*DCWB 2024/03/19 hosting on MS Win *)
 
-IMPORT SYSTEM;
+IMPORT SYSTEM, WinGui;
 
-CONST msAdr = -40; kbdAdr = -36;
 
-VAR kbdCode: BYTE; (*last keyboard code read*)
-  Recd, Up, Shift, Ctrl, Ext: BOOLEAN;
+VAR
+  kbdCode: BYTE;     (*last keyboard code read*)
+  Recd:    BOOLEAN;
+  Up:      BOOLEAN;
+  Shift:   BOOLEAN;
+  Ctrl:    BOOLEAN;
+  Ext:     BOOLEAN;
   KTabAdr: INTEGER;  (*keyboard code translation table*)
-  MW, MH, MX, MY: INTEGER; (*mouse limits and coords*)
-  MK: SET; (*mouse keys*)
-
-(*FIFO implemented in hardware, because every read must be handled,
-including tracking the state of the Shift and Ctrl keys*)
+  MW, MH:  INTEGER;  (*mouse limits*)
+  MX, MY:  INTEGER;  (*mouse coords*)
+  MK:      SET;      (*mouse keys*)
 
 PROCEDURE Peek();
 BEGIN
-  IF SYSTEM.BIT(msAdr, 28) THEN
-    SYSTEM.GET(kbdAdr, kbdCode);
-    IF kbdCode = 0F0H THEN Up := TRUE
+  IF WinGui.KeyReady() (*SYSTEM.BIT(msAdr, 28)*) THEN
+    WinGui.GetKey(kbdCode); (*SYSTEM.GET(kbdAdr, kbdCode)*)
+    IF    kbdCode = 0F0H THEN Up  := TRUE
     ELSIF kbdCode = 0E0H THEN Ext := TRUE
     ELSE
       IF (kbdCode = 12H) OR (kbdCode = 59H) THEN (*shift*) Shift := ~Up
       ELSIF kbdCode = 14H THEN (*ctrl*) Ctrl := ~Up
       ELSIF ~Up THEN Recd := TRUE (*real key going down*)
-      END ;
+      END;
       Up := FALSE; Ext := FALSE
     END
   END;
@@ -36,7 +39,7 @@ END Available;
 
 PROCEDURE Read*(VAR ch: CHAR);
 BEGIN
-  WHILE ~Recd DO Peek() END ;
+  WHILE ~Recd DO Peek() END;
   IF Shift OR Ctrl THEN INC(kbdCode, 80H) END; (*ctrl implies shift*)
 (* ch := kbdTab[kbdCode]; *)
   SYSTEM.GET(KTabAdr + kbdCode, ch);
@@ -46,7 +49,7 @@ END Read;
 
 PROCEDURE Mouse*(VAR keys: SET; VAR x, y: INTEGER);
 VAR w: INTEGER;
-BEGIN SYSTEM.GET(msAdr, w);
+BEGIN w := WinGui.MouseState; (*SYSTEM.GET(msAdr, w)*)
   keys := SYSTEM.VAL(SET, w DIV 1000000H MOD 8);
   x := w MOD 400H; y := (w DIV 1000H) MOD 400H;
   IF y >= MH THEN y := MH-1 END

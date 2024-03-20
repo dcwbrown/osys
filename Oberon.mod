@@ -7,8 +7,9 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
     BasicCycle = 20;
     ESC = 1BX; SETSTAR = 1AX;
 
-  TYPE Painter* = PROCEDURE (x, y: INTEGER);
-    Marker* = RECORD Fade*, Draw*: Painter END;
+  TYPE
+    Painter* = PROCEDURE (x, y: INTEGER);
+    Marker*  = RECORD Fade*, Draw*: Painter END;
     
     Cursor* = RECORD
         marker*: Marker; on*: BOOLEAN; X*, Y*: INTEGER
@@ -24,9 +25,9 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
     END;
 
     SelectionMsg* = RECORD (Display.FrameMsg)
-      time*: LONGINT;
+      time*: INTEGER;
       text*: Texts.Text;
-      beg*, end*: LONGINT
+      beg*, end*: INTEGER
     END;
 
     ControlMsg* = RECORD (Display.FrameMsg)
@@ -47,32 +48,34 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
       handle: Handler
     END;
 
-  VAR User*: ARRAY 8 OF CHAR; Password*: LONGINT;
-    Arrow*, Star*: Marker;
+  VAR
+    User*:          ARRAY 8 OF CHAR;
+    Password*:      INTEGER;
+    Arrow*, Star*:  Marker;
     Mouse, Pointer: Cursor;
-    FocusViewer*: Viewers.Viewer;
-    Log*: Texts.Text;
+    FocusViewer*:   Viewers.Viewer;
+    Log*:           Texts.Text;
 
     Par*: RECORD
-      vwr*: Viewers.Viewer;
+      vwr*:   Viewers.Viewer;
       frame*: Display.Frame;
-      text*: Texts.Text;
-      pos*: LONGINT
+      text*:  Texts.Text;
+      pos*:   INTEGER
     END;
 
     CurFnt*: Fonts.Font;
     CurCol*, CurOff*: INTEGER;
     NofTasks*: INTEGER;
 
-    CurTask: Task;
+    CurTask:    Task;
     DW, DH, CL: INTEGER;
-    ActCnt: INTEGER; (*action count for GC*)
-    Mod: Modules.Module;
+    ActCnt:     INTEGER; (*action count for GC*)
+    Mod:        Modules.Module;
 
   (*user identification*)
 
-  PROCEDURE Code(VAR s: ARRAY OF CHAR): LONGINT;
-    VAR i: INTEGER; a, b, c: LONGINT;
+  PROCEDURE Code(VAR s: ARRAY OF CHAR): INTEGER;
+    VAR i: INTEGER; a, b, c: INTEGER;
   BEGIN
     a := 0; b := 0; i := 0;
     WHILE s[i] # 0X DO
@@ -87,15 +90,17 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
   BEGIN User := user; Password := Code(password)
   END SetUser;
 
-  PROCEDURE Clock*(): LONGINT;
+  PROCEDURE Clock*(): INTEGER;
   BEGIN RETURN Kernel.Clock()
   END Clock;
 
-  PROCEDURE SetClock* (d: LONGINT);
+(*
+  PROCEDURE SetClock* (d: INTEGER);
   BEGIN Kernel.SetClock(d)
   END SetClock;
+*)
 
-  PROCEDURE Time*(): LONGINT;
+  PROCEDURE Time*(): INTEGER;
   BEGIN RETURN Kernel.Time()
   END Time;
 
@@ -273,7 +278,7 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
   END OpenLog;
 
   (*command interpretation*)
-  PROCEDURE SetPar*(F: Display.Frame; T: Texts.Text; pos: LONGINT);
+  PROCEDURE SetPar*(F: Display.Frame; T: Texts.Text; pos: INTEGER);
   BEGIN Par.vwr := Viewers.This(F.X, F.Y); Par.frame := F; Par.text := T; Par.pos := pos
   END SetPar;
 
@@ -297,7 +302,7 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
     END
   END Call;
 
-  PROCEDURE GetSelection* (VAR text: Texts.Text; VAR beg, end, time: LONGINT);
+  PROCEDURE GetSelection* (VAR text: Texts.Text; VAR beg, end, time: INTEGER);
     VAR M: SelectionMsg;
   BEGIN
     M.time := -1; Viewers.Broadcast(M); time := M.time;

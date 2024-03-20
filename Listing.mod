@@ -749,7 +749,10 @@ BEGIN
     IF regsize < 8 THEN
       GetUnsigned(regsize, pc, disp)
     ELSE
-      GetUnsigned(4, pc, disp)
+      GetUnsigned(4, pc, disp);
+      IF (opcode = 0C7H) & (disp >= 80000000H) THEN
+        INC(disp, 0FFFFFFFF00000000H)  (* C7 with 32 bit immediate is sign extended *)
+      END
     END;
     h(disp, Args); s("H", Args)
 
