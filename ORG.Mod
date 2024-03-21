@@ -346,7 +346,8 @@ PROCEDURE OpModRegRm(op, mode, reg, size, n, index, scale, offset, immsize: INTE
 VAR iprelreg: INTEGER;
 BEGIN
   IF ~(mode IN {Reg, Eadr, Code, String, Global, Import, Impcode}) THEN
-    Trace(TraceAny, "** mode "); l.i(mode, Tr); l.sn(" **", Tr);
+    H.ws("** mode "); H.wi(mode); H.wsn(" **");
+    ORS.Mark("Unexpected x.mode")
   END;
   ASSERT(mode IN {Reg, Eadr, Code, String, Global, Import, Impcode});
   iprelreg := -1;
@@ -577,6 +578,7 @@ BEGIN
 END LoadAddressReg;
 
 PROCEDURE LoadTypeAddress(reg: INTEGER; t: ORB.Type);
+VAR x: Item;
 BEGIN
   ASSERT(t.form = ORB.Record);
   IF t.mno > 0 THEN (* Import *)
@@ -626,6 +628,35 @@ BEGIN
     END
   END
 END Load;
+
+
+PROCEDURE CallSysFn(sysfn: INTEGER);  (* Generates 6 bytes *)
+BEGIN
+  (*X64.Emit(0E8H);*)
+  X64.Emit(0FFH);  X64.Emit(15H);  (* 00 010 101 *)  (* call [relative-address] *)
+  ImpFix[ImpFInx].offset := X64.PC;
+  ImpFix[ImpFInx].fix    := sysfn;  (* 16/module 0, 16/impno sysfn *)
+  INC(ImpFInx);
+  X64.EmitBytes(4, -(X64.PC + 4))  (* Offset from next instruction to module address 0 *)
+END CallSysFn;
+
+
+PROCEDURE DeRef*(VAR x: Item);
+BEGIN Trace(TraceAny, "DeRef(x), x: "); l.Item(x, Tr); l.n(Tr);
+  ASSERT(x.type.form = ORB.Pointer);
+  IF ~(x.mode IN {Stkind, Eadr, Code, String, Global, Import}) THEN
+    ORS.Mark("Variable expected");
+  END;
+  Load(x);  x.mode := Eadr;
+  Disassemble(0, "DeRef");
+  IF ~ORS.Hasty THEN
+    OpModRegRm(85H, Reg, x.n, 8, x.n, -1, 0, 0, 0);  (* test reg,reg *)
+    X64.Emit(75H);  X64.Emit(6);  (* jnz: if pointer not NIL *)
+    CallSysFn(H.NilPointerDereferenceProc);
+    Disassemble(0, "NIL pointer trap")
+  END
+END DeRef;
+
 
 PROCEDURE LoadAddress(VAR x: Item);
 VAR reg: INTEGER;
@@ -1004,7 +1035,6 @@ BEGIN
   ELSE
     ASSERT(y.class IN {0, ORB.SProc, ORB.Typ})
   END;
-
   l.s(" -> ", Tr);  l.Item(x, Tr);  l.n(Tr);
 END MakeItem;
 
@@ -1098,18 +1128,6 @@ BEGIN
     Release(reg)
   END
 END RestoreReg;
-
-
-PROCEDURE CallSysFn(sysfn: INTEGER);  (* Generates 6 bytes *)
-BEGIN
-  (*X64.Emit(0E8H);*)
-  X64.Emit(0FFH);  X64.Emit(15H);  (* 00 010 101 *)  (* call [relative-address] *)
-  ImpFix[ImpFInx].offset := X64.PC;
-  ImpFix[ImpFInx].fix    := sysfn;  (* 16/module 0, 16/impno sysfn *)
-  INC(ImpFInx);
-  X64.EmitBytes(4, -(X64.PC + 4))  (* Offset from next instruction to module address 0 *)
-END CallSysFn;
-
 
 
 PROCEDURE StoreStruct*(VAR x, y: Item);   (* x := y *)
@@ -1352,6 +1370,7 @@ BEGIN
   Trace(TraceAny, "PrepCall(x: "); l.Item(x, Tr);
   l.s("), SPO ", Tr);             l.i(X64.SPO, Tr); l.n(Tr);
   saved := AllFree - Free;
+  Depar(x);
   IF x.mode = Eadr THEN EXCL(saved, x.n); IF x.index >= 0 THEN EXCL(saved, x.index) END END;
   IF saved # {} THEN  (* Save partially evaluated expression *)
     FOR i := 0 TO 15 DO IF i IN saved THEN PushReg(i);  X64.AdjustStack(1) END END;
@@ -2113,6 +2132,8 @@ BEGIN
   Disassemble(x.mode, "Compare")
 END Compare;
 
+
+(* TODO support e.g.  'boolvar = (a = b)' *)
 PROCEDURE IntRelation*(op: INTEGER; VAR x, y: Item);   (* x := x < y *)
 VAR immrel: BOOLEAN;
 BEGIN
@@ -2524,22 +2545,6 @@ BEGIN Trace(TraceAny, "Index(x: "); l.Item(x, Tr); l.s(", y: ", Tr); l.Item(y, T
   Disassemble(y.mode, "Index")
 END Index;
 
-PROCEDURE DeRef*(VAR x: Item);
-BEGIN Trace(TraceAny, "DeRef(x), x: "); l.Item(x, Tr); l.n(Tr);
-  ASSERT(x.type.form = ORB.Pointer);
-  IF ~(x.mode IN {Stkind, Eadr, Code, String, Global, Import}) THEN
-    ORS.Mark("Variable expected");
-  END;
-  Load(x);  x.mode := Eadr;
-  Disassemble(0, "DeRef");
-  IF ~ORS.Hasty THEN
-    OpModRegRm(85H, Reg, x.n, 8, x.n, -1, 0, 0, 0);  (* test reg,reg *)
-    X64.Emit(75H);  X64.Emit(6);  (* jnz: if pointer not NIL *)
-    CallSysFn(H.NilPointerDereferenceProc);
-    Disassemble(0, "NIL pointer trap")
-  END
-END DeRef;
-
 
 (* ---- Control flow ---- *)
 
@@ -2785,17 +2790,63 @@ BEGIN
   IF ORS.ListAssembly THEN l.DisassembleString(Disasmpc) END;
 END BuildTD;
 
-PROCEDURE TypeTest*(VAR x: X64.Item; T: ORB.Type; varpar, isguard: BOOLEAN);
+PROCEDURE TypeTest*(VAR X: X64.Item; T: ORB.Type; varpar, isguard: BOOLEAN);
+VAR r1, r2, pc: INTEGER;  x: Item;
 BEGIN
   Trace(TraceAny, "TypeTest(x: "); l.Item(x, Tr);
-  l.s(", T: ", Tr);               l.Type(T, Tr);
+  l.s(", T: ", Tr);                l.Type(T, Tr);
   IF varpar  THEN l.s(", varpar, ", Tr)  ELSE l.s("~varpar, ", Tr)  END;
   IF isguard THEN l.sn(", isguard)", Tr) ELSE l.sn(", ~isguard)", Tr) END;
-  (*ASSERT(FALSE)*)
+(*
+  ASSERT(varpar = (x.mode = Strucp));
+*)
+  x := X;
+  IF varpar THEN ASSERT(x.mode = Strucp) ELSE ASSERT (x.mode # Strucp) END;
+  r1 := Reserve(-1, {});
+  ASSERT(x.type.form = ORB.Pointer);
+  IF x.mode = Strucp THEN
+    LoadMem(r1, Eadr, FALSE, 8, RSP, -1, 0, x.n + 8 * X64.SPO + 8);
+  ELSE
+    LoadReg(r1, x);  (* Load pointer value *)
+    OpModRegRm(85H, Reg, r1, 8, r1, -1, 0, 0, 0);  (* test r1,r1 *)
+    X64.Emit(74H);  pc := X64.PC;  X64.Emit(0);   (* jz: if NIL - which matches all types *)
+    LoadMem(r1, Eadr, FALSE, 8, r1, -1, 0, -10H);  (* Load type tag *)
+  END;
+  r2 := Reserve(-1, {});
+  LoadTypeAddress(r2, T);
+  AluOpToReg(Cmp, Reg, r1, FALSE, 8, r2, -1, 0, 0);  (* cmp r1,r2 *)
+  Release(r1); Release(r2);
+  X64.Patch(pc, 1, X64.PC - (pc + 1));
+  IF isguard THEN
+    X64.Emit(74H);  X64.Emit(6);  (* je: if types match *)
+    CallSysFn(H.TypeGuardFailureProc);
+    Disassemble(0, "Guard type test ");
+  ELSE
+    SetCondition(X, CZ);
+    Disassemble(0, "'IS' Type test ");
+  END;
+  H.wcn; H.ws("TypeTest exit, X.mode = "); H.wi(X.mode); H.wsn(".")
 END TypeTest;
-
-
-(* ---- ---- *)
+(* ------------------------------------------------------------------------ *)
+(* PROCEDURE TypeTest*(VAR x: Item; T: ORB.Type; varpar, isguard: BOOLEAN); *)
+(*   VAR pc0: LONGINT;                                                      *)
+(* BEGIN (*fetch tag into RH*)                                              *)
+(*   IF varpar THEN Put2(Ldr, RH, SP, x.a+4+frame)                          *)
+(*   ELSE load(x);                                                          *)
+(*     pc0 := pc; Put3(BC, EQ, 0);  (*NIL belongs to every pointer type*)   *)
+(*     Put2(Ldr, RH, x.r, -8)                                               *)
+(*   END ;                                                                  *)
+(*   Put2(Ldr, RH, RH, T.nofpar*4); incR;                                   *)
+(*   loadTypTagAdr(T);  (*tag of T*)                                        *)
+(*   Put0(Cmp, RH-1, RH-1, RH-2); DEC(RH, 2);                               *)
+(*   IF ~varpar THEN fix(pc0, pc - pc0 - 1) END ;                           *)
+(*   IF isguard THEN                                                        *)
+(*     IF check THEN Trap(NE, 2) END                                        *)
+(*   ELSE SetCC(x, EQ);                                                     *)
+(*     IF ~varpar THEN DEC(RH) END                                          *)
+(*   END                                                                    *)
+(* END TypeTest;                                                            *)
+(* ------------------------------------------------------------------------ *)
 
 PROCEDURE Open*(sourcefile: Files.File;  modid: ARRAY OF CHAR);
 VAR i: INTEGER;

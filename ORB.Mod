@@ -174,6 +174,7 @@ BEGIN s := topScope;
   RETURN x
 END thisObj;
 
+(*$la+lc+*)
 PROCEDURE SystemImported*(): BOOLEAN;
 VAR s, x: Object;
 BEGIN s := topScope;
@@ -184,6 +185,7 @@ BEGIN s := topScope;
     s := s.dsc
   UNTIL (x # NIL) OR (s = NIL);
 RETURN x # NIL END SystemImported;
+(*$la-lc-*)
 
 PROCEDURE thisimport*(mod: Object): Object;
 VAR obj: Object;
@@ -372,6 +374,7 @@ VAR obj, mod, fld: Object;
     END
   END OutPar;
 
+(*$la+lc+*)
   PROCEDURE FindHiddenPointers(VAR R: Files.Rider; typ: Type; offset: INTEGER);
     VAR fld: Object; i, n: INTEGER;
   BEGIN
@@ -426,6 +429,7 @@ BEGIN
     END
   END
 END OutType;
+(*$la-lc-*)
 
 PROCEDURE Export*(VAR modid: ORS.Ident; VAR newSF: BOOLEAN; VAR key: INTEGER);
 VAR x, sum, oldkey: INTEGER;

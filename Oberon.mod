@@ -174,11 +174,12 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
     END
   END RemoveMarks;
 
+  (*$la+lc+*)
   PROCEDURE HandleFiller (V: Display.Frame; VAR M: Display.FrameMsg);
   BEGIN
     CASE M OF
-    InputMsg: IF M.id = track THEN DrawCursor(Mouse, Arrow, M.X, M.Y) END |
-    ControlMsg: IF M.id = mark THEN DrawCursor(Pointer, Star, M.X, M.Y) END |
+    InputMsg:   IF M.id = track THEN DrawCursor(Mouse, Arrow, M.X, M.Y)  END |
+    ControlMsg: IF M.id = mark  THEN DrawCursor(Pointer, Star, M.X, M.Y) END |
     Viewers.ViewerMsg:
       IF (M.id = Viewers.restore) & (V.W > 0) & (V.H > 0) THEN
         RemoveMarks(V.X, V.Y, V.W, V.H);
@@ -189,6 +190,7 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
       END
     END
   END HandleFiller;
+  (*$la-lc-*)
 
   PROCEDURE OpenDisplay* (UW, SW, H: INTEGER);
     VAR Filler: Viewers.Viewer;
