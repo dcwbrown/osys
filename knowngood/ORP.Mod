@@ -123,7 +123,7 @@ VAR xt: ORB.Type;
 BEGIN xt := x.type;
   IF (T.form = xt.form )
    & (   (T.form = ORB.Pointer)
-      OR (T.form = ORB.Record) & (x.mode = X64.Stkind)) THEN
+      OR (T.form = ORB.Record) & (x.mode = X64.Strucp)) THEN
     WHILE (xt # T) & (xt # NIL) DO xt := xt.base END;
     IF xt # T THEN xt := x.type;
       IF xt.form = ORB.Pointer THEN
@@ -132,7 +132,7 @@ BEGIN xt := x.type;
           x.type := T
         ELSE ORS.Mark("not an extension")
         END
-      ELSIF (xt.form = ORB.Record) & (x.mode = X64.Stkind) THEN
+      ELSIF (xt.form = ORB.Record) & (x.mode = X64.Strucp) THEN
         IF IsExtension(xt, T) THEN  ORG.TypeTest(x, T, TRUE, guard);  x.type := T
         ELSE ORS.Mark("not an extension")
         END
@@ -531,19 +531,24 @@ VAR obj:         ORB.Object;
     L0, L1:      INTEGER;
     saved:       SET;
 
-  PROCEDURE TypeCase(obj: ORB.Object;  VAR x: X64.Item);
+  PROCEDURE TypeCase(obj: ORB.Object;  VAR x: X64.Item;  ann: ORG.BodyAnnotation);
     VAR typobj: ORB.Object;
   BEGIN
+    (* H.wcn; H.wsn("TypeCase."); *)
     IF sym = ORS.ident THEN
       qualident(typobj);  ORG.MakeItem(x, obj, level);
       IF typobj.class # ORB.Typ THEN ORS.Mark("not a type") END;
-      TypeTest(x, typobj.type, FALSE);  obj.type := typobj.type;
+      (* H.wsn("  calling TypeTest"); *)
+      TypeTest(x, typobj.type, FALSE);
+      (* H.wcn; H.wsn("  TypeTest returned."); *)
+
+      obj.type := typobj.type;
       ORG.CFJump(x);  Check(ORS.colon, ": expected");  StatSequence(ann)
     ELSE ORG.CFJump(x);  ORS.Mark("type id expected")
     END
    END TypeCase;
 
-  PROCEDURE SkipCase;
+  PROCEDURE SkipCase(ann: ORG.BodyAnnotation);
   BEGIN
     WHILE sym # ORS.colon DO ORS.Get(sym) END;
     ORS.Get(sym);  StatSequence(ann)
@@ -671,14 +676,15 @@ BEGIN (* StatSequence *)
       IF sym = ORS.ident THEN
         qualident(obj);  orgtype := obj.type;
         IF (orgtype.form = ORB.Pointer) OR (orgtype.form = ORB.Record) & (obj.class = ORB.Par) THEN
-          Check(ORS.of, "OF expected");  TypeCase(obj, x);  L0 := 0;
+          Check(ORS.of, "OF expected");  TypeCase(obj, x, ann);  L0 := 0;
           WHILE sym = ORS.bar DO
-            ORS.Get(sym);  ORG.FJump(L0);  ORG.FixLink(x.offset);  obj.type := orgtype;  TypeCase(obj, x)
+            ORS.Get(sym);  ORG.FJump(L0);  ORG.FixLink(x.offset);
+            obj.type := orgtype;  TypeCase(obj, x, ann)
           END;
           ORG.FixLink(x.offset);  ORG.FixLink(L0);  obj.type := orgtype
         ELSE ORS.Mark("numeric case not implemented");
-          Check(ORS.of, "OF expected");  SkipCase;
-          WHILE sym = ORS.bar DO SkipCase END
+          Check(ORS.of, "OF expected");  SkipCase(ann);
+          WHILE sym = ORS.bar DO SkipCase(ann) END
         END
       ELSE ORS.Mark("ident expected")
       END;

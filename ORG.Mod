@@ -2596,12 +2596,23 @@ BEGIN
   Trace(TraceAny, "CBJump(x: "); l.Item(x, Tr);
   l.s(", L: ", Tr);             l.i(L, Tr); l.sn(")", Tr);
   IF x.mode # Cond THEN LoadFlags(x) END;
-  cond := InvertedCondition(x.n);  ASSERT(cond DIV 16 = 8);
+  cond := InvertedCondition(x.n);
   ASSERT(L < X64.PC);
-  IF L - (X64.PC + 1) >= -80H THEN
-    X64.Emit(70H + cond MOD 16);    X64.Emit(L - (X64.PC + 1))
+  IF cond DIV 16 = 8 THEN
+    IF L - (X64.PC + 1) >= -80H THEN
+      X64.Emit(70H + cond MOD 16);    X64.Emit(L - (X64.PC + 1))
+    ELSE
+      X64.Emit(0FH);  X64.Emit(cond); X64.EmitBytes(4, L - (X64.PC + 4))
+    END
   ELSE
-    X64.Emit(0FH);  X64.Emit(cond); X64.EmitBytes(4, L - (X64.PC + 4))
+    IF cond # 1 THEN ASSERT(cond = 0) ELSE
+      (* Unconditional backward jump *)
+      IF L - (X64.PC + 1) >= -80H THEN
+        X64.Emit(0EBH);  X64.Emit(L - (X64.PC + 1))
+      ELSE
+        X64.Emit(0E9H);  X64.EmitBytes(4, L - (X64.PC + 4))
+      END
+    END
   END;
   Disassemble(0, "CBJump");
   FixLink(x.index);
@@ -2801,9 +2812,12 @@ BEGIN
   ASSERT(varpar = (x.mode = Strucp));
 *)
   x := X;
-  IF varpar THEN ASSERT(x.mode = Strucp) ELSE ASSERT (x.mode # Strucp) END;
+  IF varpar THEN
+    ASSERT(x.mode = Strucp);  ASSERT(x.type.form = ORB.Record)
+  ELSE
+    ASSERT(x.mode # Strucp);  ASSERT(x.type.form = ORB.Pointer)
+  END;
   r1 := Reserve(-1, {});
-  ASSERT(x.type.form = ORB.Pointer);
   IF x.mode = Strucp THEN
     LoadMem(r1, Eadr, FALSE, 8, RSP, -1, 0, x.n + 8 * X64.SPO + 8);
   ELSE
@@ -2825,7 +2839,7 @@ BEGIN
     SetCondition(X, CZ);
     Disassemble(0, "'IS' Type test ");
   END;
-  H.wcn; H.ws("TypeTest exit, X.mode = "); H.wi(X.mode); H.wsn(".")
+  (*H.wcn; H.ws("TypeTest exit, X.mode = "); H.wi(X.mode); H.wsn(".")*)
 END TypeTest;
 (* ------------------------------------------------------------------------ *)
 (* PROCEDURE TypeTest*(VAR x: Item; T: ORB.Type; varpar, isguard: BOOLEAN); *)

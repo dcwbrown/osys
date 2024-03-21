@@ -427,6 +427,7 @@ BEGIN
   END
 END OutType;
 
+
 PROCEDURE Export*(VAR modid: ORS.Ident; VAR newSF: BOOLEAN; VAR key: INTEGER);
 VAR x, sum, oldkey: INTEGER;
     obj, obj0: Object;

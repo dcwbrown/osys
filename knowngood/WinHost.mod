@@ -13,6 +13,7 @@ CONST
   UnterminatedStringProc*    = 3;
   IndexOutOfRangeProc*       = 4;
   NilPointerDereferenceProc* = 5;
+  TypeGuardFailureProc*      = 6;
 
   MaxPath* = 780;  (* Enough UTF-8 bytes for for 260 wide chars *)
 
@@ -166,7 +167,8 @@ VAR
   Stdin:      INTEGER;
   Stdout:     INTEGER;
   crlf*:      ARRAY 3 OF CHAR;
-  Log*:       PROCEDURE(s: ARRAY OF BYTE);
+  Log:        PROCEDURE(s: ARRAY OF BYTE);
+  Sol:        BOOLEAN;   (* True only at start of line *)
   OberonAdr*: INTEGER;   (* Address of first module (WinHost.mod) *)
   LoadAdr:    INTEGER;   (* Where to load next module *)
   HWnd:       INTEGER;   (* Set if a window has been created *)
@@ -178,6 +180,7 @@ VAR
   UnterminatedString:    PROCEDURE;
   IndexOutOfRange:       PROCEDURE;
   NilPointerDereference: PROCEDURE;
+  TypeGuardFailure:      PROCEDURE;
   PostMortemDump:        PROCEDURE(modadr, offset: INTEGER);
 
   ExceptionDepth: INTEGER;
@@ -290,27 +293,29 @@ BEGIN RETURN TimeAsClock(Time()) END Clock;
 (* ---------------- Simple logging/debugging console output ----------------- *)
 (* -------------------------------------------------------------------------- *)
 
-PROCEDURE wc*(c: CHAR); BEGIN Log(c) END wc;
+PROCEDURE wc*(c: CHAR); BEGIN Log(c); Sol := FALSE END wc;
 
-PROCEDURE wn*; BEGIN Log(crlf) END wn;
+PROCEDURE wn*; BEGIN Log(crlf); Sol := TRUE END wn;
 
-PROCEDURE ws*(s: ARRAY OF CHAR); BEGIN Log(s) END ws;
+PROCEDURE wcn*; BEGIN IF ~Sol THEN wn END END wcn;  (* Conditional newline *)
+
+PROCEDURE ws*(s: ARRAY OF CHAR); BEGIN Log(s); Sol := FALSE END ws;
 
 PROCEDURE wsl*(s: ARRAY OF CHAR; w: INTEGER);  (* Left justified with trailing spaces *)
-BEGIN Log(s);  DEC(w, Length(s));  WHILE w > 0 DO wc(" "); DEC(w) END END wsl;
+BEGIN Log(s);  DEC(w, Length(s));  WHILE w > 0 DO wc(" "); DEC(w) END; Sol := FALSE END wsl;
 
 PROCEDURE wsr*(s: ARRAY OF CHAR; w: INTEGER);  (* Right justified with leading spaces *)
-BEGIN DEC(w, Length(s));  WHILE w > 0 DO wc(" "); DEC(w) END; Log(s) END wsr;
+BEGIN DEC(w, Length(s));  WHILE w > 0 DO wc(" "); DEC(w) END; Log(s); Sol := FALSE END wsr;
 
 PROCEDURE wsz*(s: ARRAY OF CHAR; w: INTEGER);  (* Right justified with leading zeroes *)
-BEGIN DEC(w, Length(s));  WHILE w > 0 DO wc("0"); DEC(w) END; Log(s) END wsz;
+BEGIN DEC(w, Length(s));  WHILE w > 0 DO wc("0"); DEC(w) END; Log(s); Sol := FALSE END wsz;
 
-PROCEDURE wsn*(s: ARRAY OF CHAR); BEGIN Log(s); Log(crlf) END wsn;
+PROCEDURE wsn*(s: ARRAY OF CHAR); BEGIN Log(s); Log(crlf); Sol := TRUE END wsn;
 
 
 PROCEDURE wh*(n: INTEGER);
 VAR hex: ARRAY 32 OF CHAR;
-BEGIN IntToHex(n, hex); Log(hex) END wh;
+BEGIN IntToHex(n, hex); Log(hex); Sol := FALSE END wh;
 
 PROCEDURE whl*(n, w: INTEGER);  (* Left justified with trailing spaces *)
 VAR hex: ARRAY 32 OF CHAR;
@@ -327,7 +332,7 @@ BEGIN IntToHex(n, hex); wsz(hex, w) END whz;
 
 PROCEDURE wi*(n: INTEGER);
 VAR dec: ARRAY 32 OF CHAR;
-BEGIN IntToDecimal(n, dec); Log(dec) END wi;
+BEGIN IntToDecimal(n, dec); Log(dec); Sol := FALSE END wi;
 
 PROCEDURE wil*(n, w: INTEGER);  (* Left justified with trailing spaces *)
 VAR dec: ARRAY 32 OF CHAR;
@@ -666,19 +671,22 @@ BEGIN
 END Trap;
 
 PROCEDURE AssertionFailureHandler();
-BEGIN wn; Trap("** Assertion failure") END AssertionFailureHandler;
+BEGIN wn; Trap("** Assertion failure")      END AssertionFailureHandler;
 
 PROCEDURE ArraySizeMismatchHandler();
-BEGIN wn; Trap("** Array size mismatch") END ArraySizeMismatchHandler;
+BEGIN wn; Trap("** Array size mismatch")     END ArraySizeMismatchHandler;
 
 PROCEDURE UnterminatedStringHandler();
-BEGIN wn; Trap("** Unterminated string") END UnterminatedStringHandler;
+BEGIN wn; Trap("** Unterminated string")     END UnterminatedStringHandler;
 
 PROCEDURE IndexOutOfRangeHandler();
-BEGIN wn; Trap("** Index out of range") END IndexOutOfRangeHandler;
+BEGIN wn; Trap("** Index out of range")      END IndexOutOfRangeHandler;
 
 PROCEDURE NilPointerDereferenceHandler();
 BEGIN wn; Trap("** NIL pointer dereference") END NilPointerDereferenceHandler;
+
+PROCEDURE TypeGuardFailureHandler();
+BEGIN wn; Trap("** Type guard failure")      END TypeGuardFailureHandler;
 
 PROCEDURE NewPointerHandler(ptr, len: INTEGER);
 BEGIN wn; Trap("** New pointer handler not istalled") END NewPointerHandler;
@@ -1020,6 +1028,7 @@ BEGIN
       ELSIF impno = UnterminatedStringProc    THEN disp := SYSTEM.ADR(UnterminatedString)    + disp - LoadAdr
       ELSIF impno = IndexOutOfRangeProc       THEN disp := SYSTEM.ADR(IndexOutOfRange)       + disp - LoadAdr
       ELSIF impno = NilPointerDereferenceProc THEN disp := SYSTEM.ADR(NilPointerDereference) + disp - LoadAdr
+      ELSIF impno = TypeGuardFailureProc      THEN disp := SYSTEM.ADR(TypeGuardFailure)      + disp - LoadAdr
       ELSE  assert(FALSE) (*, "LoadModule: Unexpected system function import number.")*)
       END;
       SYSTEM.PUT(LoadAdr + offset, disp)
@@ -1119,6 +1128,7 @@ RETURN result END GetRSP;
 BEGIN
   HWnd                  := 0;
   Log                   := NoLog;
+  Sol                   := FALSE;
   ExceptionDepth        := 0;
   NewPointer            := NIL;
   AssertionFailure      := NIL;
@@ -1126,6 +1136,7 @@ BEGIN
   UnterminatedString    := NIL;
   IndexOutOfRange       := NIL;
   NilPointerDereference := NIL;
+  TypeGuardFailure      := NIL;
   PostMortemDump        := NIL;
 
   (* Initialise console input/output *)
@@ -1164,6 +1175,7 @@ BEGIN
   UnterminatedString    := UnterminatedStringHandler;
   IndexOutOfRange       := IndexOutOfRangeHandler;
   NilPointerDereference := NilPointerDereferenceHandler;
+  TypeGuardFailure      := TypeGuardFailureHandler;
 
   (* Trap OS exceptions *)
   IF AddVectoredExceptionHandler(1, SYSTEM.ADR(ExceptionHandler)) = 0 THEN

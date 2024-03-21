@@ -7,8 +7,9 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
     BasicCycle = 20;
     ESC = 1BX; SETSTAR = 1AX;
 
-  TYPE Painter* = PROCEDURE (x, y: INTEGER);
-    Marker* = RECORD Fade*, Draw*: Painter END;
+  TYPE
+    Painter* = PROCEDURE (x, y: INTEGER);
+    Marker*  = RECORD Fade*, Draw*: Painter END;
     
     Cursor* = RECORD
         marker*: Marker; on*: BOOLEAN; X*, Y*: INTEGER
@@ -24,9 +25,9 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
     END;
 
     SelectionMsg* = RECORD (Display.FrameMsg)
-      time*: LONGINT;
+      time*: INTEGER;
       text*: Texts.Text;
-      beg*, end*: LONGINT
+      beg*, end*: INTEGER
     END;
 
     ControlMsg* = RECORD (Display.FrameMsg)
@@ -47,32 +48,34 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
       handle: Handler
     END;
 
-  VAR User*: ARRAY 8 OF CHAR; Password*: LONGINT;
-    Arrow*, Star*: Marker;
+  VAR
+    User*:          ARRAY 8 OF CHAR;
+    Password*:      INTEGER;
+    Arrow*, Star*:  Marker;
     Mouse, Pointer: Cursor;
-    FocusViewer*: Viewers.Viewer;
-    Log*: Texts.Text;
+    FocusViewer*:   Viewers.Viewer;
+    Log*:           Texts.Text;
 
     Par*: RECORD
-      vwr*: Viewers.Viewer;
+      vwr*:   Viewers.Viewer;
       frame*: Display.Frame;
-      text*: Texts.Text;
-      pos*: LONGINT
+      text*:  Texts.Text;
+      pos*:   INTEGER
     END;
 
     CurFnt*: Fonts.Font;
     CurCol*, CurOff*: INTEGER;
     NofTasks*: INTEGER;
 
-    CurTask: Task;
+    CurTask:    Task;
     DW, DH, CL: INTEGER;
-    ActCnt: INTEGER; (*action count for GC*)
-    Mod: Modules.Module;
+    ActCnt:     INTEGER; (*action count for GC*)
+    Mod:        Modules.Module;
 
   (*user identification*)
 
-  PROCEDURE Code(VAR s: ARRAY OF CHAR): LONGINT;
-    VAR i: INTEGER; a, b, c: LONGINT;
+  PROCEDURE Code(VAR s: ARRAY OF CHAR): INTEGER;
+    VAR i: INTEGER; a, b, c: INTEGER;
   BEGIN
     a := 0; b := 0; i := 0;
     WHILE s[i] # 0X DO
@@ -87,15 +90,17 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
   BEGIN User := user; Password := Code(password)
   END SetUser;
 
-  PROCEDURE Clock*(): LONGINT;
+  PROCEDURE Clock*(): INTEGER;
   BEGIN RETURN Kernel.Clock()
   END Clock;
 
-  PROCEDURE SetClock* (d: LONGINT);
+(*
+  PROCEDURE SetClock* (d: INTEGER);
   BEGIN Kernel.SetClock(d)
   END SetClock;
+*)
 
-  PROCEDURE Time*(): LONGINT;
+  PROCEDURE Time*(): INTEGER;
   BEGIN RETURN Kernel.Time()
   END Time;
 
@@ -118,7 +123,7 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
       IF X < 7 THEN X := 7 ELSIF X > DW - 8 THEN X := DW - 8 END
     ELSE
       IF X < CL + 7 THEN X := CL + 7 ELSIF X > CL + DW - 8 THEN X := CL + DW - 8 END
-    END ;
+    END;
     IF Y < 7 THEN Y := 7 ELSIF Y > DH - 8 THEN Y := DH - 8 END;
     Display.CopyPattern(Display.white, Display.star, X - 7, Y - 7, Display.invert)
   END FlipStar;
@@ -172,8 +177,8 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
   PROCEDURE HandleFiller (V: Display.Frame; VAR M: Display.FrameMsg);
   BEGIN
     CASE M OF
-    InputMsg: IF M.id = track THEN DrawCursor(Mouse, Arrow, M.X, M.Y) END |
-    ControlMsg: IF M.id = mark THEN DrawCursor(Pointer, Star, M.X, M.Y) END |
+    InputMsg:   IF M.id = track THEN DrawCursor(Mouse, Arrow, M.X, M.Y)  END |
+    ControlMsg: IF M.id = mark  THEN DrawCursor(Pointer, Star, M.X, M.Y) END |
     Viewers.ViewerMsg:
       IF (M.id = Viewers.restore) & (V.W > 0) & (V.H > 0) THEN
         RemoveMarks(V.X, V.Y, V.W, V.H);
@@ -224,7 +229,7 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
       fil, bot, alt, max: Display.Frame;
   BEGIN
     Viewers.Locate(X, 0, fil, bot, alt, max);
-    IF fil.H >= DH DIV 8 THEN h := DH ELSE h := max.Y + max.H DIV 2 END ;
+    IF fil.H >= DH DIV 8 THEN h := DH ELSE h := max.Y + max.H DIV 2 END;
     RETURN h
   END UY;
 
@@ -248,7 +253,7 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
     ELSIF max # bot THEN y := max.Y + max.H DIV 2
     ELSIF bot.H >= H1 THEN y := bot.H DIV 2
     ELSE y := alt.Y + alt.H DIV 2
-    END ;
+    END;
     RETURN y
   END SY;
 
@@ -273,7 +278,7 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
   END OpenLog;
 
   (*command interpretation*)
-  PROCEDURE SetPar*(F: Display.Frame; T: Texts.Text; pos: LONGINT);
+  PROCEDURE SetPar*(F: Display.Frame; T: Texts.Text; pos: INTEGER);
   BEGIN Par.vwr := Viewers.This(F.X, F.Y); Par.frame := F; Par.text := T; Par.pos := pos
   END SetPar;
 
@@ -282,13 +287,13 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
       i, j: INTEGER; ch: CHAR;
       Mname, Cname: ARRAY 32 OF CHAR;
   BEGIN i := 0; ch := name[0];
-    WHILE (ch # ".") & (ch # 0X) DO Mname[i] := ch; INC(i); ch := name[i] END ;
+    WHILE (ch # ".") & (ch # 0X) DO Mname[i] := ch; INC(i); ch := name[i] END;
     IF ch = "." THEN
       Mname[i] := 0X; INC(i);
       Modules.Load(Mname, mod); res := Modules.res;
       IF Modules.res = 0 THEN
         j := 0; ch := name[i]; INC(i);
-        WHILE ch # 0X DO Cname[j] := ch; INC(j); ch := name[i]; INC(i) END ;
+        WHILE ch # 0X DO Cname[j] := ch; INC(j); ch := name[i]; INC(i) END;
         Cname[j] := 0X;
         P := Modules.ThisCommand(mod, Cname); res := Modules.res;
         IF Modules.res = 0 THEN P END
@@ -297,28 +302,30 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
     END
   END Call;
 
-  PROCEDURE GetSelection* (VAR text: Texts.Text; VAR beg, end, time: LONGINT);
+  PROCEDURE GetSelection* (VAR text: Texts.Text; VAR beg, end, time: INTEGER);
     VAR M: SelectionMsg;
   BEGIN
     M.time := -1; Viewers.Broadcast(M); time := M.time;
     IF time >= 0 THEN text := M.text; beg := M.beg; end := M.end END
   END GetSelection;
 
+  (*
   PROCEDURE GC;
     VAR mod: Modules.Module;
   BEGIN
     IF (ActCnt <= 0) OR (Kernel.allocated >= Kernel.heapLim - Kernel.heapOrg - 10000H) THEN
       mod := Modules.root; LED(21H);
       WHILE mod # NIL DO
-        IF mod.name[0] # 0X THEN Kernel.Mark(mod.ptr) END ;
+        IF mod.name[0] # 0X THEN Kernel.Mark(mod.ptr) END;
         mod := mod.next
-      END ;
+      END;
       LED(23H);
       Files.RestoreList; LED(27H);
       Kernel.Scan; LED(20H);
       ActCnt := BasicCycle
     END
   END GC;
+  *)
 
   PROCEDURE NewTask*(h: Handler; period: INTEGER): Task;
     VAR t: Task;
@@ -336,7 +343,7 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
     VAR t: Task;
   BEGIN
     IF T.state # off THEN t := T;
-      WHILE t.next # T DO t := t.next END ;
+      WHILE t.next # T DO t := t.next END;
       t.next := T.next; T.state := off; T.next := NIL; CurTask := t; DEC(NofTasks)
     END
   END Remove;
@@ -365,7 +372,8 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
       Input.Mouse(keys, X, Y);
       IF Input.Available() > 0 THEN Input.Read(ch);
         IF ch = ESC THEN
-          N.id := neutralize; Viewers.Broadcast(N); FadeCursor(Pointer); LED(0)
+          N.id := neutralize; Viewers.Broadcast(N); FadeCursor(Pointer);
+          (*LED(0)*)
         ELSIF ch = SETSTAR THEN
           N.id := mark; N.X := X; N.Y := Y; V := Viewers.This(X, Y); V.handle(V, N)
         ELSE M.id := consume; M.ch := ch; M.fnt := CurFnt; M.col := CurCol; M.voff := CurOff;
@@ -379,7 +387,7 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
       ELSE
         IF (X # prevX) OR (Y # prevY) OR ~Mouse.on THEN
           M.id := track; M.X := X; 
-          IF Y >= Display.Height THEN Y := Display.Height END ;
+          IF Y >= Display.Height THEN Y := Display.Height END;
           M.Y := Y; M.keys := keys; V := Viewers.This(X, Y); V.handle(V, M); prevX := X; prevY := Y
         END;
         CurTask := CurTask.next; t := Kernel.Time();
@@ -392,8 +400,9 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
 
   PROCEDURE Reset*;
   BEGIN
-    IF CurTask.state = active THEN Remove(CurTask) END ;
-    SYSTEM.LDREG(14, Kernel.stackOrg); (*reset stack pointer*) Loop
+    IF CurTask.state = active THEN Remove(CurTask) END;
+    (* SYSTEM.LDREG(14, Kernel.stackOrg); (*reset stack pointer*) *)
+    Loop
   END Reset;
 
 BEGIN User[0] := 0X;
@@ -406,6 +415,6 @@ BEGIN User[0] := 0X;
   FocusViewer := Viewers.This(0, 0);
   CurFnt := Fonts.Default; CurCol := Display.white; CurOff := 0;
 
-  ActCnt := 0; CurTask := NewTask(GC, 1000); Install(CurTask);
+  (* ActCnt := 0; CurTask := NewTask(GC, 1000); Install(CurTask); *)
   Modules.Load("System", Mod); Mod := NIL; Loop
 END Oberon.

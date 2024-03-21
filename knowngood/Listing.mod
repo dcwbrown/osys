@@ -32,11 +32,11 @@ VAR
 
 (* -------- Local implementation of write fns with line suppression --------- *)
 
-PROCEDURE wc*(c: CHAR); BEGIN IF ~Skip THEN H.Log(c) END END wc;
+PROCEDURE wc*(c: CHAR); BEGIN IF ~Skip THEN H.wc(c) END END wc;
 
-PROCEDURE wn*; BEGIN IF Skip THEN Skip := FALSE ELSE H.Log(H.crlf) END END wn;
+PROCEDURE wn*; BEGIN IF Skip THEN Skip := FALSE ELSE H.wn END END wn;
 
-PROCEDURE ws*(s: ARRAY OF CHAR); BEGIN IF ~Skip THEN H.Log(s) END END ws;
+PROCEDURE ws*(s: ARRAY OF CHAR); BEGIN IF ~Skip THEN H.ws(s) END END ws;
 
 PROCEDURE wsr*(s: ARRAY OF CHAR; w: INTEGER);  (* Right justified with leading spaces *)
 BEGIN DEC(w, H.Length(s)); WHILE w > 0 DO wc(" "); DEC(w) END; ws(s) END wsr;
