@@ -2382,6 +2382,7 @@ BEGIN
         Release(reg)
       ELSE
         Depar(y);
+        IF y.type.size # 8 THEN Load(y) END;
         OpItem(0F7H, 7, 8, 0, y);                        (* idiv y *)
       END;
       Disassemble(y.mode, "DivOp divide");
@@ -2827,6 +2828,7 @@ BEGIN
     X64.Emit(74H);  pc := X64.PC;  X64.Emit(0);   (* jz: if NIL - which matches all types *)
     LoadMem(r1, Eadr, FALSE, 8, r1, -1, 0, -10H);  (* Load type tag *)
   END;
+  Disassemble(Eadr, "TypeTest load record type tag");
   r2 := Reserve(-1, {});
   LoadTypeAddress(r2, T);
   AluOpToReg(Cmp, Reg, r1, FALSE, 8, r2, -1, 0, 0);  (* cmp r1,r2 *)

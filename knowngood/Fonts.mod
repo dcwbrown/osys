@@ -61,18 +61,19 @@ BEGIN
   IF F = NIL THEN
     f := Files.Old(name);
     IF f # NIL THEN
-      H.wcn; H.wsn("*1");
+      (*H.wcn; H.wsn("*1");*)
       Files.Set(R, f, 0); Files.ReadByte(R, b);
       IF b = FontFileId THEN
-        H.wcn; H.ws("*2: ");
-        Files.ReadByte(R, b); (*abstraction*) H.ws("abstraction ");  H.wi(b);
-        Files.ReadByte(R, b); (*family*)      H.ws(", family ");     H.wi(b);
-        Files.ReadByte(R, b); (*variant*)     H.ws(", variant ");    H.wi(b);  H.wsn(".");
+        (*H.wcn; H.ws("*2: ");*)
+        Files.ReadByte(R, b); (*abstraction*) (*H.ws("abstraction ");  H.wi(b);*)
+        Files.ReadByte(R, b); (*family*)      (*H.ws(", family ");     H.wi(b);*)
+        Files.ReadByte(R, b); (*variant*)     (*H.ws(", variant ");    H.wi(b);  H.wsn(".");*)
         NEW(F); F.name := name;
         RdInt16(R, height);
         RdInt16(R, minX); RdInt16(R, maxX);
         RdInt16(R, minY); RdInt16(R, maxY);
         RdInt16(R, NofRuns);
+        (*
         H.wcn; H.ws("*3: ");
         H.ws("height ");    H.wi(height);
         H.ws(", minX ");    H.wi(minX);
@@ -80,6 +81,7 @@ BEGIN
         H.ws(", minY ");    H.wi(minY);
         H.ws(", maxY ");    H.wi(maxY);
         H.ws(", NofRuns "); H.wi(NofRuns);  H.wsn(".");
+        *)
         NofBoxes := 0;
         k        := 0;
         WHILE k # NofRuns DO
@@ -90,7 +92,7 @@ BEGIN
         END;
         NofBytes := 5;
         j := 0;
-        H.wcn; H.ws("*4: NofBoxes "); H.wi(NofBoxes); H.wsn(".");
+        (*H.wcn; H.ws("*4: NofBoxes "); H.wi(NofBoxes); H.wsn(".");*)
         WHILE j # NofBoxes DO
           RdInt16(R, box[j].dx);
           RdInt16(R, box[j].x); RdInt16(R, box[j].y);
@@ -98,27 +100,31 @@ BEGIN
           NofBytes := NofBytes + 5 + (box[j].w + 7) DIV 8 * box[j].h;
           INC(j)
         END;
-        H.ws("*5: NofBytes "); H.wi(NofBytes); H.wsn(".");
+        (*H.ws("*5: NofBytes "); H.wi(NofBytes); H.wsn(".");*)
         IF NofBytes < 2300 THEN NEW(F) ELSE NEW(LF); F := LF END ;
         F.name := name;
         F.height := height; F.minX := minX; F.maxX := maxX; F.maxY := maxY;
         IF minY >= 80H THEN F.minY := minY - 100H ELSE F.minY := minY END ;
+        (*
         H.ws("  F.minX "); H.wi(F.minX);
         H.ws(", F.maxX "); H.wi(F.maxX);
         H.ws(", F.minY "); H.wi(F.minY);
         H.ws(", F.maxY "); H.wi(F.maxY);  H.wsn(".");
+        *)
         a0 := SYSTEM.ADR(F.raster);
         SYSTEM.PUT(a0, 0X); SYSTEM.PUT(a0+1, 0X); SYSTEM.PUT(a0+2, 0X); SYSTEM.PUT(a0+3, 0X); SYSTEM.PUT(a0+4, 0X);
         (*null pattern for characters not in a run*)
         INC(a0, 2); a := a0+3; j := 0; k := 0; m := 0;
-        H.wcn; H.wsn("*6");
+        (*H.wcn; H.wsn("*6");*)
         WHILE k < NofRuns DO
           WHILE (m < run[k].beg) & (m < 128) DO F.T[m] := a0; INC(m) END;
           WHILE (m < run[k].end) & (m < 128) DO
+            (*
             H.ws("*7: k ");        H.wi(k);
             H.ws(", m ");          H.wi(m);
             H.ws(", run[k].end "); H.wi(run[k].end);
             H.ws(", a ");          H.wi(a);H.wsn(".");
+            *)
             F.T[m] := a+3;
             SYSTEM.PUT(a,   box[j].dx);
             SYSTEM.PUT(a+1, box[j].x);
@@ -126,15 +132,15 @@ BEGIN
             SYSTEM.PUT(a+3, box[j].w);
             SYSTEM.PUT(a+4, box[j].h);
             INC(a, 5);
+            (*
             H.ws("  box[j].w "); H.wi(box[j].w);
             H.ws("  box[j].h "); H.wi(box[j].h); H.wsn(".");
-            (*$la+lc+*)
+            *)
             n := (box[j].w + 7) DIV 8 * box[j].h;
-            H.ws("-> n "); H.wi(n); H.wsn(".");
-            (*$la-lc-*)
+            (*H.ws("-> n "); H.wi(n); H.wsn(".");*)
             WHILE n # 0 DO DEC(n); Files.ReadByte(R, b); SYSTEM.PUT(a, b); INC(a) END ;
             INC(j); INC(m);
-            H.wcn; H.wsn("*8");
+            (**H.wcn; H.wsn("*8");*)
         END;
           INC(k)
         END;

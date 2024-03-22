@@ -15,10 +15,6 @@ TYPE
     oldh:     INTEGER     (* Old handle for restoration following context operations *)
   END;
 
-  HostCharacterHandler* = PROCEDURE(ch: INTEGER);  (* Receives full UTF-32 codepoint *)
-  HostDrawHandler*      = PROCEDURE(x, y, width, height: INTEGER;  bitmap: HostBitmap);
-  HostMouseHandler*     = PROCEDURE(x, y: INTEGER; flags: SET);
-
 HostWindow* = POINTER TO HostWindowDesc;
   HostWindowDesc = RECORD
     hwnd:     INTEGER;
@@ -205,6 +201,7 @@ PROCEDURE Mouse(hwnd, msg, x, y: INTEGER; flags: SET);
 BEGIN
   IF x > 32767 THEN x := x - 10000H END; (* Sign extend 16 bit value *)
   IF y > 32767 THEN y := y - 10000H END; (* Sign extend 16 bit value *)
+  y := Window.height - 1 - y;
   ASSERT(Window.hwnd = hwnd);
   IF    msg = 201H (* WM_LBUTTONDOWN *) THEN H.SetCapture(hwnd)
   ELSIF msg = 202H (* WM_LBUTTONUP   *) THEN H.ReleaseCapture
@@ -647,7 +644,7 @@ BEGIN
     00 00 00 00 00 00 00 00  00 00 00 54 61 5B 52 5D
     00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00
     00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00$);
-  Width  := 1026; (*1800*)
+  Width  := 1024; (*1800*)
   Height := 768;  (*1280*)
   CreateWindow(700, 50, Width, Height);
   H.wsn("Display initialised.");
