@@ -386,13 +386,21 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
         DEC(ActCnt)
       ELSE
         IF (X # prevX) OR (Y # prevY) OR ~Mouse.on THEN
-          M.id := track; M.X := X; 
+          M.id := track;
+          M.X   := X;
           IF Y >= Display.Height THEN Y := Display.Height END;
-          M.Y := Y; M.keys := keys; V := Viewers.This(X, Y); V.handle(V, M); prevX := X; prevY := Y
+          M.Y    := Y;
+          M.keys := keys;
+          V      := Viewers.This(X, Y);
+          V.handle(V, M);
+          prevX := X;
+          prevY := Y
         END;
-        CurTask := CurTask.next; t := Kernel.Time();
-        IF t >= CurTask.nextTime THEN
-          CurTask.nextTime := t + CurTask.period; CurTask.state := active; CurTask.handle; CurTask.state := idle
+        IF CurTask # NIL THEN
+          CurTask := CurTask.next; t := Kernel.Time();
+          IF t >= CurTask.nextTime THEN
+            CurTask.nextTime := t + CurTask.period; CurTask.state := active; CurTask.handle; CurTask.state := idle
+          END
         END
       END
     UNTIL FALSE
@@ -415,6 +423,7 @@ BEGIN User[0] := 0X;
   FocusViewer := Viewers.This(0, 0);
   CurFnt := Fonts.Default; CurCol := Display.white; CurOff := 0;
 
+  CurTask := NIL;
   (* ActCnt := 0; CurTask := NewTask(GC, 1000); Install(CurTask); *)
-  Modules.Load("System", Mod); Mod := NIL; Loop
+  (*Modules.Load("System", Mod); Mod := NIL; Loop*)
 END Oberon.

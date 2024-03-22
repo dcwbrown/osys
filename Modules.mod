@@ -34,9 +34,9 @@ VAR
   AllocPtr*:  INTEGER;
 *)
   res*:       INTEGER;
-(*
   importing*: ModuleName;
   imported*:  ModuleName;
+(*
   limit:      INTEGER;
 *)
 

@@ -33,7 +33,9 @@ BEGIN
 END Peek;
 
 PROCEDURE Available*(): INTEGER;
-BEGIN Peek();
+BEGIN
+  WinGui.Step;
+  Peek();
   RETURN ORD(Recd)
 END Available;
 
@@ -49,7 +51,9 @@ END Read;
 
 PROCEDURE Mouse*(VAR keys: SET; VAR x, y: INTEGER);
 VAR w: INTEGER;
-BEGIN w := WinGui.MouseState; (*SYSTEM.GET(msAdr, w)*)
+BEGIN
+  WinGui.Step;
+  w := WinGui.MouseState; (*SYSTEM.GET(msAdr, w)*)
   keys := SYSTEM.VAL(SET, w DIV 1000000H MOD 8);
   x := w MOD 400H; y := (w DIV 1000H) MOD 400H;
   IF y >= MH THEN y := MH-1 END

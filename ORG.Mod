@@ -2303,6 +2303,7 @@ BEGIN Trace(TraceAny, "MulOp(x: "); l.Item(x, Tr); l.s(", y: ", Tr); l.Item(y, T
       END
     ELSE
       Load(x); Depar(y);
+      IF y.type.size # 8 THEN Load(y) END;
       OpItem(0FAFH, x.n, 8, 0, y)  (* imul x.n,y *)
     END;
     FreeRegs(y);

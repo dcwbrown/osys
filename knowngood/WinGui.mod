@@ -524,7 +524,7 @@ BEGIN
   H.MsgWaitForMultipleObjects(0, 0, 0, time, 1CFFH); (* 1DFF? *)
 END WaitMsgOrTime;
 
-
+(*
 PROCEDURE Loop*;
 VAR res: INTEGER;
 BEGIN
@@ -533,6 +533,19 @@ BEGIN
     IF res = 0 THEN  (* Queue empty *) WaitMsgOrTime(10000) END
   UNTIL res > 1  (* => WM_QUIT *)
 END Loop;
+*)
+
+PROCEDURE ForceQuit; BEGIN H.wcn; H.Trap("** Forced quit") END ForceQuit;
+
+PROCEDURE Step*;  (* Run message loop step *)
+VAR res: INTEGER;
+BEGIN
+  res := ProcessOneMessage();
+  H.wcn; H.ws("* WinGui.Step returned "); H.wi(res); H.wsn(".");
+  IF    res = 0 THEN WaitMsgOrTime(10000)  (* Queue empty *)
+  ELSIF res = 2 THEN ForceQuit             (* Quit requested by Windows *)
+  END
+END Step;
 
 
 (* -------------------------- Host window creation -------------------------- *)
@@ -634,8 +647,8 @@ BEGIN
     00 00 00 00 00 00 00 00  00 00 00 54 61 5B 52 5D
     00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00
     00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00$);
-  Width  := 1800;
-  Height := 1280;
+  Width  := 1026; (*1800*)
+  Height := 768;  (*1280*)
   CreateWindow(700, 50, Width, Height);
   H.wsn("Display initialised.");
 END WinGui.

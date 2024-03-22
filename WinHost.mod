@@ -671,25 +671,25 @@ BEGIN
 END Trap;
 
 PROCEDURE AssertionFailureHandler();
-BEGIN wn; Trap("** Assertion failure")      END AssertionFailureHandler;
+BEGIN wcn; Trap("** Assertion failure")      END AssertionFailureHandler;
 
 PROCEDURE ArraySizeMismatchHandler();
-BEGIN wn; Trap("** Array size mismatch")     END ArraySizeMismatchHandler;
+BEGIN wcn; Trap("** Array size mismatch")     END ArraySizeMismatchHandler;
 
 PROCEDURE UnterminatedStringHandler();
-BEGIN wn; Trap("** Unterminated string")     END UnterminatedStringHandler;
+BEGIN wcn; Trap("** Unterminated string")     END UnterminatedStringHandler;
 
 PROCEDURE IndexOutOfRangeHandler();
-BEGIN wn; Trap("** Index out of range")      END IndexOutOfRangeHandler;
+BEGIN wcn; Trap("** Index out of range")      END IndexOutOfRangeHandler;
 
 PROCEDURE NilPointerDereferenceHandler();
-BEGIN wn; Trap("** NIL pointer dereference") END NilPointerDereferenceHandler;
+BEGIN wcn; Trap("** NIL pointer dereference") END NilPointerDereferenceHandler;
 
 PROCEDURE TypeGuardFailureHandler();
-BEGIN wn; Trap("** Type guard failure")      END TypeGuardFailureHandler;
+BEGIN wcn; Trap("** Type guard failure")      END TypeGuardFailureHandler;
 
 PROCEDURE NewPointerHandler(ptr, len: INTEGER);
-BEGIN wn; Trap("** New pointer handler not istalled") END NewPointerHandler;
+BEGIN wcn; Trap("** New pointer handler not istalled") END NewPointerHandler;
 
 
 (* ------------------ WinHost internal assertion handlers ------------------- *)
