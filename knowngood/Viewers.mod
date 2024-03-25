@@ -109,19 +109,17 @@ MODULE Viewers; (*JG 14.9.90 / NW 15.9.2013*)
     ELSE V := NIL
     END;
     IF V = NIL THEN H.wcn; H.wsn("Viewers.This result is NIL.") END;
-    (*$la+lc+*)
     IF V IS Viewer THEN
       H.wcn; H.wsn("V IS Viewer.")
     ELSE
       H.wcn; H.ws("Viewers.This() result is not a Viewer, v ");
       H.wh(SYSTEM.VAL(INTEGER, V)); H.wsn(".");
       IF V IS Display.Frame THEN H.wsn(".. V IS Display.FrameDesc.") END;
-      H.ws("  X,Y: "); H.wi(X); H.wc(","); H.wi(Y);
-      H.ws(", V.Y: "); H.wi(V.Y);
-      H.ws(", V.H: "); H.wi(V.H); H.wsn(".")
+      H.ws("  X,Y: ");     H.wi(X);   H.wc(","); H.wi(Y);
+      H.ws(", V.X,V.Y: "); H.wi(V.X); H.wc(","); H.wi(V.Y);
+      H.ws(", V.W,V.H: "); H.wi(V.W); H.wc(","); H.wi(V.H); H.wsn(".")
     END;
     RETURN V(Viewer)
-    (*$la-lc-*)
   END This;
 
   PROCEDURE Next* (V: Viewer): Viewer;

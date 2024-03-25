@@ -24,6 +24,7 @@ TYPE
 
 VAR Default*, root*: Font;
 
+
 PROCEDURE GetPat*(fnt: Font; ch: CHAR; VAR dx, x, y, w, h, patadr: INTEGER);
 VAR pa: INTEGER;  dxb, xb, yb, wb, hb: BYTE;
 BEGIN pa := fnt.T[ORD(ch) MOD 80H]; patadr := pa;
@@ -31,6 +32,7 @@ BEGIN pa := fnt.T[ORD(ch) MOD 80H]; patadr := pa;
   dx := dxb; x := xb; y := yb; w := wb; h := hb;
   IF yb < 128 THEN y := yb ELSE y := yb - 256 END
 END GetPat;
+
 
 PROCEDURE This*(name: ARRAY OF CHAR): Font;
 

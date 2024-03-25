@@ -433,5 +433,6 @@ BEGIN
   Kernel.Install(SYSTEM.ADR(Trap), 20H);
   Kernel.Install(SYSTEM.ADR(Abort), 0);
   *)
+
   Oberon.Loop
 END System.

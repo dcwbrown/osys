@@ -80,7 +80,7 @@ BEGIN
   ASSERT(H.InvalidateRect(Window.hwnd, SYSTEM.ADR(rect), 0) # 0)
 END InvalidateRect;
 
-PROCEDURE Invalidate;  (* Invalidate entire window *)
+PROCEDURE Invalidate*;  (* Invalidate entire window *)
 BEGIN  InvalidateRect(0, 0, Window.width, Window.height) END Invalidate;
 
 
@@ -97,7 +97,7 @@ END Close;
 
 PROCEDURE EnsureBitmap(w, h: INTEGER; VAR bitmap: HostBitmap);
 TYPE
-  BITMAPINFOHEADER = RECORD-
+  BITMAPINFO = RECORD-
     size:          SYSTEM.CARD32;
     width:         SYSTEM.CARD32;
     height:        SYSTEM.CARD32;
@@ -108,11 +108,13 @@ TYPE
     xPelsPerMeter: SYSTEM.CARD32;
     yPelsPerMeter: SYSTEM.CARD32;
     clrUsed:       SYSTEM.CARD32;
-    clrImportant:  SYSTEM.CARD32
+    clrImportant:  SYSTEM.CARD32;
+    colour0:       SYSTEM.CARD32;
+    colour1:       SYSTEM.CARD32;
   END;
 VAR
   res: INTEGER;
-  bmi: BITMAPINFOHEADER;
+  bmi: BITMAPINFO;
 BEGIN
   IF bitmap = NIL THEN NEW(bitmap); H.ZeroFill(bitmap^) END;
 
@@ -126,11 +128,13 @@ BEGIN
     bitmap.oldh    := 0;
 
     H.ZeroFill(bmi);
-    bmi.size     := SYSTEM.SIZE(BITMAPINFOHEADER);
+    bmi.size     := SYSTEM.SIZE(BITMAPINFO) - 8;  (* Size excludes colours *)
     bmi.width    := w;
     bmi.height   := h;   (* Positive height => y=0 at bottom *)
     bmi.planes   := 1;
     bmi.bitCount := 1;   (* 1 bit per pixel *)
+    bmi.colour0  := 0FF000000H; (*0FFFFFFFFH;*)
+    bmi.colour1  := 0FFFFFFFFH; (*0FF000000H;*)
     bitmap.hdib  := H.CreateDIBSection(0, SYSTEM.ADR(bmi), 0, SYSTEM.ADR(bitmap.address), 0, 0);
     H.ws("Created DIB section: hdib "); H.wh(bitmap.hdib);
     H.ws("H, bitmap address ");         H.wh(bitmap.address); H.wsn("H.");
@@ -215,7 +219,7 @@ BEGIN
        {1}  MM
        {2}  ML
   *)
-  MouseState := x MOD 1000H * 1000H + y MOD 1000H;
+  MouseState := y MOD 1000H * 1000H + x MOD 1000H;
   IF 1 IN flags THEN INC(MouseState, 1000000H) END; (* MR *)
   IF 4 IN flags THEN INC(MouseState, 2000000H) END; (* MM *)
   IF 0 IN flags THEN INC(MouseState, 4000000H) END; (* ML *)
@@ -626,7 +630,9 @@ END CreateWindow;
 
 BEGIN
   H.wsn("WinGui initialising.");
+  (*
   ASSERT(H.SetProcessDpiAwarenessContext(-3) # 0);  (* DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE *)
+  *)
   VKtoScn := SYSTEM.ADR($
     00 00 00 00 00 00 00 00  66 09 00 00 00 5A 00 00
     12 14 11 00 58 00 00 00  00 00 00 76 00 00 00 00

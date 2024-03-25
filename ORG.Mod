@@ -1904,8 +1904,8 @@ BEGIN Trace(TraceAny, "Singleton(x: "); l.Item(x, Tr); l.sn(")", Tr);
   ELSE
     Load(x);
     reg := Reserve(-1, {});
-    LoadImmediate(reg, 1);
-    OpModRegRm(0FABH, Reg, reg, 8, x.n, -1, 0, 0, 0);  (* bts reg, x *)
+    LoadImmediate(reg, 0);
+    OpModRegRm(0FABH, Reg, x.n, 8, reg, -1, 0, 0, 0);  (* bts reg, x *)
     Disassemble(x.mode, "Singleton");
     FreeRegs(x);
     x.mode := Reg;  x.n := reg
@@ -2251,7 +2251,9 @@ BEGIN
   ELSE
     (* Convert op to x86 opcode *)
     IF op = ORS.plus THEN op := Plus ELSE op := Minus END;
-    Load(x);
+    ASSERT(x.type.form = ORB.Int64);
+    ASSERT(x.type.ref IN {ORB.Byte,ORB.Int8,ORB.Int16,ORB.Card16,ORB.Int32,ORB.Card32,ORB.Int64});
+    Load(x);  x.type := ORB.intType;  (* Load changes short integers to full 64 bit integers *)
     Dyadic(op, x, y);  FreeRegs(y);
     Disassemble(y.mode, "AddOp")
   END

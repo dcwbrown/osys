@@ -312,7 +312,7 @@ BEGIN Check(ORS.lparen, "no (");
     ELSIF fct = 14 THEN (*BIT*) CheckInt(x);  CheckInt(y);  ORG.Bit(x, y)
     ELSIF fct = 15 THEN (*REG*) CheckConst(x);  CheckInt(x);  ORG.REG(x)
     ELSIF fct = 16 THEN (*VAL*)
-      IF (x.mode= ORB.Typ) & (x.type.size <= y.type.size) THEN restyp := x.type;  x := y
+      IF (x.mode = ORB.Typ) & (x.type.size <= y.type.size) THEN restyp := x.type;  x := y
       ELSE ORS.Mark("casting not allowed")
       END
     ELSIF fct = 17 THEN (*ADR*) ORG.Adr(x)
