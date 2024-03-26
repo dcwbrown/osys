@@ -168,6 +168,6 @@ END Free;
 BEGIN
   H.wcn; H.wsn("Fonts initialising.");
   root := NIL;
-  Default := This("Oberon10.Scn.Fnt");
+  Default := This("Oberon12.Scn.Fnt");
   H.wcn; H.wsn("Fonts initialised.");
 END Fonts.

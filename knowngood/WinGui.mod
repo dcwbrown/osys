@@ -629,10 +629,7 @@ END CreateWindow;
 (* ------------------------- Display initialisation ------------------------- *)
 
 BEGIN
-  H.wsn("WinGui initialising.");
-  (*
   ASSERT(H.SetProcessDpiAwarenessContext(-3) # 0);  (* DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE *)
-  *)
   VKtoScn := SYSTEM.ADR($
     00 00 00 00 00 00 00 00  66 09 00 00 00 5A 00 00
     12 14 11 00 58 00 00 00  00 00 00 76 00 00 00 00
@@ -650,8 +647,8 @@ BEGIN
     00 00 00 00 00 00 00 00  00 00 00 54 61 5B 52 5D
     00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00
     00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00$);
-  Width  := 1024; (*1800*)
-  Height := 768;  (*1280*)
-  CreateWindow(700, 50, Width, Height);
+  Width  := 1536; (* 1024;*) (*1800*)
+  Height := 1152; (*768;*)  (*1280*)
+  CreateWindow(512, 64, Width, Height);
   H.wsn("Display initialised.");
 END WinGui.

@@ -81,9 +81,10 @@ TYPE
   END;
 
 VAR
-  Base*,
-  Width*,
+  Base*:   INTEGER;
+  Width*:  INTEGER;
   Height*: INTEGER;
+  Stride:  INTEGER;  (* Width in whole bytes *)
 
   Reverse4: ARRAY 16 OF BYTE;
 
@@ -104,7 +105,7 @@ END Handle;
 
 (* raster ops *)
 
-(* 16 SETs per row, each 8 bytes / 64 bits, making 128 bytes / 1024 bits per row *)
+(* 24 SETs per row, each 8 bytes / 64 bits, making 192 bytes / 1536 bits per row *)
 
 PROCEDURE UpdateByte(addr, mode: INTEGER; p: SET);
 VAR b: BYTE;
@@ -122,7 +123,7 @@ END UpdateByte;
 PROCEDURE Dot*(col, x, y, mode: INTEGER);
 VAR a: INTEGER;  s: SET;
 BEGIN
-  a := Base + x DIV 8 + y * 128;
+  a := Base + x DIV 8 + y * Stride;
   s := {7 - x MOD 8};
   IF mode = replace THEN
     IF col = black THEN mode := clear ELSE mode := paint END
@@ -137,22 +138,25 @@ BEGIN
   IF mode = replace THEN
     IF col = black THEN mode := clear ELSE mode := paint END
   END;
-  al := Base + y * 128;  (* Byte address at start of first (bottommost) affected bitmap row *)
+  al := Base + y * Stride;  (* Byte address at start of first (bottommost) affected bitmap row *)
   ar := (x+w-1) DIV 8 + al;
   al := x DIV 8 + al;
   IF ar = al THEN
     mid := {(7 - (x+w-1) MOD 8) .. (7 - x MOD 8)};
-    FOR a1 := al TO al + (h-1) * 128 BY 128 DO  (* For each row *)
-      UpdateByte(a1, mode, mid)
+    a1 := al;
+    WHILE a1 < al + h * Stride DO
+      UpdateByte(a1, mode, mid);  INC(a1, Stride)
     END
   ELSIF ar > al THEN
     left  := {0 .. 7 - x MOD 8};
     right := {7 - (x+w-1) MOD 8 .. 7};
-    FOR a0 := al TO al + (h-1)*128 BY 128 DO  (* For each row *)
+    a0 := al;
+    WHILE a0 < al + h * Stride DO  (* For each row *)
       UpdateByte(a0, mode, left);
       FOR a1 := a0+8 TO ar-8 BY 8 DO UpdateByte(a1, mode, {0..7}) END;
       UpdateByte(ar, mode, right);
-      INC(ar, 128)
+      INC(ar, Stride);
+      INC(a0, Stride)
     END
   END
 END ReplConst;
@@ -171,11 +175,12 @@ BEGIN
   SYSTEM.GET(patadr, w);    (* width (<32) *)
   SYSTEM.GET(patadr+1, h);  (* height      *)
   INC(patadr, 2);
-  a := Base + x DIV 8 + y * 128;
+  a := Base + x DIV 8 + y * Stride;
   IF mode = replace THEN
     IF col = black THEN mode := clear ELSE mode := paint END
   END;
-  FOR a0 := a TO a + (h-1)*128 BY 128 DO
+  a0 := a;
+  WHILE a0 < a + h * Stride DO
     (* Load pattern (up to 4 bytes) to top of pat *)
     SYSTEM.GET(patadr, pbt); INC(patadr); pat := LSL(ReverseByte(pbt), 56);
     IF w > 8 THEN      SYSTEM.GET(patadr, pbt); INC(patadr); INC(pat, LSL(ReverseByte(pbt), 48));
@@ -189,7 +194,8 @@ BEGIN
       UpdateByte(a1, mode, SYSTEM.VAL(SET, ROR(pat, 56)));
       INC(a1);
       pat := LSL(pat, 8);
-    END
+    END;
+    INC(a0, Stride)
   END;
   WinGui.Invalidate
 END CopyPattern;
@@ -211,8 +217,8 @@ BEGIN
   v2 := (dx+w) DIV 64;
   u3 := (sx+w) MOD 64;  (* Bit offset of limit (last bit + 1) in source & dest *)
   v3 := (dx+w) MOD 64;
-  sa := Base + u0 * 8 + sy * 128;  (* Address of first affected words in source & dest *)
-  da := Base + v0 * 8 + dy * 128;
+  sa := Base + u0 * 8 + sy * Stride;  (* Address of first affected words in source & dest *)
+  da := Base + v0 * 8 + dy * Stride;
   d := da - sa;         (* Copy displacement of whole words as byte offset *)
   n := u1 - v1;         (* displacement in bits *)
   len := (u2 - u0) * 8; (* Byte length of whole words containing source *)
@@ -222,8 +228,8 @@ BEGIN
   m0 := {v1 .. 31};     (* Mask of written bits in first word of dest *)
   m2 := {v3 .. 31};     (* Mask of final unaffected bits in dest *)
   m3 := m0 / m2;
-  IF d >= 0 THEN sa0 := sa + (h-1)*128; end := sa-128;     step := -128 (*copy up, scan down*)
-            ELSE sa0 := sa;             end := sa + h*128; step := 128  (*copy down, scan up*)
+  IF d >= 0 THEN sa0 := sa + (h-1)*Stride; end := sa-Stride;     step := -Stride (*copy up, scan down*)
+            ELSE sa0 := sa;             end := sa + h*Stride; step := Stride  (*copy down, scan up*)
   END;
   WHILE sa0 # end DO
     IF n >= 0 THEN (*shift right*) m1 := {n .. 31};
@@ -274,23 +280,27 @@ VAR al, ar, a0, a1: INTEGER;
     left, right, mid, pix, pixl, pixr, ptw: SET;
 BEGIN
   ASSERT(FALSE);
-  al := Base + y*128; SYSTEM.GET(patadr+1, ph);
+  al := Base + y*Stride; SYSTEM.GET(patadr+1, ph);
   pta0 := patadr+4; pta1 := ph*4 + pta0;
   ar := ((x+w-1) DIV 64) * 8 + al; al := (x DIV 64) * 8 + al;
   IF ar = al THEN
     mid := {(x MOD 64) .. ((x+w-1) MOD 64)};
-    FOR a1 := al TO al + (h-1)*128 BY 128 DO
+    a1 := al;
+    WHILE a1 < al + h * Stride DO
       SYSTEM.GET(a1, pix); SYSTEM.GET(pta0, ptw); SYSTEM.PUT(a1, (pix - mid) + (pix/ptw * mid)); INC(pta0, 4);
-      IF pta0 = pta1 THEN pta0 := patadr+4 END
+      IF pta0 = pta1 THEN pta0 := patadr+4 END;
+      INC(a1, Stride)
     END
   ELSIF ar > al THEN
     left := {(x MOD 64) .. 31}; right := {0 .. ((x+w-1) MOD 64)};
-    FOR a0 := al TO al + (h-1)*128 BY 128 DO
+    a0 := al;
+    WHILE a0 < al + h * Stride DO
       SYSTEM.GET(a0, pixl); SYSTEM.GET(pta0, ptw); SYSTEM.PUT(a0, (pixl - left) + (pixl/ptw * left));
       FOR a1 := a0+4 TO ar-4 BY 4 DO SYSTEM.GET(a1, pix); SYSTEM.PUT(a1, pix/ptw) END;
       SYSTEM.GET(ar, pixr); SYSTEM.PUT(ar, (pixr - right) + (pixr/ptw * right));
-      INC(pta0, 4); INC(ar, 128);
-      IF pta0 = pta1 THEN pta0 := patadr+4 END
+      INC(pta0, 4); INC(ar, Stride);
+      IF pta0 = pta1 THEN pta0 := patadr+4 END;
+      INC(a0, Stride)
     END
   END
 END ReplPattern;
@@ -305,6 +315,7 @@ BEGIN
   Base   := WinGui.Window.bmp.address;
   Width  := WinGui.Window.bmp.width;
   Height := WinGui.Window.bmp.height;
+  Stride := (Width + 7) DIV 8;
   arrow  := SYSTEM.ADR($0F0F 0060 0070 0038 001C 000E 0007 8003 C101 E300 7700 3F00 1F00 3F00 7F00 FF00$);
   star   := SYSTEM.ADR($0F0F 8000 8220 8410 8808 9004 A002 C001 7F7F C001 A002 9004 8808 8410 8220 8000$);
   hook   := SYSTEM.ADR($0C0C 070F 8707 C703 E701 F700 7F00 3F00 1F00 0F00 0700 0300 01$);

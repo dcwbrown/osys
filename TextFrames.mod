@@ -25,19 +25,26 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
       org*:    INTEGER;
       col*:    INTEGER;
       lsp*:    INTEGER;
-      left*, right*, top*, bot*: INTEGER;
+      left*:   INTEGER;
+      right*:  INTEGER;
+      top*:    INTEGER;
+      bot*:    INTEGER;
       markH*:  INTEGER;
       time*:   INTEGER;
-      hasCar*, hasSel*, hasMark: BOOLEAN;
+      hasCar*,
+      hasSel*,
+      hasMark: BOOLEAN;
       carloc*: Location;
-      selbeg*, selend*: Location;
+      selbeg*,
+      selend*: Location;
       trailer: Line
     END;
 
     UpdateMsg* = RECORD (Display.FrameMsg)
       id*:   INTEGER;
       text*: Texts.Text;
-      beg*, end*: INTEGER
+      beg*,
+      end*:  INTEGER
     END;
 
     CopyOverMsg = RECORD (Display.FrameMsg)
@@ -45,12 +52,25 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
       beg, end: INTEGER
     END;
 
-  VAR TBuf*, DelBuf: Texts.Buffer;
-    menuH*, barW*, left*, right*, top*, bot*, lsp*: INTEGER; (*standard sizes*)
-    asr, dsr, selH, markW, eolW: INTEGER;
-    nextCh: CHAR;
+  VAR
+    TBuf*,
+    DelBuf:       Texts.Buffer;
+    menuH*,
+    barW*,
+    left*,
+    right*,
+    top*,
+    bot*,
+    lsp*:         INTEGER; (*standard sizes*)
+    asr,
+    dsr,
+    selH,
+    markW,
+    eolW:         INTEGER;
+    nextCh:       CHAR;
     ScrollMarker: Oberon.Marker;
-    W, KW: Texts.Writer; (*keyboard writer*)
+    W,
+    KW:           Texts.Writer; (*keyboard writer*)
 
   PROCEDURE Min (i, j: INTEGER): INTEGER;
   BEGIN IF i < j THEN j := i END ;

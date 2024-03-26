@@ -1,10 +1,10 @@
 MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
-IMPORT SYSTEM, Kernel, (*FileDir,*) Files, Modules,
+IMPORT SYSTEM, H := WinHost, Kernel, (*FileDir,*) Files, Modules,
   Input, Display, Viewers, Fonts, Texts, Oberon, MenuViewers, TextFrames;
 
 CONST
   StandardMenu = "System.Close System.Copy System.Grow Edit.Search Edit.Store";
-  LogMenu = "Edit.Locate Edit.Search System.Copy System.Grow System.Clear";
+  LogMenu      = "Edit.Locate Edit.Search System.Copy System.Grow System.Clear";
 
 VAR
   W:   Texts.Writer;
@@ -379,10 +379,12 @@ VAR logV, toolV: Viewers.Viewer;
     d: INTEGER; X, Y: INTEGER;
 BEGIN d := Kernel.Clock(); Texts.WriteString(W, "Oberon V5  NW 14.4.2013"); EndLine;
   Oberon.AllocateSystemViewer(0, X, Y);
+  H.ws("Allocating system log viewer at "); H.wi(X); H.wc(","); H.wi(Y); H.wsn(".");
   menu := TextFrames.NewMenu("System.Log", LogMenu);
   main := TextFrames.NewText(Oberon.Log, 0);
   logV := MenuViewers.New(menu, main, TextFrames.menuH, X, Y);
   Oberon.AllocateSystemViewer(0, X, Y);
+  H.ws("Allocating system tool viewer at "); H.wi(X); H.wc(","); H.wi(Y); H.wsn(".");
   menu := TextFrames.NewMenu("System.Tool", StandardMenu);
   main := TextFrames.NewText(TextFrames.Text("System.Tool"), 0);
   toolV := MenuViewers.New(menu, main, TextFrames.menuH, X, Y)
