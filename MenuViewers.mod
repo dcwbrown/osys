@@ -1,6 +1,6 @@
 MODULE MenuViewers; (*JG 26.8.90 / 16.9.93 / NW 10.3.2013*)
 
-IMPORT Input, Display, Viewers, Oberon;
+IMPORT H := WinHost, Input, Display, Viewers, Oberon;
 
 CONST
   extend*    = 0;
@@ -28,10 +28,13 @@ END Copy;
 
 PROCEDURE Draw (V: Viewers.Viewer);
 BEGIN
+  H.ws("MenuViewers.Draw viewer at "); H.wi(V.X); H.wc(","); H.wi(V.Y);
+  H.ws(" size "); H.wi(V.W); H.wc(","); H.wi(V.H); H.wsn(".");
   Display.ReplConst(FrameColor, V.X, V.Y, 1, V.H, Display.replace);
   Display.ReplConst(FrameColor, V.X + V.W - 1, V.Y, 1, V.H, Display.replace);
   Display.ReplConst(FrameColor, V.X + 1, V.Y, V.W - 2, 1, Display.replace);
-  Display.ReplConst(FrameColor, V.X + 1, V.Y + V.H - 1, V.W - 2, 1, Display.replace)
+  Display.ReplConst(FrameColor, V.X + 1, V.Y + V.H - 1, V.W - 2, 1, Display.replace);
+  H.wsn("MenuViewers.Draw complete.")
 END Draw;
 
 PROCEDURE Extend (V: Viewer; newY: INTEGER);
@@ -73,7 +76,7 @@ VAR Menu, Main: Display.Frame;
 BEGIN Menu := V.dsc; Main := V.dsc.next;
   Oberon.RemoveMarks(V.X, V.Y, V.W, V.H);
   Draw(V);
-  Menu.X := V.X + 1; Menu.Y := V.Y + V.H - 1; Menu.W := V.W - 2; Menu.H := 0;
+  Menu.X := V.X + 1; Menu.Y := V.Y + V.H - 1;       Menu.W := V.W - 2; Menu.H := 0;
   Main.X := V.X + 1; Main.Y := V.Y + V.H - V.menuH; Main.W := V.W - 2; Main.H := 0;
   IF V.H > V.menuH + 1 THEN
     Adjust(Menu, extend, 0, V.Y + V.H - V.menuH, V.menuH - 1);

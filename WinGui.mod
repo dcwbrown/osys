@@ -186,7 +186,7 @@ BEGIN
   y      := ps.top;
   width  := ps.right  - ps.left + 1;
   height := ps.bottom - ps.top  + 1;
-  H.ws("Paint(x ");   H.wi(x);
+  H.ws("WM_PAINT handler: Paint(x ");   H.wi(x);
   H.ws(", y ");       H.wi(y);
   H.ws(", width ");   H.wi(width);
   H.ws(", height ");  H.wi(height);  H.wsn(".");
@@ -548,6 +548,17 @@ BEGIN
   END
 END Step;
 
+(* Debugging --- *)
+PROCEDURE Pause*;  (* Run message loop until key pressed and eat key *)
+VAR key: BYTE;
+BEGIN
+  H.wsn("** Pausing **");
+  WHILE ~KeyReady() DO Step END;
+  GetKey(key);
+  H.ws("** Pause finished, key "); H.wh(key); H.wsn("H **");
+END Pause;
+(* ---- *)
+
 
 (* -------------------------- Host window creation -------------------------- *)
 
@@ -594,12 +605,14 @@ BEGIN
   Window.width     := width;
   Window.height    := height;
 
+  (*
   H.ws("CreateWindowExW: x "); H.wi(x);
   H.ws(", y ");                H.wi(y);
   H.ws(", width ");            H.wi(width);
   H.ws(", height ");           H.wi(height); H.wsn(".");
   H.wsn("classname:");  H.DumpMem(2, SYSTEM.ADR(classname),  SYSTEM.ADR(classname),  16);
   H.wsn("windowname:"); H.DumpMem(2, SYSTEM.ADR(windowname), SYSTEM.ADR(windowname), 16);
+  *)
 
   Window.hwnd := H.CreateWindowExW(
     0,                       (* Extended window style *)
@@ -610,19 +623,21 @@ BEGIN
     0, 0, 0, 0               (* hWndParent, hMenu, hInstance, lpParam *)
   );
   ASSERT(Window.hwnd # 0);
+  (*
   H.ws("Created window. hwnd ");  H.wh(Window.hwnd);  H.wsn("H.");
+  *)
 
   H.SetHWnd(Window.hwnd);  (* Make sure kernel error message boxes stop the message pump *)
 
   EnsureBitmap(width, height, Window.bmp);
 
   Window.DPI := H.GetDpiForWindow(Window.hwnd);
-  H.ws("GetDpiForWindow -> ");  H.wi(Window.DPI);  H.wsn(".");
+  (*H.ws("GetDpiForWindow -> ");  H.wi(Window.DPI);  H.wsn(".");*)
 
   H.ShowCursor(0);
   H.ShowWindow(Window.hwnd, 1);
 
-  H.wsn("CreateWindow complete.");
+  (*H.wsn("CreateWindow complete.");*)
 END CreateWindow;
 
 

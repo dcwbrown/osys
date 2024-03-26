@@ -135,6 +135,22 @@ END Dot;
 PROCEDURE ReplConst*(col, x, y, w, h, mode: INTEGER);
 VAR al, ar, a0, a1: INTEGER;  left, right, mid: SET;  b: BYTE;
 BEGIN
+  H.ws("ReplConst(");
+  IF    mode = invert THEN H.ws("invert, ")
+  ELSIF mode = paint  THEN H.ws("paint, ")
+  ELSIF mode = clear  THEN H.ws("clear, ")
+  ELSIF col = black   THEN H.ws("black, ")
+                      ELSE H.ws("white, ")
+  END;
+  H.wi(x); H.wc(","); H.wi(y); H.wc(","); H.wi(w); H.wc(","); H.wi(h); H.ws(")");
+  IF w = 1 THEN
+    H.ws("  Vertical   line at x "); H.wi(x); H.ws(" from y "); H.wi(y); H.ws(" to "); H.wi(y+h-1); H.wsn(".")
+  ELSIF h = 1 THEN
+    H.ws("  Horizontal line at y "); H.wi(y); H.ws(" from x "); H.wi(x); H.ws(" to "); H.wi(x+w-1); H.wsn(".")
+  ELSE
+    H.wn
+  END;
+
   IF mode = replace THEN
     IF col = black THEN mode := clear ELSE mode := paint END
   END;
@@ -153,12 +169,13 @@ BEGIN
     a0 := al;
     WHILE a0 < al + h * Stride DO  (* For each row *)
       UpdateByte(a0, mode, left);
-      FOR a1 := a0+8 TO ar-8 BY 8 DO UpdateByte(a1, mode, {0..7}) END;
+      FOR a1 := a0+1 TO ar-1 DO UpdateByte(a1, mode, {0..7}) END;
       UpdateByte(ar, mode, right);
       INC(ar, Stride);
       INC(a0, Stride)
     END
-  END
+  END;
+  (*WinGui.Invalidate; WinGui.Pause;*)
 END ReplConst;
 
 PROCEDURE ReverseByte(b: BYTE): BYTE;

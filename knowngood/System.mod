@@ -427,14 +427,48 @@ BEGIN n := SYSTEM.REG(15); Texts.WriteString(W, "  ABORT  "); Texts.WriteHex(W, 
 END Abort;
 *)
 
+PROCEDURE TestReplConst;
+VAR i, j: INTEGER;
+BEGIN
+  FOR j := 1 TO 16 DO
+    FOR i := 1 TO 16 DO
+      Display.ReplConst(1, i*16, j*16, j, 12, Display.paint)
+    END
+  END
+END TestReplConst;
+
+PROCEDURE Testhorizontallines;
+VAR i, j, k: INTEGER;
+BEGIN
+  (*
+  FOR i := 0 TO 32 DO
+    Display.ReplConst(1, i MOD 2 * 16, i, 16, 1, Display.paint);
+    j := 32 + i MOD 2 * 16;  k := j + 16;
+    WHILE j < k DO
+      Display.Dot(1, j, i, Display.paint);
+      INC(j)
+    END
+  END;
+  *)
+  FOR i := 0 TO 100 DO
+    FOR j := 0 TO 10 DO
+      Display.ReplConst(1, j*101, i, i, 1, Display.replace)
+    END
+  END
+END Testhorizontallines;
+
 BEGIN
   Texts.OpenWriter(W);
   Oberon.OpenLog(TextFrames.Text(""));
   OpenViewers;
+
   (*
   Kernel.Install(SYSTEM.ADR(Trap), 20H);
   Kernel.Install(SYSTEM.ADR(Abort), 0);
   *)
+
+  (*TestReplConst;*)
+  (*Testhorizontallines;*)
 
   Oberon.Loop
 END System.
