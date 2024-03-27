@@ -2730,7 +2730,6 @@ PROCEDURE Q(T: ORB.Type);
 BEGIN (*one entry of type descriptor extension table*)
   IF T.base # NIL THEN
     Q(T.base);
-    Trace(TraceAny, "Q(T: "); l.Type(T, Tr); l.sn(")", Tr);
     ImpFix[ImpFInx].offset := X64.PC;
     ImpFix[ImpFInx].fix    := 0FFFF0000H;  INC(ImpFInx);
     IF T.mno = 0 THEN
@@ -2794,14 +2793,8 @@ BEGIN
 
   EmitInt(s, "Type size including heap overhead");
   k  := T.nofpar;  (* extension level! *)
-  IF k > 3 THEN
-    ORS.Mark("ext level too large")
-  ELSE
-    Q(T);
-    WHILE k < 3 DO
-      EmitInt(-1, "unused extension level");
-      INC(k)
-    END
+  IF k > 3 THEN ORS.Mark("ext level too large")
+           ELSE Q(T); WHILE k < 3 DO EmitInt(-1, "unused extension level"); INC(k) END
   END;
   FindPtrFlds(T, 0);
   EmitInt(-1, "end of type");
@@ -2814,13 +2807,6 @@ END BuildTD;
 PROCEDURE TypeTest*(VAR X: X64.Item; T: ORB.Type; varpar, isguard: BOOLEAN);
 VAR r1, r2, pc: INTEGER;  x: Item;  b: l.Buffer;
 BEGIN
-  IF isguard THEN l.InitBuf(b);
-    l.s("ORG.TypeTest for isguard: X ", b); l.Item(X, b);
-    l.s(", T ", b);                         l.Type(T, b);
-    l.s(", T.nofpar ", b);                  l.i(T.nofpar, b);
-    l.s(", varpar ", b);                    l.Bool(varpar, b);
-    l.c(".", b);  l.c(0X, b);  H.wsn(b.c)
-  END;
   Trace(TraceAny, "TypeTest(x: "); l.Item(x, Tr);
   l.s(", T: ", Tr);                l.Type(T, Tr);
   IF varpar  THEN l.s(", varpar, ", Tr)  ELSE l.s("~varpar, ", Tr)  END;
@@ -2844,10 +2830,8 @@ BEGIN
     LoadMem(r1, Eadr, FALSE, 8, r1, -1, 0, -10H);  (* Load type tag *)
   END;
   Disassemble(Eadr, "TypeTest load record type tag");
-IF FALSE THEN
   LoadMem(r1, Eadr, FALSE, 8, r1, -1, 0, T.nofpar * 8);
   Disassemble(Eadr, "Extract base type tag");
-END;
   r2 := Reserve(-1, {});
   LoadTypeAddress(r2, T);
   AluOpToReg(Cmp, Reg, r1, FALSE, 8, r2, -1, 0, 0);  (* cmp r1,r2 *)
@@ -2861,28 +2845,7 @@ END;
     SetCondition(X, CZ);
     Disassemble(0, "'IS' Type test ");
   END;
-  (*H.wcn; H.ws("TypeTest exit, X.mode = "); H.wi(X.mode); H.wsn(".")*)
 END TypeTest;
-(* ------------------------------------------------------------------------ *)
-(* PROCEDURE TypeTest*(VAR x: Item; T: ORB.Type; varpar, isguard: BOOLEAN); *)
-(*   VAR pc0: LONGINT;                                                      *)
-(* BEGIN (*fetch tag into RH*)                                              *)
-(*   IF varpar THEN Put2(Ldr, RH, SP, x.a+4+frame)                          *)
-(*   ELSE load(x);                                                          *)
-(*     pc0 := pc; Put3(BC, EQ, 0);  (*NIL belongs to every pointer type*)   *)
-(*     Put2(Ldr, RH, x.r, -8)                                               *)
-(*   END ;                                                                  *)
-(*   Put2(Ldr, RH, RH, T.nofpar*4); incR;                                   *)
-(*   loadTypTagAdr(T);  (*tag of T*)                                        *)
-(*   Put0(Cmp, RH-1, RH-1, RH-2); DEC(RH, 2);                               *)
-(*   IF ~varpar THEN fix(pc0, pc - pc0 - 1) END ;                           *)
-(*   IF isguard THEN                                                        *)
-(*     IF check THEN Trap(NE, 2) END                                        *)
-(*   ELSE SetCC(x, EQ);                                                     *)
-(*     IF ~varpar THEN DEC(RH) END                                          *)
-(*   END                                                                    *)
-(* END TypeTest;                                                            *)
-(* ------------------------------------------------------------------------ *)
 
 PROCEDURE Open*(sourcefile: Files.File;  modid: ARRAY OF CHAR);
 VAR i: INTEGER;
@@ -2905,7 +2868,6 @@ BEGIN
   X64.EmitString(modid);
   X64.Align(16);
   Disasmpc := X64.PC;
-  (*w.sl("ORG.Open complete.")*)
 END Open;
 
 PROCEDURE SetDataSize*(dc: INTEGER);

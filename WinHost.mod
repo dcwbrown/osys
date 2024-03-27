@@ -293,29 +293,29 @@ BEGIN RETURN TimeAsClock(Time()) END Clock;
 (* ---------------- Simple logging/debugging console output ----------------- *)
 (* -------------------------------------------------------------------------- *)
 
-PROCEDURE wc*(c: CHAR); BEGIN Log(c); Sol := FALSE END wc;
+PROCEDURE wc*(c: CHAR); BEGIN Log(c) END wc;
 
-PROCEDURE wn*; BEGIN Log(crlf); Sol := TRUE END wn;
+PROCEDURE wn*; BEGIN Log(crlf) END wn;
 
 PROCEDURE wcn*; BEGIN IF ~Sol THEN wn END END wcn;  (* Conditional newline *)
 
-PROCEDURE ws*(s: ARRAY OF CHAR); BEGIN Log(s); Sol := FALSE END ws;
+PROCEDURE ws*(s: ARRAY OF CHAR); BEGIN Log(s) END ws;
 
 PROCEDURE wsl*(s: ARRAY OF CHAR; w: INTEGER);  (* Left justified with trailing spaces *)
-BEGIN Log(s);  DEC(w, Length(s));  WHILE w > 0 DO wc(" "); DEC(w) END; Sol := FALSE END wsl;
+BEGIN Log(s);  DEC(w, Length(s));  WHILE w > 0 DO wc(" "); DEC(w) END END wsl;
 
 PROCEDURE wsr*(s: ARRAY OF CHAR; w: INTEGER);  (* Right justified with leading spaces *)
-BEGIN DEC(w, Length(s));  WHILE w > 0 DO wc(" "); DEC(w) END; Log(s); Sol := FALSE END wsr;
+BEGIN DEC(w, Length(s));  WHILE w > 0 DO wc(" "); DEC(w) END; Log(s) END wsr;
 
 PROCEDURE wsz*(s: ARRAY OF CHAR; w: INTEGER);  (* Right justified with leading zeroes *)
-BEGIN DEC(w, Length(s));  WHILE w > 0 DO wc("0"); DEC(w) END; Log(s); Sol := FALSE END wsz;
+BEGIN DEC(w, Length(s));  WHILE w > 0 DO wc("0"); DEC(w) END; Log(s) END wsz;
 
-PROCEDURE wsn*(s: ARRAY OF CHAR); BEGIN Log(s); Log(crlf); Sol := TRUE END wsn;
+PROCEDURE wsn*(s: ARRAY OF CHAR); BEGIN Log(s); Log(crlf) END wsn;
 
 
 PROCEDURE wh*(n: INTEGER);
 VAR hex: ARRAY 32 OF CHAR;
-BEGIN IntToHex(n, hex); Log(hex); Sol := FALSE END wh;
+BEGIN IntToHex(n, hex); Log(hex) END wh;
 
 PROCEDURE whl*(n, w: INTEGER);  (* Left justified with trailing spaces *)
 VAR hex: ARRAY 32 OF CHAR;
@@ -332,7 +332,7 @@ BEGIN IntToHex(n, hex); wsz(hex, w) END whz;
 
 PROCEDURE wi*(n: INTEGER);
 VAR dec: ARRAY 32 OF CHAR;
-BEGIN IntToDecimal(n, dec); Log(dec); Sol := FALSE END wi;
+BEGIN IntToDecimal(n, dec); Log(dec) END wi;
 
 PROCEDURE wil*(n, w: INTEGER);  (* Left justified with trailing spaces *)
 VAR dec: ARRAY 32 OF CHAR;
@@ -925,9 +925,11 @@ RETURN info.write END FileTime;
 (* -------------------------------------------------------------------------- *)
 
 PROCEDURE WriteStdout(s: ARRAY OF BYTE);
-VAR written, result: INTEGER;
+VAR len, written, result: INTEGER;
 BEGIN
-  result := WriteFile(Stdout, SYSTEM.ADR(s), Length(s), SYSTEM.ADR(written), 0);
+  len := Length(s);
+  IF len > 0 THEN Sol := s[len-1] = 0AH END;
+  result := WriteFile(Stdout, SYSTEM.ADR(s), len, SYSTEM.ADR(written), 0);
 END WriteStdout;
 
 
@@ -984,7 +986,7 @@ VAR
   impmodadr:   INTEGER;  (* Module being imported from base address *)
   expadr:      INTEGER;  (* Address relative to imported module of an export *)
   ptroff:      INTEGER;
-  tag:         INTEGER;
+  absreloc:    INTEGER;
   modulebody:  PROCEDURE;
 BEGIN
   hdr := SYSTEM.VAL(CodeHeaderPtr, modadr);
@@ -1033,18 +1035,15 @@ BEGIN
       ELSE  assert(FALSE) (*, "LoadModule: Unexpected system function import number.")*)
       END;
       SYSTEM.PUT(LoadAdr + offset, disp)
-    ELSIF modno = 0FFFFH THEN
-      (* 64 bit abs extension type descriptor from type descriptor         *)
-      (* qword at adr contains 32/0,32/module offset or 32/1,16/mod,16/imp *)
-      SYSTEM.GET(LoadAdr + offset, tag);
-      IF tag DIV 100000000H = 0 THEN  (* offset of type descriptor in this module *)
-        ws("* Fixup local type extension ref at offset "); wh(offset); wsn("H.");
-        SYSTEM.PUT(LoadAdr + offset, LoadAdr + tag)
-      ELSE  (* import reference type descriptor in another module *)
-        ws("* Fixup imported type extension ref at offset "); wh(offset); wsn("H.");
-        modno := tag DIV 10000H MOD 10000H;  assert(modno > 0);
+    ELSIF modno = 0FFFFH THEN (* 64 bit absolute address relocation *)
+      (* qword at offset contains 32/0,32/module offset or 32/1,16/mod,16/imp *)
+      SYSTEM.GET(LoadAdr + offset, absreloc);
+      IF absreloc DIV 100000000H = 0 THEN  (* offset in this module *)
+        SYSTEM.PUT(LoadAdr + offset, LoadAdr + absreloc)
+      ELSE  (* import reference from another module *)
+        modno := absreloc DIV 10000H MOD 10000H;  assert(modno > 0);
         impmodadr := modules[modno-1];
-        impno := tag MOD 10000H;
+        impno := absreloc MOD 10000H;
         assert(impno > 0);
         SYSTEM.PUT(LoadAdr + offset, ExportedAddress(SYSTEM.VAL(CodeHeaderPtr, impmodadr), impno-1))
       END

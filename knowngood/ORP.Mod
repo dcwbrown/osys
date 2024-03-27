@@ -119,13 +119,8 @@ END IsExtension;
 (* expressions *)
 
 PROCEDURE TypeTest(VAR x: X64.Item;  T: ORB.Type;  guard: BOOLEAN);
-VAR xt: ORB.Type;  b: l.Buffer;
+VAR xt: ORB.Type;
 BEGIN
-  IF guard THEN l.InitBuf(b);
-    l.s("ORP.TypeTest for guard: x ", b); l.Item(x, b);
-    l.s(", T ", b); l.Type(T, b); l.s(".", b);
-    l.c(0X, b); H.wsn(b.c)
-  END;
   xt := x.type;
   IF (T.form = xt.form )
    & (   (T.form = ORB.Pointer)
@@ -133,14 +128,12 @@ BEGIN
     WHILE (xt # T) & (xt # NIL) DO xt := xt.base END;
     IF xt # T THEN xt := x.type;
       IF xt.form = ORB.Pointer THEN
-        H.wsn(".. xt.form = ORB.Pointer.");
         IF IsExtension(xt.base, T.base) THEN
           ORG.TypeTest(x, T.base, FALSE, guard);
           x.type := T
         ELSE ORS.Mark("not an extension")
         END
       ELSIF (xt.form = ORB.Record) & (x.mode = X64.Strucp) THEN
-        H.wsn(".. xt.form = ORB.Record.");
         IF IsExtension(xt, T) THEN ORG.TypeTest(x, T, TRUE, guard);  x.type := T
         ELSE ORS.Mark("not an extension")
         END

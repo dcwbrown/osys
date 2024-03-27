@@ -188,7 +188,7 @@ PROCEDURE Extend* (F: Frame; newY: INTEGER);
 VAR R: Texts.Reader; L, l: Line;
   org: INTEGER; curY, botY: INTEGER;
 BEGIN
-  Host.ws("TextFrames.Extend newY "); Host.wi(newY); Host.wsn(".");
+  (*Host.ws("TextFrames.Extend newY "); Host.wi(newY); Host.wsn(".");*)
   Display.ReplConst(F.col, F.X, newY, F.W, F.Y - newY, Display.replace);
   IF F.left >= barW THEN
     Display.ReplConst(Display.white, F.X + barW - 1, newY, 1, F.Y - newY, Display.invert)
@@ -213,7 +213,7 @@ END Extend;
 PROCEDURE Reduce* (F: Frame; newY: INTEGER);
 VAR L: Line; curY, botY: INTEGER;
 BEGIN
-  Host.ws("TextFrames.Reduce newY "); Host.wi(newY); Host.wsn(".");
+  (*Host.ws("TextFrames.Reduce newY "); Host.wi(newY); Host.wsn(".");*)
   F.H := F.H + F.Y - newY; F.Y := newY;
   botY := F.Y + F.bot + dsr;
   L := F.trailer; curY := F.Y + F.H - F.top - asr;
@@ -231,7 +231,7 @@ PROCEDURE Show* (F: Frame; pos: INTEGER);
 VAR R: Texts.Reader; L, L0: Line;
     org: INTEGER; curY, botY, Y0: INTEGER;
 BEGIN
-  Host.ws("TextFrames.Show pos "); Host.wi(pos); Host.wsn(".");
+  (*Host.ws("TextFrames.Show pos "); Host.wi(pos); Host.wsn(".");*)
   IF F.trailer.next # F.trailer THEN
     Validate(F.text, pos);
     IF pos < F.org THEN Mark(F, FALSE);
@@ -677,11 +677,11 @@ PROCEDURE Modify* (F: Frame; id, dY, Y, H: INTEGER);
 BEGIN
   Mark(F, FALSE); RemoveMarks(F); SetChangeMark(F,  FALSE);
   IF id = MenuViewers.extend THEN
-    Host.wsn("TextFrames.Modify(extend)");
+    (*Host.wsn("TextFrames.Modify(extend)");*)
     IF dY > 0 THEN Display.CopyBlock(F.X, F.Y, F.W, F.H, F.X, F.Y + dY, 0); F.Y := F.Y + dY END;
     Extend(F, Y)
   ELSIF id = MenuViewers.reduce THEN
-    Host.wsn("TextFrames.Modify(reduce)");
+    (*Host.wsn("TextFrames.Modify(reduce)");*)
     Reduce(F, Y + dY);
     IF dY > 0 THEN Display.CopyBlock(F.X, F.Y, F.W, F.H, F.X, Y, 0); F.Y := Y END
   END;

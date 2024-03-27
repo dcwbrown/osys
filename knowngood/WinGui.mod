@@ -52,6 +52,7 @@ VAR
   VKtoScn: INTEGER;
 
   MouseState*: INTEGER;  (* 3/keys, 12/x, 12/y  *)
+  WmQuit*:     BOOLEAN;
 
 PROCEDURE AddKey(key: BYTE);
 BEGIN
@@ -61,16 +62,6 @@ BEGIN
     KeyFull     := KeyIn = KeyOut
   END
 END AddKey;
-
-PROCEDURE KeyReady*(): BOOLEAN;
-RETURN (KeyIn # KeyOut) OR KeyFull END KeyReady;
-
-PROCEDURE GetKey*(VAR key: BYTE);
-BEGIN ASSERT(KeyReady());
-  key     := Keys[KeyOut];
-  KeyOut  := (KeyOut + 1) MOD KeyBufSize;
-  KeyFull := FALSE
-END GetKey;
 
 PROCEDURE InvalidateRect* (x, y, width, height: INTEGER);
 VAR rect: RECORD- left, top, right, bottom: SYSTEM.INT32 END;
@@ -136,8 +127,10 @@ BEGIN
     bmi.colour0  := 0FF000000H; (*0FFFFFFFFH;*)
     bmi.colour1  := 0FFFFFFFFH; (*0FF000000H;*)
     bitmap.hdib  := H.CreateDIBSection(0, SYSTEM.ADR(bmi), 0, SYSTEM.ADR(bitmap.address), 0, 0);
+    (*
     H.ws("Created DIB section: hdib "); H.wh(bitmap.hdib);
     H.ws("H, bitmap address ");         H.wh(bitmap.address); H.wsn("H.");
+    *)
 
     ASSERT(bitmap.hdib    # 0);
     ASSERT(bitmap.address # 0);
@@ -146,9 +139,11 @@ BEGIN
 
     IF bitmap.context = 0 THEN  (* If no context to reuse *)
       bitmap.context := H.CreateCompatibleDC(0);  ASSERT(bitmap.context # 0);
+      (*
       H.ws("Created compatible DC: w ");  H.wi(w);
       H.ws(", h ");                       H.wi(h);
       H.ws(", hdc ");                     H.wh(bitmap.context); H.wsn("H.");
+      *)
     END;
 
     bitmap.oldh := H.SelectObject(bitmap.context, bitmap.hdib)
@@ -158,7 +153,7 @@ END EnsureBitmap;
 
 (* -------------------------- Host window handlers -------------------------- *)
 
-PROCEDURE Paint(hwnd: INTEGER);
+PROCEDURE WmPaint(hwnd: INTEGER);
 TYPE
   PAINTSTRUCT = RECORD-
     hdc:         INTEGER;
@@ -186,22 +181,27 @@ BEGIN
   y      := ps.top;
   width  := ps.right  - ps.left + 1;
   height := ps.bottom - ps.top  + 1;
+  (*
   H.ws("WM_PAINT handler: Paint(x ");   H.wi(x);
   H.ws(", y ");       H.wi(y);
   H.ws(", width ");   H.wi(width);
   H.ws(", height ");  H.wi(height);  H.wsn(".");
+  *)
   res := H.BitBlt(ps.hdc, x, y, width, height, Window.bmp.context, x, y, 0CC0020H);  (* SRCCPY *)
   IF res = 0 THEN H.AssertWinErr(H.GetLastError()) END;
   res := H.EndPaint(hwnd, SYSTEM.ADR(ps));
-END Paint;
+END WmPaint;
 
 
-PROCEDURE Size(wi, h: INTEGER);
-BEGIN H.ws("size := "); H.wi(wi); H.wc(","); H.wi(h); H.wsn(".");
-END Size;
+PROCEDURE WmSize(wi, h: INTEGER);
+BEGIN
+  IF (wi # Width) OR (h # Height) THEN
+    H.ws("size := "); H.wi(wi); H.wc(","); H.wi(h); H.wsn(".")
+  END
+END WmSize;
 
 
-PROCEDURE Mouse(hwnd, msg, x, y: INTEGER; flags: SET);
+PROCEDURE WmMouse(hwnd, msg, x, y: INTEGER; flags: SET);
 BEGIN
   IF x > 32767 THEN x := x - 10000H END; (* Sign extend 16 bit value *)
   IF y > 32767 THEN y := y - 10000H END; (* Sign extend 16 bit value *)
@@ -223,7 +223,7 @@ BEGIN
   IF 1 IN flags THEN INC(MouseState, 1000000H) END; (* MR *)
   IF 4 IN flags THEN INC(MouseState, 2000000H) END; (* MM *)
   IF 0 IN flags THEN INC(MouseState, 4000000H) END; (* ML *)
-END Mouse;
+END WmMouse;
 
 
 (* ---------------- Windows message names for debug logging ----------------- *)
@@ -462,102 +462,19 @@ BEGIN
   IF Window.hwnd = 0 THEN Window.hwnd := hwnd ELSE ASSERT(Window.hwnd = hwnd) END;
   res := 0;
   IF     msg =   02H  (* WM_DESTROY       *) THEN H.PostQuitMessage(0)
-  ELSIF  msg =   0FH  (* WM_PAINT         *) THEN Paint(hwnd)
+  ELSIF  msg =   0FH  (* WM_PAINT         *) THEN WmPaint(hwnd)
   ELSIF  msg =   14H  (* WM_ERASEBKGND    *) THEN
-  ELSIF  msg =   05H  (* WM_SIZE          *) THEN Size(lp MOD 10000H, lp DIV 10000H MOD 10000H)
+  ELSIF  msg =   05H  (* WM_SIZE          *) THEN WmSize(lp MOD 10000H, lp DIV 10000H MOD 10000H)
   ELSIF  msg =  100H  (* WM_KEYDOWN       *) THEN SYSTEM.GET(VKtoScn + wp, scan); AddKey(scan)
   ELSIF  msg =  101H  (* WM_KEYUP         *) THEN SYSTEM.GET(VKtoScn + wp, scan); AddKey(0F0H); AddKey(scan)
   ELSIF  msg =  102H  (* WM_CHAR          *) THEN (* Ignore WM_CHAR *)
   ELSIF (msg >= 200H) (* WM_MOUSEMOVE     *)
-     &  (msg <= 209H) (* WM_MBUTTONDBLCLK *) THEN Mouse(hwnd, msg,
-                                                        lp MOD 10000H, lp DIV 10000H MOD 10000H,
-                                                        SYSTEM.VAL(SET, wp))
+     &  (msg <= 209H) (* WM_MBUTTONDBLCLK *) THEN WmMouse(hwnd, msg,
+                                                          lp MOD 10000H, lp DIV 10000H MOD 10000H,
+                                                          SYSTEM.VAL(SET, wp))
   ELSE res := H.DefWindowProcW(hwnd, msg, wp, lp);
   END;
 RETURN res END WndProc;
-
-
-(* ------------------------ Host window message loop ------------------------ *)
-
-
-(*
-PROCEDURE DumpMessage(str: ARRAY OF CHAR; msg: HostMessage);
-BEGIN
-  H.wsn(str);
-  H.DumpMem(2, SYSTEM.ADR(msg), 0, SYSTEM.SIZE(HostMessage));
-  H.ws("  hwnd ");     H.wh(msg.hwnd);
-  H.ws("H, message "); WriteWindowsMessageName(msg.message);
-  H.ws(", pad ");      H.wh(msg.pad);
-  H.ws("H, wParam ");  H.wh(msg.wParam);
-  H.ws("H, lParam ");  H.wh(msg.lParam); H.wsn("H");
-  H.ws("  time ");     H.wh(msg.time);
-  H.ws("H, x ");       H.wi(msg.x);
-  H.ws(", y ");        H.wi(msg.y);
-  H.ws(", lPrivate "); H.wh(msg.lPrivate);
-  H.wsn("H.")
-END DumpMessage;
-*)
-
-
-PROCEDURE ProcessOneMessage* (): INTEGER;  (* 0 - none available, 1 - processed, 2 - WM_QUIT received *)
-VAR
-  msg: HostMessage;
-  res: INTEGER;
-BEGIN
-  res := H.PeekMessageW(SYSTEM.ADR(msg), 0,0,0,1); (* Get and remove message if available *)
-  IF res # 0  THEN
-    IF msg.message = 12H THEN
-      (*H.wsn("* WM_QUIT *");*)
-      res :=  2  (* 12H = WM_QUIT *)
-    ELSE
-      (*H.ws("Translate and Dispatch msg "); WriteWindowsMessageName(msg.message); H.wn;*)
-      res := H.TranslateMessage(SYSTEM.ADR(msg));
-      res := H.DispatchMessageW(SYSTEM.ADR(msg));
-      res := 1;
-    END
-  END
-RETURN res END ProcessOneMessage;
-
-
-PROCEDURE WaitMsgOrTime*(time: INTEGER);  (* Waits for time (ms) OR message in queue *)
-BEGIN
-  (*H.ws("Wait for message (or "); H.wi(time); H.wsn(" ms).");*)
-  H.MsgWaitForMultipleObjects(0, 0, 0, time, 1CFFH); (* 1DFF? *)
-END WaitMsgOrTime;
-
-(*
-PROCEDURE Loop*;
-VAR res: INTEGER;
-BEGIN
-  REPEAT
-    res := ProcessOneMessage();
-    IF res = 0 THEN  (* Queue empty *) WaitMsgOrTime(10000) END
-  UNTIL res > 1  (* => WM_QUIT *)
-END Loop;
-*)
-
-PROCEDURE ForceQuit; BEGIN H.wcn; H.Trap("** Forced quit") END ForceQuit;
-
-PROCEDURE Step*;  (* Run message loop step *)
-VAR res: INTEGER;
-BEGIN
-  res := ProcessOneMessage();
-  H.wcn; H.ws("* WinGui.Step returned "); H.wi(res); H.wsn(".");
-  IF    res = 0 THEN WaitMsgOrTime(10000)  (* Queue empty *)
-  ELSIF res = 2 THEN ForceQuit             (* Quit requested by Windows *)
-  END
-END Step;
-
-(* Debugging --- *)
-PROCEDURE Pause*;  (* Run message loop until key pressed and eat key *)
-VAR key: BYTE;
-BEGIN
-  H.wsn("** Pausing **");
-  WHILE ~KeyReady() DO Step END;
-  GetKey(key);
-  H.ws("** Pause finished, key "); H.wh(key); H.wsn("H **");
-END Pause;
-(* ---- *)
 
 
 (* -------------------------- Host window creation -------------------------- *)
@@ -641,9 +558,61 @@ BEGIN
 END CreateWindow;
 
 
+(* ------------------------ Host window message loop ------------------------ *)
+
+
+PROCEDURE ProcessOneMessage* (): INTEGER;  (* 0 - none available, 1 - processed *)
+VAR
+  msg: HostMessage;
+  res: INTEGER;
+BEGIN
+  res := H.PeekMessageW(SYSTEM.ADR(msg), 0,0,0,1); (* Get and remove message if available *)
+  IF res # 0  THEN
+    IF msg.message = 12H THEN
+      WmQuit := TRUE;
+      MouseState := MouseState MOD 1000000H;  (* All mouse buttons up *)
+      KeyIn := KeyOut; KeyFull := FALSE;      (* Clear keybard *)
+      res := 0
+    ELSE
+      res := H.TranslateMessage(SYSTEM.ADR(msg));
+      res := H.DispatchMessageW(SYSTEM.ADR(msg));
+      res := 1;
+    END
+  END
+RETURN res END ProcessOneMessage;
+
+
+PROCEDURE WaitMsgOrTime*(time: INTEGER);  (* Waits for time (ms) OR message in queue *)
+BEGIN H.MsgWaitForMultipleObjects(0, 0, 0, time, 01DFFH) END WaitMsgOrTime;
+
+PROCEDURE Drain;
+VAR res: INTEGER;
+BEGIN
+  REPEAT res := ProcessOneMessage() UNTIL res = 0;
+END Drain;
+
+
+(* ----------------- keyboard and mouse hardware emulation ------------------ *)
+
+PROCEDURE KeyReady*(): BOOLEAN;
+BEGIN Drain;
+RETURN (KeyIn # KeyOut) OR KeyFull END KeyReady;
+
+PROCEDURE GetKey*(VAR key: BYTE);
+BEGIN ASSERT(KeyReady());
+  key     := Keys[KeyOut];
+  KeyOut  := (KeyOut + 1) MOD KeyBufSize;
+  KeyFull := FALSE
+END GetKey;
+
+PROCEDURE Mouse*(): INTEGER;
+BEGIN Drain;
+RETURN MouseState END Mouse;
+
 (* ------------------------- Display initialisation ------------------------- *)
 
 BEGIN
+  WmQuit := FALSE;
   ASSERT(H.SetProcessDpiAwarenessContext(-3) # 0);  (* DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE *)
   VKtoScn := SYSTEM.ADR($
     00 00 00 00 00 00 00 00  66 09 00 00 00 5A 00 00
@@ -665,5 +634,5 @@ BEGIN
   Width  := 1536; (* 1024;*) (*1800*)
   Height := 1152; (*768;*)  (*1280*)
   CreateWindow(512, 64, Width, Height);
-  H.wsn("Display initialised.");
+  (*H.wsn("WinGui initialisation complete.");*)
 END WinGui.

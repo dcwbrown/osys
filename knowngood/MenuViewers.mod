@@ -28,13 +28,15 @@ END Copy;
 
 PROCEDURE Draw (V: Viewers.Viewer);
 BEGIN
+  (*
   H.ws("MenuViewers.Draw viewer at "); H.wi(V.X); H.wc(","); H.wi(V.Y);
   H.ws(" size "); H.wi(V.W); H.wc(","); H.wi(V.H); H.wsn(".");
+  *)
   Display.ReplConst(FrameColor, V.X, V.Y, 1, V.H, Display.replace);
   Display.ReplConst(FrameColor, V.X + V.W - 1, V.Y, 1, V.H, Display.replace);
   Display.ReplConst(FrameColor, V.X + 1, V.Y, V.W - 2, 1, Display.replace);
   Display.ReplConst(FrameColor, V.X + 1, V.Y + V.H - 1, V.W - 2, 1, Display.replace);
-  H.wsn("MenuViewers.Draw complete.")
+  (*H.wsn("MenuViewers.Draw complete.")*)
 END Draw;
 
 PROCEDURE Extend (V: Viewer; newY: INTEGER);

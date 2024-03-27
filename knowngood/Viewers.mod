@@ -32,7 +32,7 @@ VAR curW*, minH*, DH: INTEGER;
 PROCEDURE Open* (V: Viewer; X, Y: INTEGER);
 VAR T, u, v: Display.Frame; M: ViewerMsg;
 BEGIN
-  H.ws("Viewer.Open: X "); H.wi(X); H.ws(", Y "); H.wi(Y); H.wsn(".");
+  (*H.ws("Viewer.Open: X "); H.wi(X); H.ws(", Y "); H.wi(Y); H.wsn(".");*)
   IF (V.state = 0) & (X < inf) THEN
     IF Y > DH THEN Y := DH END;
     T := FillerTrack.next;
@@ -124,11 +124,10 @@ BEGIN
     REPEAT V := V.next UNTIL Y < V.Y + V.H
   ELSE V := NIL
   END;
+  (*
   IF V = NIL THEN H.wcn; H.wsn("Viewers.This result is NIL.") END;
-  (*$la+lc+*)
   IF V IS Viewer THEN
     H.wcn; H.wsn("V IS Viewer.")
-  (*$la-lc-*)
   ELSE
     H.wcn; H.ws("Viewers.This() result is not a Viewer, v ");
     H.wh(SYSTEM.VAL(INTEGER, V)); H.wsn(".");
@@ -142,11 +141,9 @@ BEGIN
   H.wsn("Type descriptor:");
   SYSTEM.GET(SYSTEM.ADR(V^)-16, i);
   H.DumpMem(2, i, i, 96);
-
-  (*$la+lc+*)
+  *)
   RETURN V(Viewer)
 END This;
-(*$la-lc-*)
 
 PROCEDURE Next* (V: Viewer): Viewer;
 BEGIN RETURN V.next(Viewer)

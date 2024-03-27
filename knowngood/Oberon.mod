@@ -1,5 +1,5 @@
 MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
-  IMPORT SYSTEM, Kernel, Files, Modules, Input, Display, Viewers, Fonts, Texts;
+  IMPORT SYSTEM, H := WinHost, WinGui, Kernel, Files, Modules, Input, Display, Viewers, Fonts, Texts;
 
   CONST (*message ids*)
     consume* = 0; track* = 1; defocus* = 0; neutralize* = 1; mark* = 2;
@@ -309,10 +309,12 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
     IF time >= 0 THEN text := M.text; beg := M.beg; end := M.end END
   END GetSelection;
 
-  (*
+
   PROCEDURE GC;
     VAR mod: Modules.Module;
   BEGIN
+    H.wsn("(GC)");
+    (*
     IF (ActCnt <= 0) OR (Kernel.allocated >= Kernel.heapLim - Kernel.heapOrg - 10000H) THEN
       mod := Modules.root; LED(21H);
       WHILE mod # NIL DO
@@ -324,8 +326,9 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
       Kernel.Scan; LED(20H);
       ActCnt := BasicCycle
     END
+    *)
   END GC;
-  *)
+
 
   PROCEDURE NewTask*(h: Handler; period: INTEGER): Task;
     VAR t: Task;
@@ -400,10 +403,13 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
           CurTask := CurTask.next; t := Kernel.Time();
           IF t >= CurTask.nextTime THEN
             CurTask.nextTime := t + CurTask.period; CurTask.state := active; CurTask.handle; CurTask.state := idle
+          ELSE
+            WinGui.WaitMsgOrTime(CurTask.nextTime - t)
           END
         END
       END
-    UNTIL FALSE
+    UNTIL WinGui.WmQuit;
+    H.wsn("Oberon.Loop completed (WM_QUIT).")
   END Loop;
 
   PROCEDURE Reset*;
@@ -424,6 +430,6 @@ BEGIN User[0] := 0X;
   CurFnt := Fonts.Default; CurCol := Display.white; CurOff := 0;
 
   CurTask := NIL;
-  (* ActCnt := 0; CurTask := NewTask(GC, 1000); Install(CurTask); *)
+  ActCnt := 0; CurTask := NewTask(GC, 1000); Install(CurTask);
   (*Modules.Load("System", Mod); Mod := NIL; Loop*)
 END Oberon.

@@ -135,6 +135,7 @@ END Dot;
 PROCEDURE ReplConst*(col, x, y, w, h, mode: INTEGER);
 VAR al, ar, a0, a1: INTEGER;  left, right, mid: SET;  b: BYTE;
 BEGIN
+  (*
   H.ws("ReplConst(");
   IF    mode = invert THEN H.ws("invert, ")
   ELSIF mode = paint  THEN H.ws("paint, ")
@@ -150,7 +151,7 @@ BEGIN
   ELSE
     H.wn
   END;
-
+  *)
   IF mode = replace THEN
     IF col = black THEN mode := clear ELSE mode := paint END
   END;
@@ -174,8 +175,7 @@ BEGIN
       INC(ar, Stride);
       INC(a0, Stride)
     END
-  END;
-  (*WinGui.Invalidate; WinGui.Pause;*)
+  END
 END ReplConst;
 
 PROCEDURE ReverseByte(b: BYTE): BYTE;
