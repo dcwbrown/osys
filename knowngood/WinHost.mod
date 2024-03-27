@@ -984,6 +984,7 @@ VAR
   impmodadr:   INTEGER;  (* Module being imported from base address *)
   expadr:      INTEGER;  (* Address relative to imported module of an export *)
   ptroff:      INTEGER;
+  tag:         INTEGER;
   modulebody:  PROCEDURE;
 BEGIN
   hdr := SYSTEM.VAL(CodeHeaderPtr, modadr);
@@ -1032,6 +1033,21 @@ BEGIN
       ELSE  assert(FALSE) (*, "LoadModule: Unexpected system function import number.")*)
       END;
       SYSTEM.PUT(LoadAdr + offset, disp)
+    ELSIF modno = 0FFFFH THEN
+      (* 64 bit abs extension type descriptor from type descriptor         *)
+      (* qword at adr contains 32/0,32/module offset or 32/1,16/mod,16/imp *)
+      SYSTEM.GET(LoadAdr + offset, tag);
+      IF tag DIV 100000000H = 0 THEN  (* offset of type descriptor in this module *)
+        ws("* Fixup local type extension ref at offset "); wh(offset); wsn("H.");
+        SYSTEM.PUT(LoadAdr + offset, LoadAdr + tag)
+      ELSE  (* import reference type descriptor in another module *)
+        ws("* Fixup imported type extension ref at offset "); wh(offset); wsn("H.");
+        modno := tag DIV 10000H MOD 10000H;  assert(modno > 0);
+        impmodadr := modules[modno-1];
+        impno := tag MOD 10000H;
+        assert(impno > 0);
+        SYSTEM.PUT(LoadAdr + offset, ExportedAddress(SYSTEM.VAL(CodeHeaderPtr, impmodadr), impno-1))
+      END
     ELSE
       assert(modno > 0);
       impmodadr := modules[modno-1];

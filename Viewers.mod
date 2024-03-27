@@ -115,7 +115,7 @@ BEGIN V := backup
 END Recall;
 
 PROCEDURE This* (X, Y: INTEGER): Viewer;
-VAR T, V: Display.Frame;
+VAR T, V: Display.Frame; i: INTEGER;
 BEGIN
   IF (X < inf) & (Y < DH) THEN
     T := FillerTrack;
@@ -125,18 +125,28 @@ BEGIN
   ELSE V := NIL
   END;
   IF V = NIL THEN H.wcn; H.wsn("Viewers.This result is NIL.") END;
+  (*$la+lc+*)
   IF V IS Viewer THEN
     H.wcn; H.wsn("V IS Viewer.")
+  (*$la-lc-*)
   ELSE
     H.wcn; H.ws("Viewers.This() result is not a Viewer, v ");
     H.wh(SYSTEM.VAL(INTEGER, V)); H.wsn(".");
     IF V IS Display.Frame THEN H.wsn(".. V IS Display.FrameDesc.") END;
     H.ws("  X,Y: ");     H.wi(X);   H.wc(","); H.wi(Y);
     H.ws(", V.X,V.Y: "); H.wi(V.X); H.wc(","); H.wi(V.Y);
-    H.ws(", V.W,V.H: "); H.wi(V.W); H.wc(","); H.wi(V.H); H.wsn(".")
+    H.ws(", V.W,V.H: "); H.wi(V.W); H.wc(","); H.wi(V.H); H.wsn(".");
   END;
+  H.wsn("V: ");
+  H.DumpMem(2, SYSTEM.ADR(V^)-16, SYSTEM.ADR(V^)-16, SYSTEM.SIZE(ViewerDesc)+16);
+  H.wsn("Type descriptor:");
+  SYSTEM.GET(SYSTEM.ADR(V^)-16, i);
+  H.DumpMem(2, i, i, 96);
+
+  (*$la+lc+*)
   RETURN V(Viewer)
 END This;
+(*$la-lc-*)
 
 PROCEDURE Next* (V: Viewer): Viewer;
 BEGIN RETURN V.next(Viewer)

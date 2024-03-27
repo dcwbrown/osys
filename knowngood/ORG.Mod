@@ -2731,8 +2731,14 @@ BEGIN (*one entry of type descriptor extension table*)
   IF T.base # NIL THEN
     Q(T.base);
     Trace(TraceAny, "Q(T: "); l.Type(T, Tr); l.sn(")", Tr);
-    EmitInt(LSL(T.mno, 16) + T.len,
-            "type extension: 32/0, 16/mno, 16/import");
+    ImpFix[ImpFInx].offset := X64.PC;
+    ImpFix[ImpFInx].fix    := 0FFFF0000H;  INC(ImpFInx);
+    IF T.mno = 0 THEN
+      EmitInt(T.len, "type extension local module offset")
+    ELSE
+      EmitInt(100000000H + T.mno * 10000H + T.len,
+            "type extension: 32/1, 16/mno, 16/import")
+    END;
   END
 END Q;
 
@@ -2806,8 +2812,15 @@ BEGIN
 END BuildTD;
 
 PROCEDURE TypeTest*(VAR X: X64.Item; T: ORB.Type; varpar, isguard: BOOLEAN);
-VAR r1, r2, pc: INTEGER;  x: Item;
+VAR r1, r2, pc: INTEGER;  x: Item;  b: l.Buffer;
 BEGIN
+  IF isguard THEN l.InitBuf(b);
+    l.s("ORG.TypeTest for isguard: X ", b); l.Item(X, b);
+    l.s(", T ", b);                         l.Type(T, b);
+    l.s(", T.nofpar ", b);                  l.i(T.nofpar, b);
+    l.s(", varpar ", b);                    l.Bool(varpar, b);
+    l.c(".", b);  l.c(0X, b);  H.wsn(b.c)
+  END;
   Trace(TraceAny, "TypeTest(x: "); l.Item(x, Tr);
   l.s(", T: ", Tr);                l.Type(T, Tr);
   IF varpar  THEN l.s(", varpar, ", Tr)  ELSE l.s("~varpar, ", Tr)  END;
@@ -2831,6 +2844,10 @@ BEGIN
     LoadMem(r1, Eadr, FALSE, 8, r1, -1, 0, -10H);  (* Load type tag *)
   END;
   Disassemble(Eadr, "TypeTest load record type tag");
+IF FALSE THEN
+  LoadMem(r1, Eadr, FALSE, 8, r1, -1, 0, T.nofpar * 8);
+  Disassemble(Eadr, "Extract base type tag");
+END;
   r2 := Reserve(-1, {});
   LoadTypeAddress(r2, T);
   AluOpToReg(Cmp, Reg, r1, FALSE, 8, r2, -1, 0, 0);  (* cmp r1,r2 *)

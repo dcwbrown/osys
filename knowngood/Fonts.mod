@@ -151,7 +151,7 @@ BEGIN
       ELSE (*bad file id*) F := Default
       END
     ELSE (*font file not available*)
-      H.wcn; H.ws("No font file for '"); H.ws(name); H.wsn("'.");
+      (*H.wcn; H.ws("No font file for '"); H.ws(name); H.wsn("'.");*)
       F := Default
     END
   END;
@@ -166,8 +166,9 @@ BEGIN f := root.next;
 END Free;
 
 BEGIN
-  H.wcn; H.wsn("Fonts initialising.");
-  root := NIL;
+  (*H.wcn; H.wsn("Fonts initialising.");*)
+  root    := NIL;
+  Default := NIL;
   Default := This("Oberon16.Scn.Fnt");
-  H.wcn; H.wsn("Fonts initialised.");
+  (*H.wcn; H.wsn("Fonts initialised.");*)
 END Fonts.
