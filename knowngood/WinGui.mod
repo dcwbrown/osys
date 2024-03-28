@@ -574,6 +574,26 @@ BEGIN
       KeyIn := KeyOut; KeyFull := FALSE;      (* Clear keybard *)
       res := 0
     ELSE
+      (*
+      IF    msg.message =   2H THEN H.wsn("* WM_DESTROY *")
+      ELSIF msg.message =   6H THEN H.wsn("* WM_ACTIVATE *")
+      ELSIF msg.message =   7H THEN H.wsn("* WM_SETFOCUS *")
+      ELSIF msg.message =   8H THEN H.wsn("* WM_KILLFOCUS *")
+      ELSIF msg.message =  10H THEN H.wsn("* WM_CLOSE *")
+      ELSIF msg.message =  11H THEN H.wsn("* WM_QUERYENDSESSION *")
+      ELSIF msg.message =  16H THEN H.wsn("* WM_ENDSESSION *")
+      ELSIF msg.message =  48H THEN H.wsn("* WM_POWER *")
+      ELSIF msg.message =  4EH THEN H.wsn("* WM_NOTIFY *")
+      ELSIF msg.message =  60H THEN H.wsn("* WM_60 *")
+      ELSIF msg.message = 101H THEN H.wsn("* WM_KEYUP *")
+      ELSIF msg.message = 104H THEN H.wsn("* WM_SYSKEYDOWN *")
+      ELSIF msg.message = 105H THEN H.wsn("* WM_SYSKEYUP *")
+      ELSIF msg.message = 106H THEN H.wsn("* WM_SYSCHAR *")
+      ELSIF msg.message = 109H THEN H.wsn("* WM_UNICHAR *")
+      ELSIF msg.message = 113H THEN H.wsn("* WM_TIMER *")
+      ELSE H.ws("Windows message "); H.wh(msg.message); H.wsn("H.");
+      END;
+      *)
       res := H.TranslateMessage(SYSTEM.ADR(msg));
       res := H.DispatchMessageW(SYSTEM.ADR(msg));
       res := 1;

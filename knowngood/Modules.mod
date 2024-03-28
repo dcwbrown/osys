@@ -2,7 +2,10 @@ MODULE Modules;  (*Link and load on RISC;  NW 20.10.2013 / 9.4.2016*)
 
 IMPORT SYSTEM, Files;
 
-CONST versionkey = 1X;  MT = 12;  DescSize = 80;
+CONST
+  versionkey = 1X;
+  MT         = 12;
+  DescSize   = 80;
 
 TYPE
   Module*     = POINTER TO ModDesc;
@@ -28,7 +31,7 @@ TYPE
 
 VAR
 (*
-  root*: Module;
+  root*:      Module;
   M:          Module;
   MTOrg*:     INTEGER;
   AllocPtr*:  INTEGER;
@@ -90,7 +93,9 @@ VAR
 BEGIN
   res := 2
 (*
-  mod := root;  res := 0;  nofimps := 0;
+  mod := root;
+  res := 0;
+  nofimps := 0;
   WHILE (mod # NIL) & (name # mod.name) DO mod := mod.next END;
   IF mod = NIL THEN (*load*)
     Check(name);

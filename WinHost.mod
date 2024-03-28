@@ -2,8 +2,8 @@ MODULE WinHost;  IMPORT SYSTEM;
 
 CONST
   (* Platform independent file open kinds *)
-  OpenRO*      = 0;  (* Open r/o, fail if doesn't exist *)
-  OpenRW*      = 1;  (* Open r/w, fail if doesn't exist *)
+  OpenRO* = 0;  (* Open r/o, fail if doesn't exist *)
+  OpenRW* = 1;  (* Open r/w, fail if doesn't exist *)
 
   (* System library procedure indices *)
   NewProc*                   = 0;
@@ -32,6 +32,7 @@ TYPE
     imports*:  SYSTEM.CARD32;  (* 18H  VARs start here following import resolution *)
     varsize*:  SYSTEM.CARD32;  (* 1CH *)
     key*:      INTEGER;        (* 20H *)
+    dummy:     ARRAY 20 OF INTEGER;
   END;
 
   (* -------------------- Windows exception structures -------------------- *)
