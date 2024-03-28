@@ -2864,8 +2864,6 @@ BEGIN
   ImpFInx         := 0;
   Disasmpc        := 0;
   X64.SetPC(SYSTEM.SIZE(CodeHeader));
-  X64.Align(8); (* Increase alignment to match PO2013 where records are aligned on 8 bytes. *)
-  X64.EmitString(modid);
   X64.Align(16);
   Disasmpc := X64.PC;
 END Open;
@@ -2936,17 +2934,18 @@ BEGIN
   l.s("  Import fixups: ", Tr);  l.i(ImpFInx, Tr);  l.n(Tr);
   l.n(Tr);
 
-  (* Prepare to patch header pointers directly into X64.Text *)
+  Hdr.name := modid;
+  Hdr.key  := key;
 
-  Hdr.ovarsize := Varsize;
-  Hdr.okey     := key;
+
   Hdr.nvarsize := Varsize;
-  Hdr.nkey     := key;
+
+  (* Prepare to patch header pointers directly into X64.Text *)
 
 
   (* -------------------- Emit global VAR pointer table --------------------- *)
   X64.Align(16);
-  Hdr.npointers := X64.PC;  (* Set global VAR pointer table address *)
+  Hdr.ptr := X64.PC;  (* Set global VAR pointer table address *)
   obj := ORB.topScope.next;
   WHILE obj # NIL DO
     IF obj.class = ORB.Var THEN EmitPtrs(obj.type, obj.val) END;
@@ -2957,7 +2956,6 @@ BEGIN
 
   (* -------------------------- Emit command table -------------------------- *)
   X64.Align(16);
-  Hdr.ocommands := X64.PC;   (* Set command table address *)
   Hdr.ncommands := X64.PC;   (* Set command table address *)
   obj := ORB.topScope.next;
   WHILE obj # NIL DO  (* commands *)
@@ -2973,7 +2971,6 @@ BEGIN
   (* ------------------------ Emit line annotations ------------------------- *)
 
   X64.Align(16);
-  Hdr.olines := X64.PC;
   Hdr.nlines := X64.PC;
   bodyan := BodyAnnotations;
   WHILE bodyan # NIL DO
@@ -3015,7 +3012,6 @@ BEGIN
 
   (* ---------- Determine export table offset and resident length ----------- *)
   X64.Align(16);
-  Hdr.oexports := X64.PC;     (* Set export table address *)
   Hdr.nexports := X64.PC;     (* Set export table address *)
   reslen := (X64.PC + exno * 4 + 15) DIV 16 * 16;
   (* Note there are exno-1 export entries plus a -1 terminator *)
@@ -3067,7 +3063,6 @@ BEGIN
     l.sn("H **", Tr)
   END;
   ASSERT(X64.PC = reslen);
-  Hdr.oimports := reslen; (* Set resident size / var offset *)
   Hdr.nimports := reslen; (* Set resident size / var offset *)
 
   (* Relocate code references to module global VARs *)
@@ -3103,8 +3098,7 @@ BEGIN
   l.sn("Header:", Tr);
   l.s("  Length:        ", Tr);  l.h(Hdr.nlength,  Tr);  l.sn("H.", Tr);
   l.s("  Init code:     ", Tr);  l.h(Hdr.ninitcode, Tr);  l.sn("H.", Tr);
-  l.s("  Pointers:      ", Tr);  l.h(Hdr.npointers, Tr);  l.sn("H.", Tr);
-  l.s("  Commands:      ", Tr);  l.h(Hdr.ncommands, Tr);  l.sn("H.", Tr);
+  l.s("  Pointers:      ", Tr);  l.h(Hdr.ptr, Tr);  l.sn("H.", Tr);
   l.s("  Exports:       ", Tr);  l.h(Hdr.nexports,  Tr);  l.sn("H.", Tr);
   l.s("  Imports:       ", Tr);  l.h(Hdr.nimports,  Tr);  l.sn("H.", Tr);
   l.s("  VAR size:      ", Tr);  l.h(Hdr.nvarsize,  Tr);  l.sn("H.", Tr);

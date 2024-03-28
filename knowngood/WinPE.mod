@@ -217,7 +217,7 @@ VAR
 
 BEGIN
   H.ZeroFill(Idt);
-  target := RvaModules + Bootstrap.Header.oimports + BootstrapVarBytes;
+  target := RvaModules + Bootstrap.Header.nimports + BootstrapVarBytes;
 
   (* **NOTE** these imports must be in exactly the same order as the *)
   (* corresponding procedure variable declarations in WinHost.mode   *)
@@ -540,20 +540,20 @@ BEGIN FOR i := 1 TO n DO Files.WriteByte(Exe, 0) END END WriteZeroes;
 PROCEDURE WriteBootstrap(LoadFlags: SET);
 BEGIN
   spos(FadrModules);
-  Files.WriteBytes(Exe, Bootstrap, 0, Bootstrap.Header.oimports);  (* Code and tables   *)
+  Files.WriteBytes(Exe, Bootstrap, 0, Bootstrap.Header.nimports);  (* Code and tables   *)
 
   (* Preset bootstrap modules global VARs *)
   Files.WriteInt(Exe, ImageBase);                                 (* EXE load address  *)
   Files.WriteInt(Exe, ImageBase + RvaModules);                    (* Header address    *)
   Files.WriteSet(Exe, LoadFlags);
-  ASSERT(Files.Pos(Exe) -  (FadrModules + Bootstrap.Header.oimports) = BootstrapVarBytes);
+  ASSERT(Files.Pos(Exe) -  (FadrModules + Bootstrap.Header.nimports) = BootstrapVarBytes);
 
   (* Preset bootstrap VARs with WIndows proc addresses *)
   Files.WriteBytes(Exe, Idt.Kernel32Lookups, 0, Kernel32ImportCount * 8);
   Files.WriteBytes(Exe, Idt.User32Lookups,   0, User32ImportCount   * 8);
   Files.WriteBytes(Exe, Idt.Gdi32Lookups,  0, Gdi32ImportCount  * 8);
 
-  WriteZeroes(Bootstrap.Header.ovarsize
+  WriteZeroes(Bootstrap.Header.nvarsize
             - ((Kernel32ImportCount + User32ImportCount + Gdi32ImportCount) * 8 + BootstrapVarBytes));
   FileAlign(Exe, 16)
 END WriteBootstrap;

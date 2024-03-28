@@ -234,8 +234,8 @@ BEGIN
   LongestFilename := H.Max(LongestFilename, H.Length(f.name));
   Files.Set(r, f, 0);
   Files.ReadBytes(r, hdr, SYSTEM.SIZE(H.CodeHeader));
-  key := hdr.okey;
-  Files.Set(r, f, hdr.oimports);
+  key := hdr.key;
+  Files.Set(r, f, hdr.nimports);
   NEW(import);
   last := NIL;
   Files.ReadString(r, import.name);
@@ -433,7 +433,7 @@ BEGIN
   modadr := H.OberonAdr;
   hdr    := SYSTEM.VAL(H.CodeHeaderPtr, modadr);
   REPEAT
-    K.Mark(modadr + hdr.npointers);
+    K.Mark(modadr + hdr.ptr);
     INC(modadr, hdr.nlength);
     hdr := SYSTEM.VAL(H.CodeHeaderPtr, modadr);
   UNTIL hdr.nlength = 0;
@@ -467,9 +467,9 @@ BEGIN
   Files.Set(r, mod.code.file, 0);
   Files.ReadBytes(r, hdr, SYSTEM.SIZE(H.CodeHeader));
   H.wsl(mod.name, LongestModname + 1);
-  WriteHuman(hdr.npointers, 12);  INC(TotalCode,    hdr.npointers);
+  WriteHuman(hdr.ptr, 12);  INC(TotalCode,    hdr.ptr);
   WriteHuman(hdr.nvarsize, 12);   INC(TotalGlobals, hdr.nvarsize);
-  WriteHuman(hdr.ncommands - hdr.npointers, 8);
+  WriteHuman(hdr.ncommands - hdr.ptr, 8);
   WriteHuman(hdr.nlines    - hdr.ncommands, 6);
   WriteHuman(hdr.nexports  - hdr.nlines,    8);
   WriteHuman(hdr.nimports  - hdr.nexports,  8);
