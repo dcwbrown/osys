@@ -2876,7 +2876,7 @@ BEGIN Varsize := dc END SetDataSize;
 PROCEDURE Header*;
 BEGIN
   Trace(TraceAny, "Header - module initialisation code entry point."); l.n(Tr);
-  Hdr.initcode := X64.PC;  (* Set entry point address *)
+  Hdr.ninitcode := X64.PC;  (* Set entry point address *)
 END Header;
 
 PROCEDURE wsize(size: INTEGER);
@@ -2938,13 +2938,15 @@ BEGIN
 
   (* Prepare to patch header pointers directly into X64.Text *)
 
-  Hdr.varsize := Varsize;
-  Hdr.key     := key;
+  Hdr.ovarsize := Varsize;
+  Hdr.okey     := key;
+  Hdr.nvarsize := Varsize;
+  Hdr.nkey     := key;
 
 
   (* -------------------- Emit global VAR pointer table --------------------- *)
   X64.Align(16);
-  Hdr.pointers := X64.PC;  (* Set global VAR pointer table address *)
+  Hdr.npointers := X64.PC;  (* Set global VAR pointer table address *)
   obj := ORB.topScope.next;
   WHILE obj # NIL DO
     IF obj.class = ORB.Var THEN EmitPtrs(obj.type, obj.val) END;
@@ -2955,7 +2957,8 @@ BEGIN
 
   (* -------------------------- Emit command table -------------------------- *)
   X64.Align(16);
-  Hdr.commands := X64.PC;   (* Set command table address *)
+  Hdr.ocommands := X64.PC;   (* Set command table address *)
+  Hdr.ncommands := X64.PC;   (* Set command table address *)
   obj := ORB.topScope.next;
   WHILE obj # NIL DO  (* commands *)
     IF (obj.exno # 0) & (obj.class = ORB.Const) & (obj.type.form = ORB.Proc)
@@ -2970,7 +2973,8 @@ BEGIN
   (* ------------------------ Emit line annotations ------------------------- *)
 
   X64.Align(16);
-  Hdr.lines := X64.PC;
+  Hdr.olines := X64.PC;
+  Hdr.nlines := X64.PC;
   bodyan := BodyAnnotations;
   WHILE bodyan # NIL DO
     linean := bodyan.firstline;
@@ -3011,7 +3015,8 @@ BEGIN
 
   (* ---------- Determine export table offset and resident length ----------- *)
   X64.Align(16);
-  Hdr.exports := X64.PC;     (* Set export table address *)
+  Hdr.oexports := X64.PC;     (* Set export table address *)
+  Hdr.nexports := X64.PC;     (* Set export table address *)
   reslen := (X64.PC + exno * 4 + 15) DIV 16 * 16;
   (* Note there are exno-1 export entries plus a -1 terminator *)
 
@@ -3055,14 +3060,15 @@ BEGIN
 
   X64.Align(16);
   IF X64.PC # reslen THEN
-    l.n(Tr); l.s("** PC ", Tr);  l.h(X64.PC, Tr);
-    l.s("H, reslen ", Tr);       l.h(reslen, Tr);
-    l.s("H, Hdr.exports ", Tr);  l.h(Hdr.exports, Tr);
-    l.s("H, exno ", Tr);         l.h(exno, Tr);
+    l.n(Tr); l.s("** PC ", Tr);   l.h(X64.PC, Tr);
+    l.s("H, reslen ", Tr);        l.h(reslen, Tr);
+    l.s("H, Hdr.nexports ", Tr);  l.h(Hdr.nexports, Tr);
+    l.s("H, exno ", Tr);          l.h(exno, Tr);
     l.sn("H **", Tr)
   END;
   ASSERT(X64.PC = reslen);
-  Hdr.imports := reslen; (* Set resident size / var offset *)
+  Hdr.oimports := reslen; (* Set resident size / var offset *)
+  Hdr.nimports := reslen; (* Set resident size / var offset *)
 
   (* Relocate code references to module global VARs *)
   (*l.n(Tr); l.i(VarFInx, Tr); l.sn(" VAR relocations.", Tr);*)
@@ -3091,18 +3097,17 @@ BEGIN
   END;
   X64.EmitBytes(4, -1);
   WHILE X64.PC MOD 16 # 0 DO X64.Emit(0) END;
-  (*Hdr.olength := X64.PC;*)
   Hdr.nlength := X64.PC;
 
   (* Display header content *)
   l.sn("Header:", Tr);
   l.s("  Length:        ", Tr);  l.h(Hdr.nlength,  Tr);  l.sn("H.", Tr);
-  l.s("  Init code:     ", Tr);  l.h(Hdr.initcode, Tr);  l.sn("H.", Tr);
-  l.s("  Pointers:      ", Tr);  l.h(Hdr.pointers, Tr);  l.sn("H.", Tr);
-  l.s("  Commands:      ", Tr);  l.h(Hdr.commands, Tr);  l.sn("H.", Tr);
-  l.s("  Exports:       ", Tr);  l.h(Hdr.exports,  Tr);  l.sn("H.", Tr);
-  l.s("  Imports:       ", Tr);  l.h(Hdr.imports,  Tr);  l.sn("H.", Tr);
-  l.s("  VAR size:      ", Tr);  l.h(Hdr.varsize,  Tr);  l.sn("H.", Tr);
+  l.s("  Init code:     ", Tr);  l.h(Hdr.ninitcode, Tr);  l.sn("H.", Tr);
+  l.s("  Pointers:      ", Tr);  l.h(Hdr.npointers, Tr);  l.sn("H.", Tr);
+  l.s("  Commands:      ", Tr);  l.h(Hdr.ncommands, Tr);  l.sn("H.", Tr);
+  l.s("  Exports:       ", Tr);  l.h(Hdr.nexports,  Tr);  l.sn("H.", Tr);
+  l.s("  Imports:       ", Tr);  l.h(Hdr.nimports,  Tr);  l.sn("H.", Tr);
+  l.s("  VAR size:      ", Tr);  l.h(Hdr.nvarsize,  Tr);  l.sn("H.", Tr);
 
   (* Write compiled module *)
   fname := "";  H.Append(modid, fname);  H.Append(".code", fname);
