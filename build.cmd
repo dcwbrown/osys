@@ -63,7 +63,7 @@
 @mkdir buildpre >NUL
 @copy WinPE.mod buildpre >NUL
 @cd buildpre >NUL
-..\knowngood\obuild /s ./;../ obuild
+..\knowngood\obuild /v /s ./;../ obuild
 @if errorlevel 1 goto end
 @cd ..
 ::
@@ -75,7 +75,7 @@
 @mkdir build1 >NUL 2>NUL
 @cd build1
 ::if exist ..\buildpre\obuild.exe (..\buildpre\obuild obuild) else (..\knowngood\obuild obuild)
-..\knowngood\obuild /s ../ obuild
+..\knowngood\obuild /v /s ../ obuild
 @if errorlevel 1 goto end
 @cd ..
 ::
@@ -84,7 +84,7 @@
 @echo ---------------- Build new compiler using newly built compiler -----------------
 @mkdir build2 >NUL 2>NUL
 @cd build2
-..\build1\obuild /s ../ obuild
+..\build1\obuild /v /s ../ obuild
 @if errorlevel 1 goto end
 @if exist obuild.exe goto obexists
 ::
@@ -99,7 +99,7 @@
 @echo --------------------------------- Build tests ----------------------------------
 @mkdir buildtest >NUL 2>NUL
 @cd buildtest
-..\build2\obuild /s ../ /b ../build2/ Test
+..\build2\obuild /v /s ../ /b ../build2/ Test
 @if errorlevel 1 goto testbuildfailed
 @if exist Test.exe goto testexists
 @echo.

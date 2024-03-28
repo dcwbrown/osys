@@ -3091,11 +3091,12 @@ BEGIN
   END;
   X64.EmitBytes(4, -1);
   WHILE X64.PC MOD 16 # 0 DO X64.Emit(0) END;
-  Hdr.length := X64.PC;
+  (*Hdr.olength := X64.PC;*)
+  Hdr.nlength := X64.PC;
 
   (* Display header content *)
   l.sn("Header:", Tr);
-  l.s("  Length:        ", Tr);  l.h(Hdr.length,   Tr);  l.sn("H.", Tr);
+  l.s("  Length:        ", Tr);  l.h(Hdr.nlength,  Tr);  l.sn("H.", Tr);
   l.s("  Init code:     ", Tr);  l.h(Hdr.initcode, Tr);  l.sn("H.", Tr);
   l.s("  Pointers:      ", Tr);  l.h(Hdr.pointers, Tr);  l.sn("H.", Tr);
   l.s("  Commands:      ", Tr);  l.h(Hdr.commands, Tr);  l.sn("H.", Tr);

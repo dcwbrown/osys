@@ -434,9 +434,9 @@ BEGIN
   hdr    := SYSTEM.VAL(H.CodeHeaderPtr, modadr);
   REPEAT
     K.Mark(modadr + hdr.pointers);
-    INC(modadr, hdr.length);
+    INC(modadr, hdr.nlength);
     hdr := SYSTEM.VAL(H.CodeHeaderPtr, modadr);
-  UNTIL hdr.length = 0;
+  UNTIL hdr.nlength = 0;
   Files.CloseCollectableFiles;
   K.Scan;
 END CollectGarbage;
@@ -473,7 +473,7 @@ BEGIN
   WriteHuman(hdr.lines    - hdr.commands, 6);
   WriteHuman(hdr.exports  - hdr.lines,    8);
   WriteHuman(hdr.imports  - hdr.exports,  8);
-  WriteHuman(hdr.length   - hdr.imports,  8);
+  WriteHuman(hdr.nlength   - hdr.imports,  8);
   H.wn;
   WinPE.AddModule(mod.code.file);
   mod.addedToPE := TRUE
