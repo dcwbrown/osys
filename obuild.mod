@@ -426,17 +426,13 @@ END CompileModule;
 
 
 PROCEDURE CollectGarbage;
-VAR
-  modadr: INTEGER;
-  hdr:    H.Module;
+VAR hdr: H.Module;
 BEGIN
-  modadr := H.OberonAdr;
-  hdr    := SYSTEM.VAL(H.Module, modadr);
-  REPEAT
-    K.Mark(modadr + hdr.ptr);
-    INC(modadr, hdr.size);
-    hdr := SYSTEM.VAL(H.Module, modadr);
-  UNTIL hdr.size = 0;
+  hdr := H.Root;
+  WHILE hdr # NIL DO
+    IF hdr.name[0] # 0X THEN K.Mark(hdr.ptr) END;
+    hdr := hdr.next
+  END;
   Files.CloseCollectableFiles;
   K.Scan;
 END CollectGarbage;

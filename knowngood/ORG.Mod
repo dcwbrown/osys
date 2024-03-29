@@ -77,10 +77,10 @@ TYPE
     lastline:  LineAnnotation
   END;
 
-  CodeHeader = H.CodeHeader;
+  ModuleDesc = H.ModuleDesc;
 
   (* Temporary new code header
-  CodeHeader* = RECORD-
+  ModuleDesc* = RECORD-
     length*:   SYSTEM.CARD32;  (* File length *)
     initcode*: SYSTEM.CARD32;
     pointers*: SYSTEM.CARD32;
@@ -93,7 +93,7 @@ TYPE
   *)
 
 VAR
-  Hdr*:     CodeHeader;
+  Hdr*:     ModuleDesc;
 
   Str:      ARRAY 8192 OF CHAR;  (* Max bytes of string per module body *)
   Strx:     INTEGER;
@@ -2863,7 +2863,7 @@ BEGIN
   VarFInx         := 0;
   ImpFInx         := 0;
   Disasmpc        := 0;
-  X64.SetPC(SYSTEM.SIZE(CodeHeader));
+  X64.SetPC(SYSTEM.SIZE(ModuleDesc));
   X64.Align(16);
   Disasmpc := X64.PC;
 END Open;
@@ -3106,8 +3106,8 @@ BEGIN
   (* Write compiled module *)
   fname := "";  H.Append(modid, fname);  H.Append(".code", fname);
   codefile := Files.New(fname);  Files.Set(R, codefile, 0);
-  Files.WriteBytes(R, Hdr, 0, SYSTEM.SIZE(CodeHeader));
-  Files.WriteBytes(R, X64.Text, SYSTEM.SIZE(CodeHeader), X64.PC - SYSTEM.SIZE(CodeHeader));
+  Files.WriteBytes(R, Hdr, 0, SYSTEM.SIZE(ModuleDesc));
+  Files.WriteBytes(R, X64.Text, SYSTEM.SIZE(ModuleDesc), X64.PC - SYSTEM.SIZE(ModuleDesc));
   Files.Register(codefile);
 
   BodyAnnotations := NIL

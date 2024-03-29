@@ -17,8 +17,8 @@ TYPE
     prefix: PathName
   END;
 
-  Module = POINTER TO ModuleDesc;
-  Import = POINTER TO ImportDesc;
+  ModuleFile = POINTER TO ModuleFileDesc;
+  Import     = POINTER TO ImportDesc;
 
   FileDesc = RECORD
     fn:     PathName;
@@ -29,13 +29,13 @@ TYPE
 
   ImportDesc = RECORD
     name:   ORS.Ident;
-    module: Module;
+    module: ModuleFile;
     key:    INTEGER;  (* Used for code file imports, not source file imports *)
     next:   Import
   END;
 
-  ModuleDesc = RECORD
-    next:       Module;  (* List of all modules *)
+  ModuleFileDesc = RECORD
+    next:       ModuleFile;  (* List of all modules *)
     name:       ORS.Ident;
     source:     FileDesc;
     symbols:    FileDesc;
@@ -64,7 +64,7 @@ VAR
   LongestFilename: INTEGER;
   FirstCompile:    BOOLEAN;
 
-  Modules:         Module;
+  Modules:         ModuleFile;
 
   BuildStart:      INTEGER;
   TotalCode:       INTEGER;
@@ -169,7 +169,7 @@ END ClearFileDesc;
 
 PROCEDURE Warn(mod, str: ARRAY OF CHAR);
 BEGIN
-  H.ws("** Module ");  H.ws(mod); H.ws(": "); H.ws(str);  H.wsn(" **")
+  H.ws("** ModuleFile ");  H.ws(mod); H.ws(": "); H.ws(str);  H.wsn(" **")
 END Warn;
 
 
@@ -193,9 +193,9 @@ BEGIN
 END WriteFile;
 
 
-PROCEDURE WriteModule(mod: Module);
+PROCEDURE WriteModule(mod: ModuleFile);
 BEGIN
-  H.ws("Module "); H.ws(mod.name); H.wsn(":");
+  H.ws("ModuleFile "); H.ws(mod.name); H.wsn(":");
   IF mod.source.file = NIL THEN
     H.wsn("  no source file.")
   ELSE
@@ -226,14 +226,14 @@ BEGIN Files.Set(r, f, 8);  Files.ReadInt(r, key) END GetSymbolFileKey;
 PROCEDURE ScanCodeFileKeyAndImports(f: Files.File; VAR key: INTEGER; VAR firstimport: Import);
 VAR
   r:      Files.Rider;
-  hdr:    H.CodeHeader;
+  hdr:    H.ModuleDesc;
   import: Import;
   last:   Import;
 BEGIN
   firstimport := NIL;
   LongestFilename := H.Max(LongestFilename, H.Length(f.name));
   Files.Set(r, f, 0);
-  Files.ReadBytes(r, hdr, SYSTEM.SIZE(H.CodeHeader));
+  Files.ReadBytes(r, hdr, SYSTEM.SIZE(H.ModuleDesc));
   key := hdr.key;
   Files.Set(r, f, hdr.nimports);
   NEW(import);
@@ -250,7 +250,7 @@ BEGIN
 END ScanCodeFileKeyAndImports;
 
 
-PROCEDURE ScanSourceFileImports(mod: Module; VAR firstimport: Import);
+PROCEDURE ScanSourceFileImports(mod: ModuleFile; VAR firstimport: Import);
 VAR
   sym:    INTEGER;
   import: Import;
@@ -260,7 +260,7 @@ BEGIN
   firstimport := NIL;
   NEW(mod.text);  Texts.OpenFile(mod.text, mod.source.file);  ORS.Init(mod.text, 0);
   ORS.Get(sym);
-  IF sym # ORS.module THEN ORS.Mark("Module does not start with MODULE.") END;
+  IF sym # ORS.module THEN ORS.Mark("ModuleFile does not start with MODULE.") END;
   ORS.Get(sym);
   IF sym # ORS.ident THEN ORS.Mark("expected module id."); END;
   IF ORS.id # mod.name THEN
@@ -297,8 +297,8 @@ BEGIN
 END ScanSourceFileImports;
 
 
-PROCEDURE GetModule(name: ARRAY OF CHAR): Module;
-VAR mod: Module;  key: INTEGER;
+PROCEDURE GetModule(name: ARRAY OF CHAR): ModuleFile;
+VAR mod: ModuleFile;  key: INTEGER;
 BEGIN
   LongestModname := H.Max(LongestModname, H.Length(name));
   mod := Modules;
@@ -338,8 +338,8 @@ BEGIN
 RETURN mod END GetModule;
 
 
-PROCEDURE DetermineNextCompilation(mod: Module): Module;
-VAR result: Module;  import: Import;
+PROCEDURE DetermineNextCompilation(mod: ModuleFile): ModuleFile;
+VAR result: ModuleFile;  import: Import;
 BEGIN
   (*H.ws("- DetermineNextCompilation("); H.ws(mod.name); H.wsn(") -");*)
   result := NIL;
@@ -396,7 +396,7 @@ BEGIN
 RETURN result END DetermineNextCompilation;
 
 
-PROCEDURE CompileModule(mod: Module);
+PROCEDURE CompileModule(mod: ModuleFile);
 VAR startTime, endTime, key: INTEGER;  newsymbols: BOOLEAN;
 BEGIN
   IF FirstCompile THEN H.wn; FirstCompile := FALSE END;
@@ -426,24 +426,20 @@ END CompileModule;
 
 
 PROCEDURE CollectGarbage;
-VAR
-  modadr: INTEGER;
-  hdr:    H.CodeHeaderPtr;
+VAR hdr: H.Module;
 BEGIN
-  modadr := H.OberonAdr;
-  hdr    := SYSTEM.VAL(H.CodeHeaderPtr, modadr);
-  REPEAT
-    K.Mark(modadr + hdr.ptr);
-    INC(modadr, hdr.size);
-    hdr := SYSTEM.VAL(H.CodeHeaderPtr, modadr);
-  UNTIL hdr.size = 0;
+  hdr := H.Root;
+  WHILE hdr # NIL DO
+    IF hdr.name[0] # 0X THEN K.Mark(hdr.ptr) END;
+    hdr := hdr.next
+  END;
   Files.CloseCollectableFiles;
   K.Scan;
 END CollectGarbage;
 
 
 PROCEDURE Build;
-VAR compile, target: Module;
+VAR compile, target: ModuleFile;
 BEGIN
   compile := DetermineNextCompilation(GetModule("WinHost"));
   IF compile # NIL THEN CompileModule(compile) END;
@@ -459,13 +455,13 @@ BEGIN
 END Build;
 
 
-PROCEDURE AddModule(mod: Module);
+PROCEDURE AddModule(mod: ModuleFile);
 VAR
   r:   Files.Rider;
-  hdr: H.CodeHeader;
+  hdr: H.ModuleDesc;
 BEGIN
   Files.Set(r, mod.code.file, 0);
-  Files.ReadBytes(r, hdr, SYSTEM.SIZE(H.CodeHeader));
+  Files.ReadBytes(r, hdr, SYSTEM.SIZE(H.ModuleDesc));
   H.wsl(mod.name, LongestModname + 1);
   WriteHuman(hdr.ptr, 12);  INC(TotalCode,    hdr.ptr);
   WriteHuman(hdr.nvarsize, 12);   INC(TotalGlobals, hdr.nvarsize);
@@ -480,7 +476,7 @@ BEGIN
 END AddModule;
 
 
-PROCEDURE AddImports(mod: Module);  (* Recursively add modules imports and module *)
+PROCEDURE AddImports(mod: ModuleFile);  (* Recursively add modules imports and module *)
 VAR import: Import;
 BEGIN
   import := mod.imports;
@@ -490,13 +486,13 @@ END AddImports;
 
 
 PROCEDURE Generate;
-VAR mod: Module;  PEname: PathName;  i: INTEGER;
+VAR mod: ModuleFile;  PEname: PathName;  i: INTEGER;
 BEGIN
   PEname := "";  Copy(OutputPrefix, PEname);
   H.Append(Modulename, PEname);  H.Append(".exe", PEname);
 
   H.wn;
-  H.wsl("Module", LongestModname);
+  H.wsl("ModuleFile", LongestModname);
   H.wsn("  static-code global-vars recptrs  cmds lineadr  export  import");
 
   FOR i := 1 TO LongestModname DO H.wc("-") END;
@@ -521,7 +517,7 @@ END Generate;
 
 
 PROCEDURE FindSymbolFile(name: ORS.Ident): Files.File;
-VAR mod: Module; result: Files.File;
+VAR mod: ModuleFile; result: Files.File;
 BEGIN mod := Modules;
   WHILE (mod # NIL) & (mod.name # name) DO mod := mod.next END;
   IF mod # NIL THEN result := mod.symbols.file END;

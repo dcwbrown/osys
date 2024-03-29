@@ -18,10 +18,10 @@ CONST
   User32ImportCount   = 26;
 
 TYPE
-  CodeHeader = H.CodeHeader;
+  ModuleDesc = H.ModuleDesc;
 
   (* Temporary new code header
-  CodeHeader* = RECORD-
+  ModuleDesc* = RECORD-
     length*:   SYSTEM.CARD32;  (* File length *)
     initcode*: SYSTEM.CARD32;
     pointers*: SYSTEM.CARD32;
@@ -138,7 +138,7 @@ TYPE
   END;
 
   BootstrapBuffer = RECORD
-    Header:  CodeHeader;
+    Header:  ModuleDesc;
     Content: ARRAY 10000H OF BYTE
   END;
 
@@ -539,6 +539,15 @@ BEGIN FOR i := 1 TO n DO Files.WriteByte(Exe, 0) END END WriteZeroes;
 
 PROCEDURE WriteBootstrap(LoadFlags: SET);
 BEGIN
+  (* Fixup bootstrap image size in header *)
+  Bootstrap.Header.size := (Bootstrap.Header.nimports + Bootstrap.Header.nvarsize + 15) DIV 16 * 16;
+  (*
+  H.ws("Bootstrap.Header.nimports "); H.wh(Bootstrap.Header.nimports);
+  H.ws("H, Bootstrap.Header.nvarsize "); H.wh(Bootstrap.Header.nvarsize);
+  H.ws("H, Bootstrap.Header.size "); H.wh(Bootstrap.Header.size);
+  H.wsn("H.");
+  *)
+
   spos(FadrModules);
   Files.WriteBytes(Exe, Bootstrap, 0, Bootstrap.Header.nimports);  (* Code and tables   *)
 
@@ -565,7 +574,7 @@ BEGIN
   Verbose := H.Verbose IN LoadFlags;
 
   IF Verbose THEN
-    H.ws("WinPE.Generate. SIZE(CodeHeader) "); H.wh(SYSTEM.SIZE(CodeHeader));
+    H.ws("WinPE.Generate. SIZE(ModuleDesc) "); H.wh(SYSTEM.SIZE(ModuleDesc));
     H.ws("H, SIZE(PEheader) "); H.wh(SYSTEM.SIZE(PEheader)); H.wsn("H.")
   END;
 

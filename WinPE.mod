@@ -539,6 +539,15 @@ BEGIN FOR i := 1 TO n DO Files.WriteByte(Exe, 0) END END WriteZeroes;
 
 PROCEDURE WriteBootstrap(LoadFlags: SET);
 BEGIN
+  (* Fixup bootstrap image size in header *)
+  Bootstrap.Header.size := (Bootstrap.Header.nimports + Bootstrap.Header.nvarsize + 15) DIV 16 * 16;
+  (*
+  H.ws("Bootstrap.Header.nimports "); H.wh(Bootstrap.Header.nimports);
+  H.ws("H, Bootstrap.Header.nvarsize "); H.wh(Bootstrap.Header.nvarsize);
+  H.ws("H, Bootstrap.Header.size "); H.wh(Bootstrap.Header.size);
+  H.wsn("H.");
+  *)
+
   spos(FadrModules);
   Files.WriteBytes(Exe, Bootstrap, 0, Bootstrap.Header.nimports);  (* Code and tables   *)
 
