@@ -26,23 +26,23 @@ TYPE
 
   CodeHeaderPtr* = POINTER- TO CodeHeader;
   CodeHeader* = RECORD-
-    name*:   ModuleName;
-    next*:   Module;   (* Set on load *)
-    key*:    INTEGER;
-    num*:    INTEGER;  (* Module num, set on load *)
-    size*:   INTEGER;  (* Allocated memory, set on load *)
-    refcnt*: INTEGER;  (* Managed by module loader *)
+    name*:   ModuleName;  (* 00H *)
+    next*:   Module;      (* 20H Set on load *)
+    key*:    INTEGER;     (* 28H *)
+    num*:    INTEGER;     (* 30H Module num, set on load *)
+    size*:   INTEGER;     (* 38H Allocated memory, set on load (image size in file) *)
+    refcnt*: INTEGER;     (* 40H Managed by module loader *)
     (* Addresses *)
-    data:    INTEGER;  (* PO2013 Start of module memory - begins with type descriptors *)
-    code:    INTEGER;  (* PO2013 Start of code (part of module memory) *)
-    imp:     INTEGER;  (* PO2013 Imports: address of array of imported module pointers *)
-    cmd:     INTEGER;  (* PO2013 Commands: address of seq of command strings and code offsets *)
-    ent:     INTEGER;  (* PO2013 Entries: address of array of exported offsets *)
-    ptr*:    INTEGER;  (* PO2013 Pointers: address of array of pointer var addresses *)
+    data:    INTEGER;     (* PO2013 Start of module memory - begins with type descriptors *)
+    code:    INTEGER;     (* PO2013 Start of code (part of module memory) *)
+    imp:     INTEGER;     (* PO2013 Imports: address of array of imported module pointers *)
+    cmd:     INTEGER;     (* PO2013 Commands: address of seq of command strings and code offsets *)
+    ent:     INTEGER;     (* PO2013 Entries: address of array of exported offsets *)
+    ptr*:    INTEGER;     (* PO2013 Pointers: address of array of pointer var addresses *)
     unused:  INTEGER;
 
     (* Old values *)
-    nlength*:   INTEGER;       (* 80H *)
+    d1*:        INTEGER;       (* 80H *)
     ninitcode*: INTEGER;
     d3:         INTEGER;
     ncommands*: INTEGER;
@@ -493,9 +493,9 @@ BEGIN
   modulesize := bootsize;
   moduleadr  := (SYSTEM.VAL(INTEGER, Header) + bootsize + 15) DIV 16 * 16;  (* Address of first module for Oberon machine *)
   hdr        := SYSTEM.VAL(CodeHeaderPtr, moduleadr);
-  WHILE hdr.nlength > 0 DO
+  WHILE hdr.size > 0 DO
     INC(modulesize, (hdr.nimports + hdr.nvarsize + 15) DIV 16 * 16);
-    INC(moduleadr, hdr.nlength);
+    INC(moduleadr, hdr.size);
     hdr := SYSTEM.VAL(CodeHeaderPtr, moduleadr);
   END;
 
@@ -537,11 +537,11 @@ BEGIN
   INC(adr, SYSTEM.SIZE(CodeHeader));
   SYSTEM.GET(adr, ch);
   WHILE ch # 0X DO wc(ch);  INC(adr);  SYSTEM.GET(adr, ch) END;
-  ws(" header at ");  wh(SYSTEM.VAL(INTEGER, hdr));  wsn("H:");
+  ws(" header at  ");  wh(SYSTEM.VAL(INTEGER, hdr));  wsn("H:");
   ws("  name:     ");  ws(hdr.name);       wsn(".");
-  ws("  length:   ");  wh(hdr.nlength);    wsn("H.");
+  ws("  size:     ");  wh(hdr.size);       wsn("H.");
   ws("  initcode: ");  wh(hdr.ninitcode);  wsn("H.");
-  ws("  pointers: ");  wh(hdr.ptr);  wsn("H.");
+  ws("  ptr:      ");  wh(hdr.ptr);       wsn("H.");
   ws("  commands: ");  wh(hdr.ncommands);  wsn("H.");
   ws("  exports:  ");  wh(hdr.nexports);   wsn("H.");
   ws("  imports:  ");  wh(hdr.nimports);   wsn("H.");
@@ -568,7 +568,8 @@ PROCEDURE LocateModule(adr: INTEGER): INTEGER;
 VAR  modadr: INTEGER;  hdr: CodeHeaderPtr;
 BEGIN
   modadr := OberonAdr;  hdr := SYSTEM.VAL(CodeHeaderPtr, modadr);
-  WHILE (hdr.nlength # 0) & (modadr + hdr.nimports < adr) DO
+  WHILE (hdr.size # 0) & (modadr + hdr.nimports < adr) DO
+    (*assert(hdr.size = (hdr.nimports + hdr.nvarsize + 15) DIV 16 * 16);*)
     modadr := (modadr + hdr.nimports + hdr.nvarsize + 15) DIV 16 * 16;
     hdr    := SYSTEM.VAL(CodeHeaderPtr, modadr);
   END;
@@ -955,17 +956,19 @@ VAR
 BEGIN
   modadr := OberonAdr;
   hdr := SYSTEM.VAL(CodeHeaderPtr, modadr);
-  WHILE (hdr.nlength # 0) & (hdr.name # name) DO
+  WHILE (hdr.size # 0) & (hdr.name # name) DO
+    assert(hdr.size = (hdr.nimports + hdr.nvarsize + 15) DIV 16 * 16);
     modadr := (modadr + hdr.nimports + hdr.nvarsize + 15) DIV 16 * 16;
     hdr := SYSTEM.VAL(CodeHeaderPtr, modadr);
   END;
-  assert(hdr.nlength # 0); (*, "FindModule hdr.nlength is 0.");*)
+  assert(hdr.size # 0); (*, "FindModule hdr.size is 0.");*)
 RETURN modadr END FindModule;
 
 
 PROCEDURE LoadModule(modadr: INTEGER; VAR bodyadr: INTEGER);
 (* Load module whose code image is at modadr *)
 (* Module is loaded at LoadAdr which is then updated *)
+(* Returns address of body code *)
 VAR
   adr:         INTEGER;
   loadedsize:  INTEGER;
@@ -987,18 +990,20 @@ VAR
 BEGIN
   hdr := SYSTEM.VAL(CodeHeaderPtr, modadr);
   SYSTEM.COPY(modadr, LoadAdr, hdr.nimports);  (* Copy up to but excluding import table *)
+  hdr := SYSTEM.VAL(CodeHeaderPtr, LoadAdr);
 
   (* Update length in header to loaded size *)
   loadedsize := (hdr.nimports + hdr.nvarsize + 15) DIV 16 * 16;
-  SYSTEM.PUT(LoadAdr + 80H, loadedsize);
-  SYSTEM.PUT(LoadAdr + 80H + loadedsize, 0);  (* Add sentinel zero length module *)
+  hdr.size   := loadedsize;
+  SYSTEM.PUT(LoadAdr + loadedsize + 38H, 0);  (* Add sentinel zero length module *)
 
   IF Verbose IN LoadFlags THEN
-    ws("* Loaded ");        ws(hdr.name);
-    ws(" at ");             wh(LoadAdr);
-    ws("H, code ");         wh(hdr.nimports);
-    ws("H bytes, data ");   wh(hdr.nvarsize);
-    ws("H bytes, limit ");  wh(LoadAdr + loadedsize);  wsn("H.")
+    ws("* Loaded ");              ws(hdr.name);
+    ws(" at ");                   wh(LoadAdr);
+    ws("H, code ");               wh(hdr.nimports);
+    ws("H bytes, data ");         wh(hdr.nvarsize);
+    ws("H bytes, loaded size ");  wh(hdr.size);
+    ws("H bytes, limit ");        wh(LoadAdr + loadedsize);  wsn("H.")
   END;
 
   (* Build list of imported module header addresses *)
@@ -1099,12 +1104,12 @@ BEGIN
     (*ws("* First remaining module: '"); WriteModuleName(moduleadr); wsn("'.")*)
   END;
 
-  SYSTEM.GET(moduleadr + 80H, modulelength);
+  SYSTEM.GET(moduleadr + 38H, modulelength);
   WHILE modulelength # 0 DO
     LoadModule(moduleadr, bodyadr);
     SYSTEM.PUT(SYSTEM.ADR(body), bodyadr);
     moduleadr := (moduleadr + modulelength + 15) DIV 16 * 16;
-    SYSTEM.GET(moduleadr + 80H, modulelength);
+    SYSTEM.GET(moduleadr + 38H, modulelength);
     (*  At this point we would like to unmap the exe file as it is should no  *)
     (*  longer be needed. However it turns out that on the first keypress     *)
     (*  with a window created, OLE32 tries to access the exe header. Thus we  *)
@@ -1118,7 +1123,7 @@ BEGIN
     body
   END;
 
-  SYSTEM.PUT(LoadAdr + 80H, 0);  (* Mark end of loaded modules *)
+  SYSTEM.PUT(LoadAdr + 38H, 0);  (* Mark end of loaded modules *)
   (*wsn("LoadRemainingModules complete.")*)
 END LoadRemainingModules;
 
@@ -1164,8 +1169,8 @@ BEGIN
     ws("* Initial RSP "); wh(GetRSP()); wsn("H.");
   END;
 
-  ws("CodeHeader.nlength at offset ");
-  wh(SYSTEM.ADR(Header.nlength) - SYSTEM.ADR(Header^)); wsn("H, Header:");
+  ws("CodeHeader.size at offset ");
+  wh(SYSTEM.ADR(Header.size) - SYSTEM.ADR(Header^)); wsn("H, Header:");
   DumpMem(2, SYSTEM.VAL(INTEGER, Header), SYSTEM.VAL(INTEGER, Header), SYSTEM.SIZE(CodeHeader));
 
   (*
@@ -1201,7 +1206,8 @@ BEGIN
 
   LoadAdr := (OberonAdr + Header.nimports + Header.nvarsize + 15) DIV 16 * 16;
   (*SYSTEM.PUT(OberonAdr, LoadAdr - OberonAdr);*)
-  (* Update initial hdr.nlength to loaded length *)
+  (* Update initial hdr.size to loaded length *)
+  SYSTEM.PUT(OberonAdr+38H, LoadAdr - OberonAdr);
   SYSTEM.PUT(OberonAdr+80H, LoadAdr - OberonAdr);
 
   (*ws("crlf at "); wh(SYSTEM.ADR(crlf)); wsn("H.");*)

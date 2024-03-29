@@ -3092,16 +3092,16 @@ BEGIN
   END;
   X64.EmitBytes(4, -1);
   WHILE X64.PC MOD 16 # 0 DO X64.Emit(0) END;
-  Hdr.nlength := X64.PC;
+  Hdr.size := X64.PC;
 
   (* Display header content *)
   l.sn("Header:", Tr);
-  l.s("  Length:        ", Tr);  l.h(Hdr.nlength,  Tr);  l.sn("H.", Tr);
-  l.s("  Init code:     ", Tr);  l.h(Hdr.ninitcode, Tr);  l.sn("H.", Tr);
-  l.s("  Pointers:      ", Tr);  l.h(Hdr.ptr, Tr);  l.sn("H.", Tr);
-  l.s("  Exports:       ", Tr);  l.h(Hdr.nexports,  Tr);  l.sn("H.", Tr);
-  l.s("  Imports:       ", Tr);  l.h(Hdr.nimports,  Tr);  l.sn("H.", Tr);
-  l.s("  VAR size:      ", Tr);  l.h(Hdr.nvarsize,  Tr);  l.sn("H.", Tr);
+  l.s("  Size:      ", Tr);  l.h(Hdr.size,      Tr);  l.sn("H.", Tr);
+  l.s("  Init code: ", Tr);  l.h(Hdr.ninitcode, Tr);  l.sn("H.", Tr);
+  l.s("  Pointers:  ", Tr);  l.h(Hdr.ptr,       Tr);  l.sn("H.", Tr);
+  l.s("  Exports:   ", Tr);  l.h(Hdr.nexports,  Tr);  l.sn("H.", Tr);
+  l.s("  Imports:   ", Tr);  l.h(Hdr.nimports,  Tr);  l.sn("H.", Tr);
+  l.s("  VAR size:  ", Tr);  l.h(Hdr.nvarsize,  Tr);  l.sn("H.", Tr);
 
   (* Write compiled module *)
   fname := "";  H.Append(modid, fname);  H.Append(".code", fname);
