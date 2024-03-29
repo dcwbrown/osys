@@ -18,10 +18,10 @@ CONST
   User32ImportCount   = 26;
 
 TYPE
-  CodeHeader = H.CodeHeader;
+  ModuleDesc = H.ModuleDesc;
 
   (* Temporary new code header
-  CodeHeader* = RECORD-
+  ModuleDesc* = RECORD-
     length*:   SYSTEM.CARD32;  (* File length *)
     initcode*: SYSTEM.CARD32;
     pointers*: SYSTEM.CARD32;
@@ -138,7 +138,7 @@ TYPE
   END;
 
   BootstrapBuffer = RECORD
-    Header:  CodeHeader;
+    Header:  ModuleDesc;
     Content: ARRAY 10000H OF BYTE
   END;
 
@@ -565,7 +565,7 @@ BEGIN
   Verbose := H.Verbose IN LoadFlags;
 
   IF Verbose THEN
-    H.ws("WinPE.Generate. SIZE(CodeHeader) "); H.wh(SYSTEM.SIZE(CodeHeader));
+    H.ws("WinPE.Generate. SIZE(ModuleDesc) "); H.wh(SYSTEM.SIZE(ModuleDesc));
     H.ws("H, SIZE(PEheader) "); H.wh(SYSTEM.SIZE(PEheader)); H.wsn("H.")
   END;
 

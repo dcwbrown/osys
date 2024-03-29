@@ -21,11 +21,10 @@ CONST
 
 
 TYPE
-  Module*     = POINTER- TO CodeHeader;
+  Module*     = POINTER- TO ModuleDesc;
   ModuleName* = ARRAY 32 OF CHAR;
 
-  CodeHeaderPtr* = POINTER- TO CodeHeader;
-  CodeHeader* = RECORD-
+  ModuleDesc* = RECORD-
     name*:   ModuleName;  (* 00H *)
     next*:   Module;      (* 20H Set on load *)
     key*:    INTEGER;     (* 28H *)
@@ -93,8 +92,8 @@ TYPE
 
 VAR
   (* Start of pre-loaded variables (preset by WinPE.mod) *)
-  Exeadr:     INTEGER;
-  Header:     CodeHeaderPtr;
+  Exeadr:     INTEGER;  (* Image PE header loaded address *)
+  ImgHeader:  Module;   (* Image Oberon section loaded address *)
   LoadFlags*: SET;
 
   (* Pre-loaded Kernel32 imports *)
@@ -478,7 +477,7 @@ VAR
   modulelength: SYSTEM.CARD32;  (* image length from code file         *)
   bootsize:     INTEGER;
   res:          INTEGER;
-  hdr:          CodeHeaderPtr;
+  hdr:          Module;
 BEGIN
   (* Reserve 2GB memory for the Oberon machine + 2GB for Jcc trap targets *)
   reserveadr := VirtualAlloc(100000000H, 100000000H, MEMRESERVE, PAGEEXECUTEREADWRITE);
@@ -489,14 +488,14 @@ BEGIN
   END;
 
   (* Determine loaded size of all modules *)
-  bootsize   := Header.nimports + Header.nvarsize;
+  bootsize   := ImgHeader.nimports + ImgHeader.nvarsize;
   modulesize := bootsize;
-  moduleadr  := (SYSTEM.VAL(INTEGER, Header) + bootsize + 15) DIV 16 * 16;  (* Address of first module for Oberon machine *)
-  hdr        := SYSTEM.VAL(CodeHeaderPtr, moduleadr);
+  moduleadr  := (SYSTEM.VAL(INTEGER, ImgHeader) + bootsize + 15) DIV 16 * 16;  (* Address of first module for Oberon machine *)
+  hdr        := SYSTEM.VAL(Module, moduleadr);
   WHILE hdr.size > 0 DO
     INC(modulesize, (hdr.nimports + hdr.nvarsize + 15) DIV 16 * 16);
     INC(moduleadr, hdr.size);
-    hdr := SYSTEM.VAL(CodeHeaderPtr, moduleadr);
+    hdr := SYSTEM.VAL(Module, moduleadr);
   END;
 
   (* Commit enough for the modules being loaded plus a sentinel. *)
@@ -531,10 +530,10 @@ END GetUnsigned;
 (* --------------------- Write module name and exports ---------------------- *)
 
 PROCEDURE WriteModuleHeader(adr: INTEGER);
-VAR hdr: CodeHeaderPtr;  ch: CHAR;
+VAR hdr: Module;  ch: CHAR;
 BEGIN
-  hdr := SYSTEM.VAL(CodeHeaderPtr, adr);
-  INC(adr, SYSTEM.SIZE(CodeHeader));
+  hdr := SYSTEM.VAL(Module, adr);
+  INC(adr, SYSTEM.SIZE(ModuleDesc));
   SYSTEM.GET(adr, ch);
   WHILE ch # 0X DO wc(ch);  INC(adr);  SYSTEM.GET(adr, ch) END;
   ws(" header at  ");  wh(SYSTEM.VAL(INTEGER, hdr));  wsn("H:");
@@ -550,7 +549,7 @@ BEGIN
 END WriteModuleHeader;
 
 PROCEDURE WriteExports(modadr: INTEGER);
-VAR hdr: CodeHeaderPtr; adr: INTEGER; export: SYSTEM.CARD32;
+VAR hdr: Module; adr: INTEGER; export: SYSTEM.CARD32;
 BEGIN
   ws("Export table at "); wh(modadr); wsn("H.");
   adr := modadr;
@@ -565,24 +564,24 @@ END WriteExports;
 (* ----------------------- Windows exception handling ----------------------- *)
 
 PROCEDURE LocateModule(adr: INTEGER): INTEGER;
-VAR  modadr: INTEGER;  hdr: CodeHeaderPtr;
+VAR  modadr: INTEGER;  hdr: Module;
 BEGIN
-  modadr := OberonAdr;  hdr := SYSTEM.VAL(CodeHeaderPtr, modadr);
+  modadr := OberonAdr;  hdr := SYSTEM.VAL(Module, modadr);
   WHILE (hdr.size # 0) & (modadr + hdr.nimports < adr) DO
     (*assert(hdr.size = (hdr.nimports + hdr.nvarsize + 15) DIV 16 * 16);*)
     modadr := (modadr + hdr.nimports + hdr.nvarsize + 15) DIV 16 * 16;
-    hdr    := SYSTEM.VAL(CodeHeaderPtr, modadr);
+    hdr    := SYSTEM.VAL(Module, modadr);
   END;
   IF (adr < modadr) OR (adr > modadr + hdr.nimports) THEN modadr := 0 END;
 RETURN modadr END LocateModule;
 
 PROCEDURE LocateLine(modadr, offset: INTEGER);
 VAR
-  hdr: CodeHeaderPtr;
+  hdr: Module;
   adr, line, pc, i: INTEGER;
   name: ARRAY 32 OF CHAR;
 BEGIN
-  hdr := SYSTEM.VAL(CodeHeaderPtr, modadr);
+  hdr := SYSTEM.VAL(Module, modadr);
   IF hdr.nlines # 0 THEN
     adr := modadr + hdr.nlines;
     GetString(adr, name);
@@ -943,7 +942,7 @@ END WriteStdout;
 
 (* -------------------------------------------------------------------------- *)
 
-PROCEDURE ExportedAddress(modhdr: CodeHeaderPtr; index: INTEGER): INTEGER;
+PROCEDURE ExportedAddress(modhdr: Module; index: INTEGER): INTEGER;
 VAR exportoffset: SYSTEM.CARD32;
 BEGIN
   SYSTEM.GET(SYSTEM.VAL(INTEGER, modhdr) + modhdr.nexports + index * 4, exportoffset);
@@ -951,15 +950,15 @@ RETURN SYSTEM.VAL(INTEGER, modhdr) + exportoffset END ExportedAddress;
 
 PROCEDURE FindModule(name: ARRAY OF CHAR; key: INTEGER): INTEGER;
 VAR
-  hdr:     CodeHeaderPtr;
+  hdr:     Module;
   modadr:  INTEGER;
 BEGIN
   modadr := OberonAdr;
-  hdr := SYSTEM.VAL(CodeHeaderPtr, modadr);
+  hdr := SYSTEM.VAL(Module, modadr);
   WHILE (hdr.size # 0) & (hdr.name # name) DO
     assert(hdr.size = (hdr.nimports + hdr.nvarsize + 15) DIV 16 * 16);
     modadr := (modadr + hdr.nimports + hdr.nvarsize + 15) DIV 16 * 16;
-    hdr := SYSTEM.VAL(CodeHeaderPtr, modadr);
+    hdr := SYSTEM.VAL(Module, modadr);
   END;
   assert(hdr.size # 0); (*, "FindModule hdr.size is 0.");*)
 RETURN modadr END FindModule;
@@ -972,7 +971,7 @@ PROCEDURE LoadModule(modadr: INTEGER; VAR bodyadr: INTEGER);
 VAR
   adr:         INTEGER;
   loadedsize:  INTEGER;
-  hdr:         CodeHeaderPtr;
+  hdr:         Module;
   impmod:      ARRAY 32 OF CHAR;
   modules:     ARRAY 64 OF INTEGER; (* Import from up to 64 modules *)
   i, len:      INTEGER;
@@ -988,9 +987,9 @@ VAR
   absreloc:    INTEGER;
   modulebody:  PROCEDURE;
 BEGIN
-  hdr := SYSTEM.VAL(CodeHeaderPtr, modadr);
+  hdr := SYSTEM.VAL(Module, modadr);
   SYSTEM.COPY(modadr, LoadAdr, hdr.nimports);  (* Copy up to but excluding import table *)
-  hdr := SYSTEM.VAL(CodeHeaderPtr, LoadAdr);
+  hdr := SYSTEM.VAL(Module, LoadAdr);
 
   (* Update length in header to loaded size *)
   loadedsize := (hdr.nimports + hdr.nvarsize + 15) DIV 16 * 16;
@@ -1047,12 +1046,12 @@ BEGIN
         impmodadr := modules[modno-1];
         impno := absreloc MOD 10000H;
         assert(impno > 0);
-        SYSTEM.PUT(LoadAdr + offset, ExportedAddress(SYSTEM.VAL(CodeHeaderPtr, impmodadr), impno-1))
+        SYSTEM.PUT(LoadAdr + offset, ExportedAddress(SYSTEM.VAL(Module, impmodadr), impno-1))
       END
     ELSE
       assert(modno > 0);
       impmodadr := modules[modno-1];
-      expadr := ExportedAddress(SYSTEM.VAL(CodeHeaderPtr, impmodadr), impno-1);
+      expadr := ExportedAddress(SYSTEM.VAL(Module, impmodadr), impno-1);
       SYSTEM.GET(LoadAdr + offset, disp);
       disp := expadr + disp - LoadAdr;
       SYSTEM.PUT(LoadAdr + offset, disp)
@@ -1061,7 +1060,7 @@ BEGIN
   END;
 
   (* Relocate pointer addresses *)
-  hdr := SYSTEM.VAL(CodeHeaderPtr, LoadAdr);
+  hdr := SYSTEM.VAL(Module, LoadAdr);
   adr := LoadAdr + hdr.ptr;  SYSTEM.GET(adr, ptroff);
   WHILE ptroff >= 0 DO
     SYSTEM.PUT(adr, LoadAdr + hdr.nimports + ptroff);
@@ -1088,34 +1087,33 @@ RETURN pc END GetPC;
 
 PROCEDURE LoadRemainingModules;
 VAR
-  moduleadr:    INTEGER;
-  modulelength: SYSTEM.CARD32;
-  bodyadr:      INTEGER;
-  body:         PROCEDURE;
-  res:          INTEGER;
+  moduleadr: INTEGER;
+  bodyadr:   INTEGER;
+  body:      PROCEDURE;
+  res:       INTEGER;
+  imagehdr:  Module;
+  loadedhdr: Module;
 BEGIN
   (* Load and link remaining code modules from EXE file image *)
-  moduleadr := SYSTEM.VAL(INTEGER, Header) + Header.nimports + Header.nvarsize;  (* Address of first module for Oberon machine *)
+  moduleadr := SYSTEM.VAL(INTEGER, ImgHeader) + ImgHeader.nimports + ImgHeader.nvarsize;  (* Address of first module for Oberon machine *)
   moduleadr := (moduleadr + 15) DIV 16 * 16;
+  imagehdr  := SYSTEM.VAL(Module, moduleadr);
 
   IF Verbose IN LoadFlags THEN
-    ws("* Load remaining modules starting from "); wh(moduleadr);
-    ws("H, RvaModules + "); wh(moduleadr - SYSTEM.VAL(INTEGER, Header)); wsn("H.");
-    (*ws("* First remaining module: '"); WriteModuleName(moduleadr); wsn("'.")*)
+    ws("* Load remaining modules starting from "); wh(moduleadr); wsn("H.");
   END;
 
-  SYSTEM.GET(moduleadr + 38H, modulelength);
-  WHILE modulelength # 0 DO
+  WHILE imagehdr.size # 0 DO
     LoadModule(moduleadr, bodyadr);
     SYSTEM.PUT(SYSTEM.ADR(body), bodyadr);
-    moduleadr := (moduleadr + modulelength + 15) DIV 16 * 16;
-    SYSTEM.GET(moduleadr + 38H, modulelength);
+    moduleadr := (moduleadr + imagehdr.size + 15) DIV 16 * 16;
+    SYSTEM.GET(moduleadr + 38H, imagehdr.size);
     (*  At this point we would like to unmap the exe file as it is should no  *)
     (*  longer be needed. However it turns out that on the first keypress     *)
     (*  with a window created, OLE32 tries to access the exe header. Thus we  *)
     (*  must leave the exe mapped.                                            *)
     (*                                                                        *)
-    (*  IF modulelength = 0 THEN                                              *)
+    (*  IF imagehdr.size = 0 THEN                                              *)
     (*    (* This is the last module. We have no further need for the      *) *)
     (*    (* executable image so unmap it before running the module body.  *) *)
     (*    res := UnmapViewOfFile(Exeadr)                                      *)
@@ -1165,26 +1163,26 @@ BEGIN
   Log := WriteStdout;
 
   IF Verbose IN LoadFlags THEN
-    ws("* WinHost starting, Header at "); wh(SYSTEM.VAL(INTEGER, Header)); wsn("H.");
+    ws("* WinHost starting, ImgHeader at "); wh(SYSTEM.VAL(INTEGER, ImgHeader)); wsn("H.");
     ws("* Initial RSP "); wh(GetRSP()); wsn("H.");
   END;
 
-  ws("CodeHeader.size at offset ");
-  wh(SYSTEM.ADR(Header.size) - SYSTEM.ADR(Header^)); wsn("H, Header:");
-  DumpMem(2, SYSTEM.VAL(INTEGER, Header), SYSTEM.VAL(INTEGER, Header), SYSTEM.SIZE(CodeHeader));
+  ws("ModuleDesc.size at offset ");
+  wh(SYSTEM.ADR(ImgHeader.size) - SYSTEM.ADR(ImgHeader^)); wsn("H, ImgHeader:");
+  DumpMem(2, SYSTEM.VAL(INTEGER, ImgHeader), SYSTEM.VAL(INTEGER, ImgHeader), SYSTEM.SIZE(ModuleDesc));
 
   (*
   ws("Stdout handle "); wh(Stdout);            wsn("H.");
   ws("NoLog at ");      wh(SYSTEM.ADR(NoLog)); wsn("H.");
   ws("Log at ");        wh(SYSTEM.ADR(Log));   wsn("H.");
-  WriteModuleHeader(SYSTEM.VAL(INTEGER, Header));
+  WriteModuleHeader(SYSTEM.VAL(INTEGER, ImgHeader));
   *)
 
   PrepareOberonMachine;
 
   (* Copy boot module into newly committed memory and switch PC to the new code. *)
-  SYSTEM.COPY(SYSTEM.VAL(INTEGER, Header), OberonAdr, Header.nimports + Header.nvarsize);
-  IncPC(OberonAdr - SYSTEM.VAL(INTEGER, Header));  (* Transfer to copied code *)
+  SYSTEM.COPY(SYSTEM.VAL(INTEGER, ImgHeader), OberonAdr, ImgHeader.nimports + ImgHeader.nvarsize);
+  IncPC(OberonAdr - SYSTEM.VAL(INTEGER, ImgHeader));  (* Transfer to copied code *)
   Log := WriteStdout;  (* Correct Log fn address following move *)
   IF Verbose IN LoadFlags THEN
     ws("* Transferred PC to code copied to Oberon memory at ");  wh(GetPC());  wsn("H.")
@@ -1204,7 +1202,7 @@ BEGIN
     AssertWinErr(GetLastError())
   END;
 
-  LoadAdr := (OberonAdr + Header.nimports + Header.nvarsize + 15) DIV 16 * 16;
+  LoadAdr := (OberonAdr + ImgHeader.nimports + ImgHeader.nvarsize + 15) DIV 16 * 16;
   (*SYSTEM.PUT(OberonAdr, LoadAdr - OberonAdr);*)
   (* Update initial hdr.size to loaded length *)
   SYSTEM.PUT(OberonAdr+38H, LoadAdr - OberonAdr);
