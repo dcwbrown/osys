@@ -610,12 +610,20 @@ END WritePair;
 
 PROCEDURE WriteClock* (VAR W: Writer; d: INTEGER);
 BEGIN
+  (*
   WritePair(W, " ", d DIV 20000H MOD 20H);    (*day*)
   WritePair(W, ".", d DIV 400000H MOD 10H);   (*month*)
   WritePair(W, ".", d DIV 4000000H MOD 40H);  (*year*)
   WritePair(W, " ", d DIV 1000H MOD 20H);     (*hour*)
   WritePair(W, ":", d DIV 40H MOD 40H);       (*min*)
   WritePair(W, ":", d MOD 40H)                (*sec*)
+  *)
+  WritePair(W, " ", d DIV 1000000000H MOD 8000H MOD 100);  (*year*)
+  WritePair(W, "-", d DIV 100000000H MOD 10H);             (*month*)
+  WritePair(W, "-", d DIV 8000000H MOD 20H);               (*day*)
+  WritePair(W, " ", d DIV 400000H MOD 20H);                (*hour*)
+  WritePair(W, ":", d DIV 10000H MOD 40H);                 (*min*)
+  WritePair(W, ":", d DIV 400H MOD 40H)                    (*sec*)
 END WriteClock;
 
 

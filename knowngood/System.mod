@@ -54,21 +54,25 @@ BEGIN GetArg(S);
   IF S.class = Texts.Int THEN Oberon.SetOffset(S.i) END
 END SetOffset;
 
-(*
 PROCEDURE Date*;
-VAR S: Texts.Scanner;
-    dt, hr, min, sec, yr, mo, day: INTEGER;
-BEGIN Texts.OpenScanner(S, Oberon.Par.text, Oberon.Par.pos); Texts.Scan(S);
+VAR (*S: Texts.Scanner;*)
+    dt (*, hr, min, sec, yr, mo, day*): INTEGER;
+BEGIN
+  (*
+  Texts.OpenScanner(S, Oberon.Par.text, Oberon.Par.pos); Texts.Scan(S);
   IF S.class = Texts.Int THEN (*set clock*)
     day := S.i; Texts.Scan(S); mo := S.i; Texts.Scan(S); yr := S.i; Texts.Scan(S);
     hr := S.i; Texts.Scan(S); min := S.i; Texts.Scan(S); sec := S.i;
     dt := ((((yr*16 + mo)*32 + day)*32 + hr)*64 + min)*64 + sec;
     Kernel.SetClock(dt)
-  ELSE (*read clock*) Texts.WriteString(W, "System.Clock");
+  ELSE
+  *)
+    (*read clock*) Texts.WriteString(W, "System.Clock");
     dt := Oberon.Clock(); Texts.WriteClock(W, dt); EndLine
+  (*
   END
+  *)
 END Date;
-*)
 
 PROCEDURE Collect*;
 BEGIN Oberon.Collect(0)
@@ -302,17 +306,23 @@ END DeleteFiles;
 
 (* ------------- Toolbox for system inspection ---------------*)
 
-(*
 PROCEDURE Watch*;
-BEGIN Texts.WriteString(W, "System.Watch"); Texts.WriteLn(W);
-  Texts.WriteString(W, "  Modules space (bytes)"); Texts.WriteInt(W, Modules.AllocPtr, 8);
-  Texts.WriteInt(W, Modules.AllocPtr * 100 DIV Kernel.heapOrg, 4); Texts.Write(W, "%"); EndLine;
-  Texts.WriteString(W, "  Heap speace"); Texts.WriteInt(W, Kernel.allocated, 8);
-  Texts.WriteInt(W, Kernel.allocated * 100 DIV (Kernel.heapLim - Kernel.heapOrg), 4); Texts.Write(W, "%"); EndLine;
+VAR
+  moduleusage: INTEGER;
+BEGIN
+  moduleusage := H.AllocPtr - H.ModuleSpace;
+  Texts.WriteString(W, "System.Watch"); Texts.WriteLn(W);
+  Texts.WriteString(W, "  Modules space (bytes)"); Texts.WriteInt(W, moduleusage, 8);
+  Texts.WriteInt(W, moduleusage * 100 DIV 100000000H, 4); Texts.Write(W, "%"); EndLine;
+  Texts.WriteString(W, "  Heap space"); Texts.WriteInt(W, Kernel.Allocated, 8);
+  Texts.WriteInt(W, Kernel.Allocated * 100 DIV (Kernel.HeapLimit - Kernel.HeapOrg), 4); Texts.Write(W, "%"); EndLine;
+  (*
   Texts.WriteString(W, "  Disk sectors "); Texts.WriteInt(W, Kernel.NofSectors, 4);
   Texts.WriteInt(W, Kernel.NofSectors * 100 DIV 10000H, 4); Texts.Write(W, "%"); EndLine;
+  *)
   Texts.WriteString(W, "  Tasks"); Texts.WriteInt(W, Oberon.NofTasks, 4); EndLine
 END Watch;
+
 
 PROCEDURE ShowModules*;
 VAR T: Texts.Text;
@@ -327,7 +337,7 @@ BEGIN T := TextFrames.Text("");
   WHILE M # NIL DO
     IF M.name[0] # 0X THEN
       Texts.WriteString(W, M.name); Texts.Write(W, 9X); Texts.WriteHex(W, ORD(M));
-      Texts.WriteHex(W, M.code); Texts.WriteInt(W, M.refcnt, 4)
+      (*Texts.WriteHex(W, M.code);*) Texts.WriteInt(W, M.refcnt, 4)
     ELSE Texts.WriteString(W, "---")
     END ;
     Texts.WriteLn(W); M := M.next
@@ -335,6 +345,8 @@ BEGIN T := TextFrames.Text("");
   Texts.Append(T, W.buf)
 END ShowModules;
 
+
+(*
 PROCEDURE ShowCommands*;
 VAR M: Modules.Module;
     comadr: INTEGER; ch: CHAR;

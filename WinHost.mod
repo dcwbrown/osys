@@ -190,7 +190,7 @@ VAR
   HWnd:       INTEGER;   (* Set if a window has been created *)
 
   ModuleSpace*: INTEGER;   (* Start of module space *)
-  AllocPtr:     INTEGER;   (* Start of remaining free module space *)
+  AllocPtr*:    INTEGER;   (* Start of remaining free module space *)
   CommitLen:    INTEGER;   (* Committed module space memory *)
   Root*:        Module;    (* List of loaded and free'd modules *)
 

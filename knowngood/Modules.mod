@@ -229,7 +229,6 @@ BEGIN
     END
 *)
   END;
-  H.ws("Load returning "); H.wh(SYSTEM.VAL(INTEGER, mod)); H.wsn("H.");
   newmod := mod
 END Load;
 
@@ -239,9 +238,7 @@ VAR k, adr, w: INTEGER;  ch: CHAR; offset: SYSTEM.CARD32;
 BEGIN
   res := 5;  w := 0;
   IF mod # NIL THEN
-    adr := mod.cmd;
-    H.DumpMem(0, adr, adr, 64);
-    SYSTEM.GET(adr, ch);
+    adr := mod.cmd;  SYSTEM.GET(adr, ch);
     WHILE (ch # 0X) & (res # 0) DO
       k := 0;  (*read command name*)
       REPEAT s[k] := ch;  INC(k);  INC(adr);  SYSTEM.GET(adr, ch) UNTIL ch = 0X;

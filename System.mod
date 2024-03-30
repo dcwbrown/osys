@@ -54,21 +54,25 @@ BEGIN GetArg(S);
   IF S.class = Texts.Int THEN Oberon.SetOffset(S.i) END
 END SetOffset;
 
-(*
 PROCEDURE Date*;
-VAR S: Texts.Scanner;
-    dt, hr, min, sec, yr, mo, day: INTEGER;
-BEGIN Texts.OpenScanner(S, Oberon.Par.text, Oberon.Par.pos); Texts.Scan(S);
+VAR (*S: Texts.Scanner;*)
+    dt (*, hr, min, sec, yr, mo, day*): INTEGER;
+BEGIN
+  (*
+  Texts.OpenScanner(S, Oberon.Par.text, Oberon.Par.pos); Texts.Scan(S);
   IF S.class = Texts.Int THEN (*set clock*)
     day := S.i; Texts.Scan(S); mo := S.i; Texts.Scan(S); yr := S.i; Texts.Scan(S);
     hr := S.i; Texts.Scan(S); min := S.i; Texts.Scan(S); sec := S.i;
     dt := ((((yr*16 + mo)*32 + day)*32 + hr)*64 + min)*64 + sec;
     Kernel.SetClock(dt)
-  ELSE (*read clock*) Texts.WriteString(W, "System.Clock");
+  ELSE
+  *)
+    (*read clock*) Texts.WriteString(W, "System.Clock");
     dt := Oberon.Clock(); Texts.WriteClock(W, dt); EndLine
+  (*
   END
+  *)
 END Date;
-*)
 
 PROCEDURE Collect*;
 BEGIN Oberon.Collect(0)
@@ -93,7 +97,10 @@ PROCEDURE Clear*;  (*clear Log*)
 VAR T: Texts.Text; F: Display.Frame; buf: Texts.Buffer;
 BEGIN F := Oberon.Par.frame;
   IF (F # NIL) & (F.next IS TextFrames.Frame) & (F = Oberon.Par.vwr.dsc) THEN
-    NEW(buf); Texts.OpenBuf(buf); T := F.next(TextFrames.Frame).text; Texts.Delete(T, 0, T.len, buf)
+    NEW(buf);
+    Texts.OpenBuf(buf);
+    T := F.next(TextFrames.Frame).text;
+    Texts.Delete(T, 0, T.len, buf)
   END
 END Clear;
 
@@ -302,38 +309,45 @@ END DeleteFiles;
 
 (* ------------- Toolbox for system inspection ---------------*)
 
-(*
 PROCEDURE Watch*;
-BEGIN Texts.WriteString(W, "System.Watch"); Texts.WriteLn(W);
-  Texts.WriteString(W, "  Modules space (bytes)"); Texts.WriteInt(W, Modules.AllocPtr, 8);
-  Texts.WriteInt(W, Modules.AllocPtr * 100 DIV Kernel.heapOrg, 4); Texts.Write(W, "%"); EndLine;
-  Texts.WriteString(W, "  Heap speace"); Texts.WriteInt(W, Kernel.allocated, 8);
-  Texts.WriteInt(W, Kernel.allocated * 100 DIV (Kernel.heapLim - Kernel.heapOrg), 4); Texts.Write(W, "%"); EndLine;
+VAR
+  moduleusage: INTEGER;
+BEGIN
+  moduleusage := H.AllocPtr - H.ModuleSpace;
+  Texts.WriteString(W, "System.Watch"); Texts.WriteLn(W);
+  Texts.WriteString(W, "  Modules space (bytes)"); Texts.WriteInt(W, moduleusage, 8);
+  Texts.WriteInt(W, moduleusage * 100 DIV 100000000H, 4); Texts.Write(W, "%"); EndLine;
+  Texts.WriteString(W, "  Heap space"); Texts.WriteInt(W, Kernel.Allocated, 8);
+  Texts.WriteInt(W, Kernel.Allocated * 100 DIV (Kernel.HeapLimit - Kernel.HeapOrg), 4); Texts.Write(W, "%"); EndLine;
+  (*
   Texts.WriteString(W, "  Disk sectors "); Texts.WriteInt(W, Kernel.NofSectors, 4);
   Texts.WriteInt(W, Kernel.NofSectors * 100 DIV 10000H, 4); Texts.Write(W, "%"); EndLine;
+  *)
   Texts.WriteString(W, "  Tasks"); Texts.WriteInt(W, Oberon.NofTasks, 4); EndLine
 END Watch;
+
 
 PROCEDURE ShowModules*;
 VAR T: Texts.Text;
     V: Viewers.Viewer;
-    M: Modules.Module;
+    M: H.Module;
     X, Y: INTEGER;
 BEGIN T := TextFrames.Text("");
   Oberon.AllocateSystemViewer(Oberon.Par.vwr.X, X, Y);
   V := MenuViewers.New(TextFrames.NewMenu("System.ShowModules", StandardMenu),
       TextFrames.NewText(T, 0), TextFrames.menuH, X, Y);
-  M := Modules.root;
+  M := H.Root;
   WHILE M # NIL DO
     IF M.name[0] # 0X THEN
       Texts.WriteString(W, M.name); Texts.Write(W, 9X); Texts.WriteHex(W, ORD(M));
-      Texts.WriteHex(W, M.code); Texts.WriteInt(W, M.refcnt, 4)
+      (*Texts.WriteHex(W, M.code);*) Texts.WriteInt(W, M.refcnt, 4)
     ELSE Texts.WriteString(W, "---")
     END ;
     Texts.WriteLn(W); M := M.next
   END;
   Texts.Append(T, W.buf)
 END ShowModules;
+
 
 PROCEDURE ShowCommands*;
 VAR M: Modules.Module;
@@ -354,7 +368,6 @@ BEGIN GetArg(S);
         Texts.WriteString(W, S.s); Texts.Write(W, ".");
         REPEAT Texts.Write(W, ch); SYSTEM.GET(comadr, ch); INC(comadr)
         UNTIL ch = 0X;
-        WHILE comadr MOD 4 # 0 DO INC(comadr) END ;
         Texts.WriteLn(W); INC(comadr, 4); SYSTEM.GET(comadr, ch); INC(comadr)
       END ;
       Texts.Append(T, W.buf)
@@ -370,7 +383,7 @@ BEGIN Texts.WriteString(W, "System.ShowFonts"); Texts.WriteLn(W); fnt := Fonts.r
   END ;
   Texts.Append(Oberon.Log, W.buf)
 END ShowFonts;
-*)
+
 
 
 PROCEDURE OpenViewers;
@@ -427,35 +440,6 @@ BEGIN n := SYSTEM.REG(15); Texts.WriteString(W, "  ABORT  "); Texts.WriteHex(W, 
 END Abort;
 *)
 
-PROCEDURE TestReplConst;
-VAR i, j: INTEGER;
-BEGIN
-  FOR j := 1 TO 16 DO
-    FOR i := 1 TO 16 DO
-      Display.ReplConst(1, i*16, j*16, j, 12, Display.paint)
-    END
-  END
-END TestReplConst;
-
-PROCEDURE Testhorizontallines;
-VAR i, j, k: INTEGER;
-BEGIN
-  (*
-  FOR i := 0 TO 32 DO
-    Display.ReplConst(1, i MOD 2 * 16, i, 16, 1, Display.paint);
-    j := 32 + i MOD 2 * 16;  k := j + 16;
-    WHILE j < k DO
-      Display.Dot(1, j, i, Display.paint);
-      INC(j)
-    END
-  END;
-  *)
-  FOR i := 0 TO 100 DO
-    FOR j := 0 TO 10 DO
-      Display.ReplConst(1, j*101, i, i, 1, Display.replace)
-    END
-  END
-END Testhorizontallines;
 
 BEGIN
   Texts.OpenWriter(W);
@@ -466,9 +450,6 @@ BEGIN
   Kernel.Install(SYSTEM.ADR(Trap), 20H);
   Kernel.Install(SYSTEM.ADR(Abort), 0);
   *)
-
-  (*TestReplConst;*)
-  (*Testhorizontallines;*)
 
   Oberon.Loop
 END System.
