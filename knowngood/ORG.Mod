@@ -426,7 +426,7 @@ END LoadFlags;
 
 
 PROCEDURE InvertedCondition(cond: INTEGER): INTEGER;
-BEGIN RETURN SYSTEM.VAL(INTEGER, SYSTEM.VAL(SET, cond) / {0})
+BEGIN RETURN ORD(SYSTEM.VAL(SET, cond) / {0})
 END InvertedCondition;
 
 
@@ -964,9 +964,9 @@ BEGIN
 
     IF    op = Plus  THEN INC(dest.n, src.n)
     ELSIF op = Minus THEN DEC(dest.n, src.n)
-    ELSIF op = And   THEN dest.n := SYSTEM.VAL(INTEGER, SYSTEM.VAL(SET,dest.n) * SYSTEM.VAL(SET,src.n));
-    ELSIF op = Or    THEN dest.n := SYSTEM.VAL(INTEGER, SYSTEM.VAL(SET,dest.n) + SYSTEM.VAL(SET,src.n));
-    ELSIF op = Xor   THEN dest.n := SYSTEM.VAL(INTEGER, SYSTEM.VAL(SET,dest.n) / SYSTEM.VAL(SET,src.n));
+    ELSIF op = And   THEN dest.n := ORD(SYSTEM.VAL(SET,dest.n) * SYSTEM.VAL(SET,src.n));
+    ELSIF op = Or    THEN dest.n := ORD(SYSTEM.VAL(SET,dest.n) + SYSTEM.VAL(SET,src.n));
+    ELSIF op = Xor   THEN dest.n := ORD(SYSTEM.VAL(SET,dest.n) / SYSTEM.VAL(SET,src.n));
     END
 
   ELSIF ~IsDyadicNoOp(op, src) THEN
@@ -1051,7 +1051,7 @@ PROCEDURE MakeRealItem*(VAR x: Item; v: REAL);
 BEGIN
   Trace(TraceMakeItem, "MakeRealItem."); l.n(Tr);
   H.ZeroFill(x);  X64.ClearMode(x);
-  x.mode := Const;  x.type  := ORB.realType;  x.n := SYSTEM.VAL(INTEGER, v)
+  x.mode := Const;  x.type  := ORB.realType;  x.n := ORD(v)
 END MakeRealItem;
 
 PROCEDURE MakeStringItem*(VAR x: Item; len: INTEGER); (* copies string from ORS-buffer *)
@@ -1949,7 +1949,7 @@ BEGIN
     ELSIF op = ORS.times THEN xs := xs * ys
     ELSIF op = ORS.rdiv  THEN xs := xs / ys
     END;
-    x.n := SYSTEM.VAL(INTEGER, xs)
+    x.n := ORD(xs)
   ELSE
     Load(x);
     (* Convert op to x86 opcode *)

@@ -353,7 +353,7 @@ VAR f, g: File;
     IF f = NIL THEN
       mark := -1
     ELSE
-      SYSTEM.GET(SYSTEM.VAL(INTEGER, f) - 8, mark)
+      SYSTEM.GET(ORD(f) - 8, mark)
     END
   RETURN mark END getmark;
 

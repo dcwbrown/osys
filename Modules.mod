@@ -136,7 +136,7 @@ BEGIN
           mod.next := root;  root := mod
         ELSE error(7, name1)
         END
-      ELSE (*fill hole*) p := SYSTEM.VAL(INTEGER, mod)
+      ELSE (*fill hole*) p := ORD(mod)
       END
     END;
     IF res = 0 THEN (*read file*)
@@ -246,7 +246,7 @@ BEGIN
       INC(adr); (*REPEAT INC(adr) UNTIL adr MOD 4 = 0;*)
       SYSTEM.GET(adr, offset);  INC(adr, 4);
       IF s = name THEN
-        res := 0;  w := SYSTEM.VAL(INTEGER, mod) + offset
+        res := 0;  w := ORD(mod) + offset
       ELSE
         SYSTEM.GET(adr, ch)
       END

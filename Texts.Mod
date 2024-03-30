@@ -87,10 +87,10 @@ VAR
 
 PROCEDURE DumpBuffer(B: Buffer);
 BEGIN
-  H.ws("at ");          H.wh(SYSTEM.VAL(INTEGER, B));
+  H.ws("at ");          H.wh(ORD(B));
   H.ws("H, .len ");     H.wh(B.len);
-  H.ws("H, .header ");  H.wh(SYSTEM.VAL(INTEGER, B.header));
-  H.ws("H, .last ");    H.wh(SYSTEM.VAL(INTEGER, B.last));
+  H.ws("H, .header ");  H.wh(ORD(B.header));
+  H.ws("H, .last ");    H.wh(ORD(B.last));
   H.ws("H")
 END DumpBuffer;
 
@@ -98,9 +98,9 @@ PROCEDURE DumpWriter(W: Writer);
 BEGIN
   H.ws("at ");            H.wh(SYSTEM.ADR(W));
   H.ws("H, .buf (");      DumpBuffer(W.buf);
-  H.ws("), .fnt at ");    H.wh(SYSTEM.VAL(INTEGER, W.fnt));
+  H.ws("), .fnt at ");    H.wh(ORD(W.fnt));
   H.ws("H, .col ");       H.wh(W.col);
-  H.ws("H, .rider at ");  H.wh(SYSTEM.VAL(INTEGER, W.rider));
+  H.ws("H, .rider at ");  H.wh(SYSTEM.ADR(W.rider));
   H.ws("H")
 END DumpWriter;
 
@@ -299,11 +299,11 @@ END Insert;
 PROCEDURE Append* (T: Text; B: Buffer);
 BEGIN
   (*
-  H.ws("Texts.Append(T, B at "); H.wh(SYSTEM.VAL(INTEGER, B));
+  H.ws("Texts.Append(T, B at "); H.wh(ORD(B));
   H.ws("H by val, ");            H.wh(SYSTEM.ADR(B));
   H.ws("H by adr), B.len ");     H.wh(B.len);
-  H.ws("H, B.header ");          H.wh(SYSTEM.VAL(INTEGER, B.header));
-  H.ws("H, B.last ");            H.wh(SYSTEM.VAL(INTEGER, B.last));
+  H.ws("H, B.header ");          H.wh(ORD(B.header));
+  H.ws("H, B.last ");            H.wh(ORD(B.last));
   H.wsn("H.");
   *)
   Insert(T, T.len, B)

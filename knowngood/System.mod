@@ -97,7 +97,10 @@ PROCEDURE Clear*;  (*clear Log*)
 VAR T: Texts.Text; F: Display.Frame; buf: Texts.Buffer;
 BEGIN F := Oberon.Par.frame;
   IF (F # NIL) & (F.next IS TextFrames.Frame) & (F = Oberon.Par.vwr.dsc) THEN
-    NEW(buf); Texts.OpenBuf(buf); T := F.next(TextFrames.Frame).text; Texts.Delete(T, 0, T.len, buf)
+    NEW(buf);
+    Texts.OpenBuf(buf);
+    T := F.next(TextFrames.Frame).text;
+    Texts.Delete(T, 0, T.len, buf)
   END
 END Clear;
 
@@ -327,13 +330,13 @@ END Watch;
 PROCEDURE ShowModules*;
 VAR T: Texts.Text;
     V: Viewers.Viewer;
-    M: Modules.Module;
+    M: H.Module;
     X, Y: INTEGER;
 BEGIN T := TextFrames.Text("");
   Oberon.AllocateSystemViewer(Oberon.Par.vwr.X, X, Y);
   V := MenuViewers.New(TextFrames.NewMenu("System.ShowModules", StandardMenu),
       TextFrames.NewText(T, 0), TextFrames.menuH, X, Y);
-  M := Modules.root;
+  M := H.Root;
   WHILE M # NIL DO
     IF M.name[0] # 0X THEN
       Texts.WriteString(W, M.name); Texts.Write(W, 9X); Texts.WriteHex(W, ORD(M));
@@ -346,7 +349,6 @@ BEGIN T := TextFrames.Text("");
 END ShowModules;
 
 
-(*
 PROCEDURE ShowCommands*;
 VAR M: Modules.Module;
     comadr: INTEGER; ch: CHAR;
@@ -366,7 +368,6 @@ BEGIN GetArg(S);
         Texts.WriteString(W, S.s); Texts.Write(W, ".");
         REPEAT Texts.Write(W, ch); SYSTEM.GET(comadr, ch); INC(comadr)
         UNTIL ch = 0X;
-        WHILE comadr MOD 4 # 0 DO INC(comadr) END ;
         Texts.WriteLn(W); INC(comadr, 4); SYSTEM.GET(comadr, ch); INC(comadr)
       END ;
       Texts.Append(T, W.buf)
@@ -382,7 +383,7 @@ BEGIN Texts.WriteString(W, "System.ShowFonts"); Texts.WriteLn(W); fnt := Fonts.r
   END ;
   Texts.Append(Oberon.Log, W.buf)
 END ShowFonts;
-*)
+
 
 
 PROCEDURE OpenViewers;
@@ -439,35 +440,6 @@ BEGIN n := SYSTEM.REG(15); Texts.WriteString(W, "  ABORT  "); Texts.WriteHex(W, 
 END Abort;
 *)
 
-PROCEDURE TestReplConst;
-VAR i, j: INTEGER;
-BEGIN
-  FOR j := 1 TO 16 DO
-    FOR i := 1 TO 16 DO
-      Display.ReplConst(1, i*16, j*16, j, 12, Display.paint)
-    END
-  END
-END TestReplConst;
-
-PROCEDURE Testhorizontallines;
-VAR i, j, k: INTEGER;
-BEGIN
-  (*
-  FOR i := 0 TO 32 DO
-    Display.ReplConst(1, i MOD 2 * 16, i, 16, 1, Display.paint);
-    j := 32 + i MOD 2 * 16;  k := j + 16;
-    WHILE j < k DO
-      Display.Dot(1, j, i, Display.paint);
-      INC(j)
-    END
-  END;
-  *)
-  FOR i := 0 TO 100 DO
-    FOR j := 0 TO 10 DO
-      Display.ReplConst(1, j*101, i, i, 1, Display.replace)
-    END
-  END
-END Testhorizontallines;
 
 BEGIN
   Texts.OpenWriter(W);
@@ -478,9 +450,6 @@ BEGIN
   Kernel.Install(SYSTEM.ADR(Trap), 20H);
   Kernel.Install(SYSTEM.ADR(Abort), 0);
   *)
-
-  (*TestReplConst;*)
-  (*Testhorizontallines;*)
 
   Oberon.Loop
 END System.

@@ -130,7 +130,7 @@ BEGIN
     H.wcn; H.wsn("V IS Viewer.")
   ELSE
     H.wcn; H.ws("Viewers.This() result is not a Viewer, v ");
-    H.wh(SYSTEM.VAL(INTEGER, V)); H.wsn(".");
+    H.wh(ORD(V)); H.wsn(".");
     IF V IS Display.Frame THEN H.wsn(".. V IS Display.FrameDesc.") END;
     H.ws("  X,Y: ");     H.wi(X);   H.wc(","); H.wi(Y);
     H.ws(", V.X,V.Y: "); H.wi(V.X); H.wc(","); H.wi(V.Y);

@@ -583,8 +583,8 @@ BEGIN (* StatSequence *)
           ELSE
             l.s("StatSequence - illegal assignment: x.type ", Tr); l.Type(x.type, Tr);
             l.s(", y.type ", Tr);      l.Type(y.type, Tr);                    l.n(Tr);
-            l.s("x.type at ", Tr);     l.h(SYSTEM.VAL(INTEGER, x.type), Tr);
-            l.s("H, y.type at ", Tr);  l.h(SYSTEM.VAL(INTEGER, y.type), Tr);  l.sn("H.", Tr);
+            l.s("x.type at ", Tr);     l.h(ORD(x.type), Tr);
+            l.s("H, y.type at ", Tr);  l.h(ORD(y.type), Tr);  l.sn("H.", Tr);
             ORS.Mark("illegal assignment")
           END
         ELSIF sym = ORS.eql THEN ORS.Mark("should be :=");  ORS.Get(sym);  expression(y)

@@ -112,9 +112,9 @@ VAR b: BYTE;
 BEGIN
   IF p * {0..7} # {} THEN
     SYSTEM.GET(addr, b);
-    IF    mode = paint  THEN b := SYSTEM.VAL(INTEGER, SYSTEM.VAL(SET, b+0) + p)
-    ELSIF mode = invert THEN b := SYSTEM.VAL(INTEGER, SYSTEM.VAL(SET, b+0) / p)
-    ELSIF mode = clear  THEN b := SYSTEM.VAL(INTEGER, SYSTEM.VAL(SET, b+0) - p)
+    IF    mode = paint  THEN b := ORD(SYSTEM.VAL(SET, b+0) + p)
+    ELSIF mode = invert THEN b := ORD(SYSTEM.VAL(SET, b+0) / p)
+    ELSIF mode = clear  THEN b := ORD(SYSTEM.VAL(SET, b+0) - p)
     END;
     SYSTEM.PUT(addr, b)
   END

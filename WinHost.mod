@@ -491,7 +491,7 @@ BEGIN
   size := 0;
   WHILE hdr.size # 0 DO
     INC(size, (hdr.nimports + hdr.nvarsize + 15) DIV 16 * 16);
-    hdr := SYSTEM.VAL(Module, SYSTEM.VAL(INTEGER, hdr) + hdr.size)
+    hdr := SYSTEM.VAL(Module, ORD(hdr) + hdr.size)
   END;
 
   (* Commit enough for the modules being loaded plus a sentinel ModuleDesc. *)
@@ -529,9 +529,7 @@ PROCEDURE LocateModule(adr: INTEGER): Module;
 VAR  (*modadr: INTEGER;*)  hdr: Module;
 BEGIN
   hdr := Root;
-  WHILE (hdr # NIL)
-      & (   (SYSTEM.VAL(INTEGER, hdr)                > adr)
-         OR (SYSTEM.VAL(INTEGER, hdr) + hdr.nimports < adr)) DO
+  WHILE (hdr # NIL) & ((adr < ORD(hdr)) OR (adr >= ORD(hdr)+hdr.nimports)) DO
     hdr := hdr.next
   END;
 RETURN hdr END LocateModule;
@@ -542,7 +540,7 @@ VAR
   name: ARRAY 32 OF CHAR;
 BEGIN
   IF hdr.nlines # 0 THEN
-    adr := SYSTEM.VAL(INTEGER, hdr) + hdr.nlines;
+    adr := ORD(hdr) + hdr.nlines;
     GetString(adr, name);
     WHILE name[0] # 0X DO
       SYSTEM.GET(adr, line);  INC(adr, 8);
@@ -568,7 +566,7 @@ BEGIN
   ws(" at address ");  wh(adr); wc("H");
   hdr := LocateModule(adr);
   IF hdr # NIL  THEN
-    offset := adr - SYSTEM.VAL(INTEGER, hdr);
+    offset := adr - ORD(hdr);
     ws(" in module "); ws(hdr.name);
     ws(" at offset "); wh(offset); wc("H")
   END;
@@ -906,8 +904,8 @@ END WriteStdout;
 PROCEDURE ExportedAddress(modhdr: Module; index: INTEGER): INTEGER;
 VAR exportoffset: SYSTEM.CARD32;
 BEGIN
-  SYSTEM.GET(SYSTEM.VAL(INTEGER, modhdr) + modhdr.nexports + index * 4, exportoffset);
-RETURN SYSTEM.VAL(INTEGER, modhdr) + exportoffset END ExportedAddress;
+  SYSTEM.GET(ORD(modhdr) + modhdr.nexports + index * 4, exportoffset);
+RETURN ORD(modhdr) + exportoffset END ExportedAddress;
 
 PROCEDURE FindModule(name: ARRAY OF CHAR; key: INTEGER): Module;
 VAR
@@ -948,7 +946,7 @@ VAR
   absreloc:    INTEGER;
   modulebody:  PROCEDURE;
 BEGIN
-  SYSTEM.COPY(SYSTEM.VAL(INTEGER, imagehdr), AllocPtr, imagehdr.nimports);  (* Copy up to but excluding import table *)
+  SYSTEM.COPY(ORD(imagehdr), AllocPtr, imagehdr.nimports);  (* Copy up to but excluding import table *)
   loadedhdr := SYSTEM.VAL(Module, AllocPtr);
 
   (* Update length in header to loaded size *)
@@ -965,7 +963,7 @@ BEGIN
 
   (* Build list of imported module header addresses *)
   i := 0;
-  adr := SYSTEM.VAL(INTEGER, imagehdr) + loadedhdr.nimports;
+  adr := ORD(imagehdr) + loadedhdr.nimports;
   GetString(adr, impmod);
   WHILE impmod[0] # 0X DO
     SYSTEM.GET(adr, key);  INC(adr, 8);
@@ -1015,7 +1013,7 @@ BEGIN
   END;
 
   (* Relocate pointer addresses *)
-  assert(loadedhdr.ptr # 0);  assert(SYSTEM.VAL(INTEGER, loadedhdr) = AllocPtr);
+  assert(loadedhdr.ptr # 0);  assert(ORD(loadedhdr) = AllocPtr);
   INC(loadedhdr.ptr, AllocPtr);
   RelocatePointerAddresses(loadedhdr.ptr, AllocPtr + loadedhdr.nimports);
 
@@ -1053,11 +1051,11 @@ VAR
 BEGIN
   (* Load and link remaining code modules from EXE file image *)
   IF Verbose IN LoadFlags THEN
-    ws("* Load remaining modules starting from "); wh(SYSTEM.VAL(INTEGER, ImgHeader)); wsn("H.");
+    ws("* Load remaining modules starting from "); wh(ORD(ImgHeader)); wsn("H.");
   END;
   WHILE imagehdr.size # 0 DO
     LoadModule(imagehdr);
-    imagehdr := SYSTEM.VAL(Module, SYSTEM.VAL(INTEGER, imagehdr) + imagehdr.size);
+    imagehdr := SYSTEM.VAL(Module, ORD(imagehdr) + imagehdr.size);
   END
 END LoadRemainingModules;
 
@@ -1099,13 +1097,13 @@ BEGIN
   Log := WriteStdout;
 
   IF Verbose IN LoadFlags THEN
-    ws("* WinHost starting, ImgHeader at "); wh(SYSTEM.VAL(INTEGER, ImgHeader)); wsn("H.");
+    ws("* WinHost starting, ImgHeader at "); wh(ORD(ImgHeader)); wsn("H.");
     ws("* Initial RSP "); wh(GetRSP()); wsn("H.");
   END;
 
   ws("ModuleDesc.size at offset ");
   wh(SYSTEM.ADR(ImgHeader.size) - SYSTEM.ADR(ImgHeader^)); wsn("H, ImgHeader:");
-  DumpMem(2, SYSTEM.VAL(INTEGER, ImgHeader), SYSTEM.VAL(INTEGER, ImgHeader), SYSTEM.SIZE(ModuleDesc));
+  DumpMem(2, ORD(ImgHeader), ORD(ImgHeader), SYSTEM.SIZE(ModuleDesc));
 
   PrepareOberonMachine;
 
@@ -1114,10 +1112,10 @@ BEGIN
   END;
 
   (* Copy boot module into newly committed memory and switch PC to the new code. *)
-  SYSTEM.COPY(SYSTEM.VAL(INTEGER, ImgHeader), ModuleSpace, ImgHeader.size);
+  SYSTEM.COPY(ORD(ImgHeader), ModuleSpace, ImgHeader.size);
 
   (***** Transfer program counter to copied code *****)
-  IncPC(ModuleSpace - SYSTEM.VAL(INTEGER, ImgHeader));
+  IncPC(ModuleSpace - ORD(ImgHeader));
 
   Log := WriteStdout;  (* Correct Log fn address following move *)
   IF Verbose IN LoadFlags THEN
@@ -1149,7 +1147,7 @@ BEGIN
 
   (*ws("crlf at "); wh(SYSTEM.ADR(crlf)); wsn("H.");*)
 
-  LoadRemainingModules(SYSTEM.VAL(Module, SYSTEM.VAL(INTEGER, ImgHeader) + ImgHeader.size));
+  LoadRemainingModules(SYSTEM.VAL(Module, ORD(ImgHeader) + ImgHeader.size));
 
   (*MessageBoxA(0, SYSTEM.ADR("Complete."), SYSTEM.ADR("WinHost"), 0);*)
   (*wsn("WinHost complete.");*)
