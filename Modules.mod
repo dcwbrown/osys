@@ -1,6 +1,6 @@
 MODULE Modules;  (*Link and load on RISC;  NW 20.10.2013 / 9.4.2016*)
 
-IMPORT SYSTEM, Files;
+IMPORT SYSTEM, H := WinHost, Files;
 
 CONST
   versionkey = 1X;
@@ -8,10 +8,12 @@ CONST
   DescSize   = 80;
 
 TYPE
-  Module*     = POINTER TO ModDesc;
+  (*Module*     = POINTER TO ModDesc;*)
+  Module*     = H.Module;
   Command*    = PROCEDURE;
   ModuleName* = ARRAY 32 OF CHAR;
-
+  ModDesc*    = H.ModuleDesc;
+  (*
   ModDesc* = RECORD
     name*:   ModuleName;
     next*:   Module;
@@ -28,6 +30,7 @@ TYPE
     ptr*:    INTEGER;
     unused:  INTEGER;
   END;
+  *)
 
 VAR
 (*
@@ -54,11 +57,9 @@ BEGIN i := 0;
 END ThisFile;
 *)
 
-(*
 PROCEDURE error(n: INTEGER;  name: ARRAY OF CHAR);
 BEGIN res := n;  importing := name
 END error;
-*)
 
 (*
 PROCEDURE Check(s: ARRAY OF CHAR);
@@ -75,11 +76,17 @@ END Check;
 
 PROCEDURE Load*(name: ARRAY OF CHAR;  VAR newmod: Module);
   (*search module in list;  if not found, load module.
-    res = 0: already present or loaded;  res = 2: file not available;  res = 3: key conflict;
-    res = 4: bad file version;  res = 5: corrupted file;  res = 7: no space*)
+    res = 0: already present or loaded;
+    res = 1: file not available;
+    res = 2: file has wrong versionkey
+    res = 3: key conflict;
+    res = 4: bad file version;
+    res = 5: corrupted file;
+    res = 7: no space*)
 VAR
+  mod: Module;
 (*
-  mod, impmod: Module;
+  impmod: Module;
   i, n, key, impkey, mno, nofimps, size: INTEGER;
   p, u, v, w: INTEGER;  (*addresses*)
   ch: CHAR;
@@ -91,13 +98,13 @@ VAR
   import: ARRAY 16 OF Module;
 *)
 BEGIN
-  res := 2
-(*
-  mod := root;
+  mod := H.Root;
   res := 0;
-  nofimps := 0;
+  (*nofimps := 0;*)
   WHILE (mod # NIL) & (name # mod.name) DO mod := mod.next END;
   IF mod = NIL THEN (*load*)
+    error(1, name);
+(*
     Check(name);
     IF res = 0 THEN F := ThisFile(name) ELSE F := NIL END;
     IF F # NIL THEN
@@ -220,27 +227,34 @@ BEGIN
     ELSIF res = 3 THEN importing := name;
       WHILE nofimps > 0 DO DEC(nofimps);  DEC(import[nofimps].refcnt) END
     END
-  END;
-  newmod :=  mod
 *)
+  END;
+  H.ws("Load returning "); H.wh(SYSTEM.VAL(INTEGER, mod)); H.wsn("H.");
+  newmod := mod
 END Load;
 
 PROCEDURE ThisCommand*(mod: Module;  name: ARRAY OF CHAR): Command;
-VAR k, adr, w: INTEGER;  ch: CHAR;
+VAR k, adr, w: INTEGER;  ch: CHAR; offset: SYSTEM.CARD32;
     s: ARRAY 32 OF CHAR;
-BEGIN res := 5;  w := 0;
-(*
+BEGIN
+  res := 5;  w := 0;
   IF mod # NIL THEN
-    adr := mod.cmd;  SYSTEM.GET(adr, ch);
-    WHILE (ch # 0X) & (res # 0) DO k := 0;  (*read command name*)
+    adr := mod.cmd;
+    H.DumpMem(0, adr, adr, 64);
+    SYSTEM.GET(adr, ch);
+    WHILE (ch # 0X) & (res # 0) DO
+      k := 0;  (*read command name*)
       REPEAT s[k] := ch;  INC(k);  INC(adr);  SYSTEM.GET(adr, ch) UNTIL ch = 0X;
       s[k] := 0X;
-      REPEAT INC(adr) UNTIL adr MOD 4 = 0;
-      SYSTEM.GET(adr, k);  INC(adr, 4);
-      IF s = name THEN res := 0;  w := mod.code + k ELSE SYSTEM.GET(adr, ch) END
+      INC(adr); (*REPEAT INC(adr) UNTIL adr MOD 4 = 0;*)
+      SYSTEM.GET(adr, offset);  INC(adr, 4);
+      IF s = name THEN
+        res := 0;  w := SYSTEM.VAL(INTEGER, mod) + offset
+      ELSE
+        SYSTEM.GET(adr, ch)
+      END
     END
   END
-*)
   RETURN SYSTEM.VAL(Command, w)
 END ThisCommand;
 

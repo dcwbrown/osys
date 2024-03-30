@@ -358,6 +358,11 @@ BEGIN
 END CopyFile;
 
 
+PROCEDURE WriteZeroes(n: INTEGER);
+VAR i: INTEGER;
+BEGIN FOR i := 1 TO n DO Files.WriteByte(Exe, 0) END END WriteZeroes;
+
+
 PROCEDURE WriteModules;
 VAR object: ObjectFile;
 BEGIN
@@ -367,7 +372,7 @@ BEGIN
     object := object.next
   END;
 
-  Files.WriteInt(Exe, 0);  (* Mark end of modules - appears as header.length = 0 *)
+  WriteZeroes(SYSTEM.SIZE(ModuleDesc));  (* Mark end of modules *)
 
   (* Fill Oberon section to a whole multiple of section alignment *)
   (* by writing 0 to its last byte *)
@@ -532,10 +537,6 @@ BEGIN
   ASSERT(r.res >= 0);
   Files.Close(f)
 END GetBootstrap;
-
-PROCEDURE WriteZeroes(n: INTEGER);
-VAR i: INTEGER;
-BEGIN FOR i := 1 TO n DO Files.WriteByte(Exe, 0) END END WriteZeroes;
 
 PROCEDURE WriteBootstrap(LoadFlags: SET);
 BEGIN

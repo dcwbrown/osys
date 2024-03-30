@@ -31,7 +31,7 @@
 @fc knowngood\obuild.mod  obuild.mod  >NUL
 @if errorlevel 1 goto buildcompiler
 ::
-::@goto buildsystem
+@goto buildsystem
 ::
 ::
 :buildcompiler

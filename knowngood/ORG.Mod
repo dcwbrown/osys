@@ -2956,7 +2956,7 @@ BEGIN
 
   (* -------------------------- Emit command table -------------------------- *)
   X64.Align(16);
-  Hdr.ncommands := X64.PC;   (* Set command table address *)
+  Hdr.cmd := X64.PC;  (* Set command table address *)
   obj := ORB.topScope.next;
   WHILE obj # NIL DO  (* commands *)
     IF (obj.exno # 0) & (obj.class = ORB.Const) & (obj.type.form = ORB.Proc)

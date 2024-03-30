@@ -35,16 +35,16 @@ TYPE
     data:    INTEGER;     (* PO2013 Start of module memory - begins with type descriptors *)
     code:    INTEGER;     (* PO2013 Start of code (part of module memory) *)
     imp:     INTEGER;     (* PO2013 Imports: address of array of imported module pointers *)
-    cmd:     INTEGER;     (* PO2013 Commands: address of seq of command strings and code offsets *)
+    cmd*:    INTEGER;     (* PO2013 Commands: address of seq of command strings and code offsets *)
     ent:     INTEGER;     (* PO2013 Entries: address of array of exported offsets *)
     ptr*:    INTEGER;     (* PO2013 Pointers: address of array of pointer var addresses *)
     unused:  INTEGER;
 
     (* Old values *)
-    d1*:        INTEGER;       (* 80H *)
+    d1:         INTEGER;       (* 80H *)
     ninitcode*: INTEGER;
     d3:         INTEGER;
-    ncommands*: INTEGER;
+    d4:         INTEGER;
     nexports*:  INTEGER;
     nlines*:    INTEGER;
     nimports*:  INTEGER;
@@ -1019,6 +1019,8 @@ BEGIN
   INC(loadedhdr.ptr, AllocPtr);
   RelocatePointerAddresses(loadedhdr.ptr, AllocPtr + loadedhdr.nimports);
 
+  INC(loadedhdr.cmd, AllocPtr);
+
   (* Link module into loaded module list *)
   loadedhdr.next := Root;
   Root := loadedhdr;
@@ -1123,6 +1125,7 @@ BEGIN
   END;
 
   SYSTEM.PUT(SYSTEM.ADR(Root), ModuleSpace);
+  INC(Root.cmd, ModuleSpace);
   INC(Root.ptr, ModuleSpace);
   RelocatePointerAddresses(Root.ptr, ModuleSpace + Root.nimports);
 

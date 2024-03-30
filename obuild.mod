@@ -465,11 +465,11 @@ BEGIN
   H.wsl(mod.name, LongestModname + 1);
   WriteHuman(hdr.ptr, 12);  INC(TotalCode,    hdr.ptr);
   WriteHuman(hdr.nvarsize, 12);   INC(TotalGlobals, hdr.nvarsize);
-  WriteHuman(hdr.ncommands - hdr.ptr, 8);
-  WriteHuman(hdr.nlines    - hdr.ncommands, 6);
-  WriteHuman(hdr.nexports  - hdr.nlines,    8);
-  WriteHuman(hdr.nimports  - hdr.nexports,  8);
-  WriteHuman(hdr.size      - hdr.nimports,  8);
+  WriteHuman(hdr.cmd      - hdr.ptr,      8);
+  WriteHuman(hdr.nlines   - hdr.cmd,      6);
+  WriteHuman(hdr.nexports - hdr.nlines,   8);
+  WriteHuman(hdr.nimports - hdr.nexports, 8);
+  WriteHuman(hdr.size     - hdr.nimports, 8);
   H.wn;
   WinPE.AddModule(mod.code.file);
   mod.addedToPE := TRUE
