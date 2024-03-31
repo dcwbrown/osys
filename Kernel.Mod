@@ -230,6 +230,9 @@ BEGIN RETURN H.Time() DIV 10000 END Time;
 PROCEDURE Clock*(): INTEGER;  (* 32 bit packed date and time *)
 BEGIN RETURN H.Clock() END Clock;
 
+PROCEDURE SetClock*(dt: INTEGER);
+BEGIN END SetClock;
+
 
 (* -------------------------------------------------------------------------- *)
 

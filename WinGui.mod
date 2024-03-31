@@ -1,7 +1,11 @@
 MODULE WinGui;
 IMPORT SYSTEM, H := WinHost;
 
-CONST KeyBufSize = 16;
+CONST
+  Width*     = 1536;
+  Height*    = 1152;
+  Stride*    = Width DIV 8;
+  KeyBufSize = 16;
 
 
 TYPE
@@ -39,9 +43,6 @@ HostWindow* = POINTER TO HostWindowDesc;
   END;
 
 VAR
-  Width*:  INTEGER;
-  Height*: INTEGER;
-
   Window*: HostWindow;
 
   Keys:    ARRAY KeyBufSize OF BYTE;  (* Scancodes *)
@@ -651,8 +652,6 @@ BEGIN
     00 00 00 00 00 00 00 00  00 00 00 54 61 5B 52 5D
     00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00
     00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00$);
-  Width  := 1536; (* 1024;*) (*1800*)
-  Height := 1152; (*768;*)  (*1280*)
   CreateWindow(512, 64, Width, Height);
   (*H.wsn("WinGui initialisation complete.");*)
 END WinGui.

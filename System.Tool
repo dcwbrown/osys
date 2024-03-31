@@ -22,3 +22,5 @@ Tools.Inspect 0
 Tools.Sector 1
 Tools.ShowFile 
 Tools.Recall  Tools.Clear
+
+WinGui.Close

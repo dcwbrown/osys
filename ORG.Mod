@@ -883,7 +883,7 @@ END Push;
 
 
 PROCEDURE AluOpFromImmediate(op, mode, imm, size, n, index, scale, offset: INTEGER); (* dest := dest op imm *)
-VAR immsize, immreg, incdec: INTEGER;
+VAR immsize, immreg, immlim, incdec: INTEGER;
 BEGIN
   ASSERT(mode IN {Reg, Eadr, Code, String, Global, Import});
   IF mode = Reg THEN size := 8 END;
@@ -893,17 +893,20 @@ BEGIN
     IF imm = -1 THEN incdec := 1 - incdec END;
     OpModRegRm(0FFH, mode, incdec, size, n, index, scale, offset, 0)  (* inc/dec dest *)
   ELSE
-    IF (imm < -80000000H) OR (imm >= 80000000H) THEN
+    immsize := size; IF immsize > 4 THEN immsize := 4 END;
+    immlim := LSL(1, immsize);
+    IF (imm < -immlim) OR (imm >= immlim) THEN
       immreg := Reserve(-1, {});
-      LoadImmediate(immreg, imm);                                                               (* mov immreg,imm64 *)
-      OpModRegRm(op+1, mode, immreg, size, n, index, scale, offset, 0);                         (* op  dest,immreg  *)
+      LoadImmediate(immreg, imm);                                                       (* mov immreg,imm64 *)
+      OpModRegRm(op+1, mode, immreg, size, n, index, scale, offset, 0);                 (* op  dest,immreg  *)
       Release(immreg)
     ELSIF size = 1 THEN
-      OpModRegRm(80H, mode, op DIV 8, size, n, index, scale, offset, 1);  X64.Emit(imm)         (* op  dest8,imm8    *)
+      OpModRegRm(80H, mode, op DIV 8, size, n, index, scale, offset, 1);  X64.Emit(imm) (* op  dest8,imm8   *)
     ELSIF (imm >= -80H) & (imm < 80H) THEN
-      OpModRegRm(83H, mode, op DIV 8, size, n, index, scale, offset, 1);  X64.Emit(imm)         (* op  dest,imm8     *)
+      OpModRegRm(83H, mode, op DIV 8, size, n, index, scale, offset, 1);  X64.Emit(imm) (* op  dest,imm8    *)
     ELSE
-      OpModRegRm(81H, mode, op DIV 8, size, n, index, scale, offset, 4);  X64.EmitBytes(4, imm) (* op  dest,imm32    *)
+      OpModRegRm(81H, mode, op DIV 8, size, n, index, scale, offset, 4);                (* op  dest,imm<=32 *)
+      IF size < 4 THEN X64.EmitBytes(size, imm) ELSE X64.EmitBytes(4, imm) END
     END
   END
 END AluOpFromImmediate;

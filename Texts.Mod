@@ -518,10 +518,6 @@ END WriteLn;
 PROCEDURE WriteString* (VAR W: Writer; s: ARRAY OF CHAR);
 VAR i: INTEGER;
 BEGIN
-  (*
-  H.ws("Texts.WriteString(W, '"); H.ws(s); H.wsn("').");
-  H.ws("W: "); DumpWriter(W); H.wn;
-  *)
   i := 0;
   WHILE s[i] >= " " DO Write(W, s[i]); INC(i) END
 END WriteString;
@@ -602,7 +598,6 @@ BEGIN
 END WriteRealFix;
 ---*)
 
-
 PROCEDURE WritePair(VAR W: Writer; ch: CHAR; x: INTEGER);
 BEGIN Write(W, ch);
   Write(W, CHR(x DIV 10 + 30H)); Write(W, CHR(x MOD 10 + 30H))
@@ -610,22 +605,32 @@ END WritePair;
 
 PROCEDURE WriteClock* (VAR W: Writer; d: INTEGER);
 BEGIN
-  (*
-  WritePair(W, " ", d DIV 20000H MOD 20H);    (*day*)
-  WritePair(W, ".", d DIV 400000H MOD 10H);   (*month*)
-  WritePair(W, ".", d DIV 4000000H MOD 40H);  (*year*)
-  WritePair(W, " ", d DIV 1000H MOD 20H);     (*hour*)
-  WritePair(W, ":", d DIV 40H MOD 40H);       (*min*)
-  WritePair(W, ":", d MOD 40H)                (*sec*)
-  *)
-  WritePair(W, " ", d DIV 1000000000H MOD 8000H MOD 100);  (*year*)
-  WritePair(W, "-", d DIV 100000000H MOD 10H);             (*month*)
-  WritePair(W, "-", d DIV 8000000H MOD 20H);               (*day*)
-  WritePair(W, " ", d DIV 400000H MOD 20H);                (*hour*)
-  WritePair(W, ":", d DIV 10000H MOD 40H);                 (*min*)
-  WritePair(W, ":", d DIV 400H MOD 40H)                    (*sec*)
+  WritePair(W, " ", d DIV 20000H MOD 20H);   (*day*)
+  WritePair(W, ".", d DIV 400000H MOD 10H); (*month*)
+  WritePair(W, ".", d DIV 4000000H MOD 40H);   (*year*)
+  WritePair(W, " ", d DIV 1000H MOD 20H);   (*hour*)
+  WritePair(W, ":", d DIV 40H MOD 40H);  (*min*)
+  WritePair(W, ":", d MOD 40H)  (*sec*)
 END WriteClock;
 
+
+(*---
+PROCEDURE WriteDigits(VAR W: Writer; x, n: INTEGER);
+BEGIN
+  IF n > 1 THEN WriteDigits(W, x DIV 10, n - 1) END;
+  Write(W, CHR(x MOD 10 + 30H))
+END WriteDigits;
+
+PROCEDURE WriteExtClock* (VAR W: Writer; d: INTEGER);
+BEGIN
+  WriteDigits(W, d DIV 1000000000H MOD 8000H, 4); (*year*)  Write(W, "-");
+  WriteDigits(W, d DIV 100000000H MOD 10H,    2); (*month*) Write(W, "-");
+  WriteDigits(W, d DIV 8000000H MOD 20H,      2); (*day*)   Write(W, " ");
+  WriteDigits(W, d DIV 400000H MOD 20H,       2); (*hour*)  Write(W, ":");
+  WriteDigits(W, d DIV 10000H MOD 40H,        2); (*min*)   Write(W, ":");
+  WriteDigits(W, d DIV 400H MOD 40H,          2)  (*sec*)
+END WriteExtClock;
+---*)
 
 BEGIN TrailerFile := Files.New("")
 END Texts.

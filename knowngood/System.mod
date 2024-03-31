@@ -55,10 +55,9 @@ BEGIN GetArg(S);
 END SetOffset;
 
 PROCEDURE Date*;
-VAR (*S: Texts.Scanner;*)
-    dt (*, hr, min, sec, yr, mo, day*): INTEGER;
+VAR S: Texts.Scanner;
+    dt, hr, min, sec, yr, mo, day: INTEGER;
 BEGIN
-  (*
   Texts.OpenScanner(S, Oberon.Par.text, Oberon.Par.pos); Texts.Scan(S);
   IF S.class = Texts.Int THEN (*set clock*)
     day := S.i; Texts.Scan(S); mo := S.i; Texts.Scan(S); yr := S.i; Texts.Scan(S);
@@ -66,12 +65,9 @@ BEGIN
     dt := ((((yr*16 + mo)*32 + day)*32 + hr)*64 + min)*64 + sec;
     Kernel.SetClock(dt)
   ELSE
-  *)
-    (*read clock*) Texts.WriteString(W, "System.Clock");
+    (*read clock*) Texts.WriteString(W, "System.Clock ");
     dt := Oberon.Clock(); Texts.WriteClock(W, dt); EndLine
-  (*
   END
-  *)
 END Date;
 
 PROCEDURE Collect*;
@@ -384,13 +380,12 @@ BEGIN Texts.WriteString(W, "System.ShowFonts"); Texts.WriteLn(W); fnt := Fonts.r
   Texts.Append(Oberon.Log, W.buf)
 END ShowFonts;
 
-
-
 PROCEDURE OpenViewers;
 VAR logV, toolV: Viewers.Viewer;
     menu, main: Display.Frame;
-    d: INTEGER; X, Y: INTEGER;
-BEGIN d := Kernel.Clock(); Texts.WriteString(W, "Oberon V5  NW 14.4.2013"); EndLine;
+    X, Y: INTEGER;
+BEGIN
+  Texts.WriteString(W, "Oberon V5  NW 14.4.2013  DB 30.3.2024"); EndLine;
   Oberon.AllocateSystemViewer(0, X, Y);
   (*H.ws("Allocating system log viewer at "); H.wi(X); H.wc(","); H.wi(Y); H.wsn(".");*)
   menu := TextFrames.NewMenu("System.Log", LogMenu);
@@ -440,6 +435,19 @@ BEGIN n := SYSTEM.REG(15); Texts.WriteString(W, "  ABORT  "); Texts.WriteHex(W, 
 END Abort;
 *)
 
+PROCEDURE DisplayTests;
+VAR i: INTEGER;
+BEGIN
+  FOR i := 0 TO Display.Height-1 DO
+    Display.Dot(Display.white, i,i, Display.paint)
+  END;
+  FOR i := 0 TO 63 DO
+    Display.ReplConst(Display.white, i,i MOD 2 * 32,1,30, Display.paint);
+  END;
+  FOR i := 0 TO 100 DO
+    Display.CopyPattern(Display.white, Display.block, i*9, 64, Display.paint);
+  END;
+END DisplayTests;
 
 BEGIN
   Texts.OpenWriter(W);
@@ -450,6 +458,8 @@ BEGIN
   Kernel.Install(SYSTEM.ADR(Trap), 20H);
   Kernel.Install(SYSTEM.ADR(Abort), 0);
   *)
+
+  (*DisplayTests;*)
 
   Oberon.Loop
 END System.

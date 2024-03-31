@@ -266,51 +266,6 @@ BEGIN FOR i := 0 TO LEN(buf)-1 DO buf[i] := 0 END END ZeroFill;
 
 
 (* -------------------------------------------------------------------------- *)
-(* ----------------------------- Time functions ----------------------------- *)
-(* -------------------------------------------------------------------------- *)
-
-PROCEDURE Time*(): INTEGER;  (* In 100 nanosecond ticks since 1601 UTC *)
-VAR tick: INTEGER;
-BEGIN GetSystemTimePreciseAsFileTime(SYSTEM.ADR(tick));
-RETURN tick END Time;
-
-PROCEDURE TimeAsClock*(filetime: INTEGER): INTEGER;
-(* Returns local time as                                              *)
-(* 13/0,15/year,4/month,5/day,5/hour,6/minute,6/second,10/millisecond *)
-VAR
-  local, res: INTEGER;
-  st: RECORD  (* Windows system time format *)
-    year:         SYSTEM.CARD16;
-    month:        SYSTEM.CARD16;
-    dayofweek:    SYSTEM.CARD16;
-    day:          SYSTEM.CARD16;
-    hour:         SYSTEM.CARD16;
-    minute:       SYSTEM.CARD16;
-    second:       SYSTEM.CARD16;
-    milliseconds: SYSTEM.CARD16;
-  END;
-  clock: INTEGER;
-BEGIN
-  res := FileTimeToLocalFileTime(SYSTEM.ADR(filetime), SYSTEM.ADR(local));
-  clock := 0;
-  IF FileTimeToSystemTime(SYSTEM.ADR(local), SYSTEM.ADR(st)) # 0 THEN
-    clock := (((((  st.year    * 10H
-                  + st.month ) * 20H
-                  + st.day   ) * 20H
-                  + st.hour  ) * 40H
-                  + st.minute) * 40H
-                  + st.second) * 400H
-                  + st.milliseconds;
-  END
-RETURN clock END TimeAsClock;
-
-PROCEDURE Clock*(): INTEGER;
-(* Returns local time as                                              *)
-(* 13/0,15/year,4/month,5/day,5/hour,6/minute,6/second,10/millisecond *)
-BEGIN RETURN TimeAsClock(Time()) END Clock;
-
-
-(* -------------------------------------------------------------------------- *)
 (* ---------------- Simple logging/debugging console output ----------------- *)
 (* -------------------------------------------------------------------------- *)
 
@@ -370,6 +325,87 @@ BEGIN IntToDecimal(n, dec); wsz(dec, w) END wiz;
 
 PROCEDURE wb*(n: INTEGER);
 BEGIN WHILE n > 0 DO wc(" "); DEC(n) END END wb;
+
+
+(* -------------------------------------------------------------------------- *)
+(* ----------------------------- Time functions ----------------------------- *)
+(* -------------------------------------------------------------------------- *)
+
+PROCEDURE Time*(): INTEGER;  (* In 100 nanosecond ticks since 1601 UTC *)
+VAR tick: INTEGER;
+BEGIN GetSystemTimePreciseAsFileTime(SYSTEM.ADR(tick));
+RETURN tick END Time;
+
+PROCEDURE TimeAsClock*(filetime: INTEGER): INTEGER;
+(* Returns local time in PO2013 format:               *)
+(* 23/0,15/year-2000,4/month,5/day,5/hour,6/min,6/sec *)
+VAR
+  local, res: INTEGER;
+  st: RECORD  (* Windows system time format *)
+    year:         SYSTEM.CARD16;
+    month:        SYSTEM.CARD16;
+    dayofweek:    SYSTEM.CARD16;
+    day:          SYSTEM.CARD16;
+    hour:         SYSTEM.CARD16;
+    minute:       SYSTEM.CARD16;
+    second:       SYSTEM.CARD16;
+    milliseconds: SYSTEM.CARD16;
+  END;
+  clock: INTEGER;
+BEGIN
+  res := FileTimeToLocalFileTime(SYSTEM.ADR(filetime), SYSTEM.ADR(local));
+  clock := 0;
+  IF FileTimeToSystemTime(SYSTEM.ADR(local), SYSTEM.ADR(st)) # 0 THEN
+    DEC(st.year, 2000);
+    clock := ((((  st.year    * 10H
+                 + st.month ) * 20H
+                 + st.day   ) * 20H
+                 + st.hour  ) * 40H
+                 + st.minute) * 40H
+                 + st.second;
+  END
+RETURN clock END TimeAsClock;
+
+PROCEDURE TimeAsExtClock*(filetime: INTEGER): INTEGER;
+(* Returns local time as:                                             *)
+(* 13/0,15/year,4/month,5/day,5/hour,6/minute,6/second,10/millisecond *)
+VAR
+  local, res: INTEGER;
+  st: RECORD  (* Windows system time format *)
+    year:         SYSTEM.CARD16;
+    month:        SYSTEM.CARD16;
+    dayofweek:    SYSTEM.CARD16;
+    day:          SYSTEM.CARD16;
+    hour:         SYSTEM.CARD16;
+    minute:       SYSTEM.CARD16;
+    second:       SYSTEM.CARD16;
+    milliseconds: SYSTEM.CARD16;
+  END;
+  clock: INTEGER;
+BEGIN
+  res := FileTimeToLocalFileTime(SYSTEM.ADR(filetime), SYSTEM.ADR(local));
+  clock := 0;
+  IF FileTimeToSystemTime(SYSTEM.ADR(local), SYSTEM.ADR(st)) # 0 THEN
+    clock := (((((  st.year    * 10H
+                  + st.month ) * 20H
+                  + st.day   ) * 20H
+                  + st.hour  ) * 40H
+                  + st.minute) * 40H
+                  + st.second) * 400H
+                  + st.milliseconds;
+  END
+RETURN clock END TimeAsExtClock;
+
+PROCEDURE Clock*(): INTEGER;
+(* Returns local time as                                              *)
+(* 30/0,8/year-2000,4/month,5/day,5/hour,6/min,6/sec                  *)
+BEGIN RETURN TimeAsClock(Time()) END Clock;
+
+PROCEDURE ExtClock*(): INTEGER;
+(* Returns local time as                                              *)
+(* 13/0,15/year,4/month,5/day,5/hour,6/minute,6/second,10/millisecond *)
+BEGIN RETURN TimeAsClock(Time()) END ExtClock;
+
 
 (*
 PROCEDURE WriteClock*;
@@ -1100,10 +1136,6 @@ BEGIN
     ws("* WinHost starting, ImgHeader at "); wh(ORD(ImgHeader)); wsn("H.");
     ws("* Initial RSP "); wh(GetRSP()); wsn("H.");
   END;
-
-  ws("ModuleDesc.size at offset ");
-  wh(SYSTEM.ADR(ImgHeader.size) - SYSTEM.ADR(ImgHeader^)); wsn("H, ImgHeader:");
-  DumpMem(2, ORD(ImgHeader), ORD(ImgHeader), SYSTEM.SIZE(ModuleDesc));
 
   PrepareOberonMachine;
 
