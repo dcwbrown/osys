@@ -435,20 +435,6 @@ BEGIN n := SYSTEM.REG(15); Texts.WriteString(W, "  ABORT  "); Texts.WriteHex(W, 
 END Abort;
 *)
 
-PROCEDURE DisplayTests;
-VAR i: INTEGER;
-BEGIN
-  FOR i := 0 TO Display.Height-1 DO
-    Display.Dot(Display.white, i,i, Display.paint)
-  END;
-  FOR i := 0 TO 63 DO
-    Display.ReplConst(Display.white, i,i MOD 2 * 32,1,30, Display.paint);
-  END;
-  FOR i := 0 TO 100 DO
-    Display.CopyPattern(Display.white, Display.block, i*9, 64, Display.paint);
-  END;
-END DisplayTests;
-
 BEGIN
   Texts.OpenWriter(W);
   Oberon.OpenLog(TextFrames.Text(""));
@@ -458,8 +444,6 @@ BEGIN
   Kernel.Install(SYSTEM.ADR(Trap), 20H);
   Kernel.Install(SYSTEM.ADR(Abort), 0);
   *)
-
-  (*DisplayTests;*)
 
   Oberon.Loop
 END System.

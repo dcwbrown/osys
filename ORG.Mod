@@ -538,7 +538,7 @@ BEGIN s1 := 0; s2 := 0;
 END LoadCondition;
 
 
-PROCEDURE LoadReg(reg: INTEGER; VAR x: Item);
+PROCEDURE LoadRegUnreserved(reg: INTEGER; VAR x: Item);
 VAR offset: INTEGER;
 BEGIN
   IF x.mode IN {Stkind, Strucp} THEN DeparToReg(reg, x) END;
@@ -554,9 +554,15 @@ BEGIN
     IF (x.mode = Eadr) & (x.n = RSP) THEN INC(offset, X64.SPO * 8) END;
     LoadMem(reg, x.mode, X64.IsSigned(x.type), x.type.size, x.n, x.index, x.scale, offset)
   ELSE
-    H.wn; H.ws("** LoadReg, x.mode "); H.wi(x.mode); H.wsn(".");
+    H.wn; H.ws("** LoadRegUnreserved, x.mode "); H.wi(x.mode); H.wsn(".");
     ASSERT(FALSE)
-  END;
+  END
+END LoadRegUnreserved;
+
+
+PROCEDURE LoadReg(reg: INTEGER; VAR x: Item);
+BEGIN
+  LoadRegUnreserved(reg, x);
   FreeRegs(x);  x.mode := Reg;  x.n := reg;  ReserveReg(x.n);
   Disassemble(x.mode, "Load")
 END LoadReg;
@@ -2827,7 +2833,7 @@ BEGIN
   IF x.mode = Strucp THEN
     LoadMem(r1, Eadr, FALSE, 8, RSP, -1, 0, x.n + 8 * X64.SPO + 8);
   ELSE
-    LoadReg(r1, x);  (* Load pointer value *)
+    LoadRegUnreserved(r1, x);  (* Load pointer value *)
     OpModRegRm(85H, Reg, r1, 8, r1, -1, 0, 0, 0);  (* test r1,r1 *)
     X64.Emit(74H);  pc := X64.PC;  X64.Emit(0);   (* jz: if NIL - which matches all types *)
     LoadMem(r1, Eadr, FALSE, 8, r1, -1, 0, -10H);  (* Load type tag *)
@@ -2845,6 +2851,7 @@ BEGIN
     CallSysFn(H.TypeGuardFailureProc);
     Disassemble(0, "Guard type test ");
   ELSE
+    FreeRegs(X);
     SetCondition(X, CZ);
     Disassemble(0, "'IS' Type test ");
   END;
