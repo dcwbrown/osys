@@ -53,7 +53,8 @@ MODULE Display;  (*NW 5.11.2013 / 3.7.2016*)
     ELSIF mode = invert THEN Put(a, u / s)
     ELSE (*mode = replace*)
       IF col # black THEN Put(a, u + s) ELSE Put(a, u - s) END
-    END
+    END;
+    WinGui.Dirty(x, y, 1, 1)
   END Dot;
 
   PROCEDURE ReplConst*(col, x, y, w, h, mode: INTEGER);
@@ -88,7 +89,8 @@ MODULE Display;  (*NW 5.11.2013 / 3.7.2016*)
         END ;
         INC(ar, Stride)
       END
-    END
+    END;
+    WinGui.Dirty(x, y, w, h)
   END ReplConst;
 
   PROCEDURE CopyPattern*(col, patadr, x, y, mode: INTEGER);  (*only for modes = paint, invert*)
@@ -115,7 +117,7 @@ MODULE Display;  (*NW 5.11.2013 / 3.7.2016*)
         END
       END
     END;
-    WinGui.Invalidate
+    WinGui.Dirty(x, y, w, h)
   END CopyPattern;
 
   PROCEDURE CopyBlock*(sx, sy, w, h, dx, dy, mode: INTEGER); (*only for mode = replace*)
@@ -171,7 +173,8 @@ MODULE Display;  (*NW 5.11.2013 / 3.7.2016*)
         END
       END ;
       INC(sa0, step)
-    END
+    END;
+    WinGui.Dirty(dx, dy, w, h)
   END CopyBlock;
 
   PROCEDURE ReplPattern*(col, patadr, x, y, w, h, mode: INTEGER);
@@ -201,7 +204,8 @@ MODULE Display;  (*NW 5.11.2013 / 3.7.2016*)
         INC(pta0, 4); INC(ar, 128);
         IF pta0 = pta1 THEN pta0 := patadr+4 END
       END
-    END
+    END;
+    WinGui.Dirty(x, y, w, h)
   END ReplPattern;
 
 BEGIN

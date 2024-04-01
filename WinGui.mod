@@ -55,6 +55,11 @@ VAR
   MouseState*: INTEGER;  (* 3/keys, 12/x, 12/y  *)
   WmQuit*:     BOOLEAN;
 
+  Dirtyleft:   INTEGER;  (* aka x     *)
+  Dirtyright:  INTEGER;  (* aka x + w *)
+  Dirtybottom: INTEGER;  (* aka y     *)
+  Dirtytop:    INTEGER;  (* aka y + h *)
+
 PROCEDURE AddKey(key: BYTE);
 BEGIN
   IF ~KeyFull THEN
@@ -64,17 +69,27 @@ BEGIN
   END
 END AddKey;
 
-PROCEDURE InvalidateRect* (x, y, width, height: INTEGER);
-VAR rect: RECORD- left, top, right, bottom: SYSTEM.INT32 END;
+PROCEDURE Dirty*(x, y, w, h: INTEGER);
 BEGIN
-  rect.left := x;  rect.right  := x + width;
-  rect.top  := y;  rect.bottom := y + height;
-  ASSERT(H.InvalidateRect(Window.hwnd, SYSTEM.ADR(rect), 0) # 0)
-END InvalidateRect;
+  IF x     < Dirtyleft   THEN Dirtyleft   := x     END;
+  IF x + w > Dirtyright  THEN Dirtyright  := x + w END;
+  IF y     < Dirtybottom THEN Dirtybottom := y     END;
+  IF y + h > Dirtytop    THEN Dirtytop    := y + h END
+END Dirty;
 
-PROCEDURE Invalidate*;  (* Invalidate entire window *)
-BEGIN  InvalidateRect(0, 0, Window.width, Window.height) END Invalidate;
-
+PROCEDURE InvalidateDirty;
+VAR rect: RECORD- left, top, right, bottom: SYSTEM.INT32 END;
+BEGIN (* Note: Windows coords are top down, PO2013's are bottom up *)
+  IF Dirtyleft < Width THEN
+    rect.left   := Dirtyleft;
+    rect.right  := Dirtyright ;
+    rect.top    := Height - 1 - (Dirtytop - 1);
+    rect.bottom := Height - Dirtybottom;
+    ASSERT(H.InvalidateRect(Window.hwnd, SYSTEM.ADR(rect), 0) # 0);
+    Dirtyleft   := Width;   Dirtyright := 0;
+    Dirtybottom := Height;  Dirtytop   := 0
+  END
+END InvalidateDirty;
 
 PROCEDURE Close*;
 VAR res: INTEGER;
@@ -604,12 +619,12 @@ RETURN res END ProcessOneMessage;
 
 
 PROCEDURE WaitMsgOrTime*(time: INTEGER);  (* Waits for time (ms) OR message in queue *)
-BEGIN H.MsgWaitForMultipleObjects(0, 0, 0, time, 01DFFH) END WaitMsgOrTime;
+BEGIN InvalidateDirty; H.MsgWaitForMultipleObjects(0, 0, 0, time, 01DFFH) END WaitMsgOrTime;
 
 PROCEDURE Drain;
 VAR res: INTEGER;
 BEGIN
-  REPEAT res := ProcessOneMessage() UNTIL res = 0;
+  InvalidateDirty; REPEAT res := ProcessOneMessage() UNTIL res = 0;
 END Drain;
 
 
@@ -633,6 +648,8 @@ RETURN MouseState END Mouse;
 (* ------------------------- Display initialisation ------------------------- *)
 
 BEGIN
+  Dirtyleft   := Width;   Dirtyright := 0;
+  Dirtybottom := Height;  Dirtytop   := 0;
   WmQuit := FALSE;
   ASSERT(H.SetProcessDpiAwarenessContext(-3) # 0);  (* DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE *)
   VKtoScn := SYSTEM.ADR($

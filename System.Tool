@@ -1,4 +1,4 @@
-System.Open ^  System.Recall  System.Watch  System.Collect
+System.Open ^  System.Recall  System.Watch  System.Collect  WinGui.Close
 Edit.Open ^  Edit.Recall
 Edit.ChangeFont Oberon10i.Scn.Fnt
 Edit.ChangeFont Oberon10b.Scn.Fnt
@@ -22,5 +22,3 @@ Tools.Inspect 0
 Tools.Sector 1
 Tools.ShowFile 
 Tools.Recall  Tools.Clear
-
-WinGui.Close

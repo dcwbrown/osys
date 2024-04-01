@@ -1,5 +1,5 @@
 MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
-IMPORT SYSTEM, H := WinHost, Kernel, (*FileDir,*) Files, Modules,
+IMPORT SYSTEM, H := WinHost, Kernel, FileDir, Files, Modules,
   Input, Display, Viewers, Fonts, Texts, Oberon, MenuViewers, TextFrames;
 
 CONST
@@ -176,32 +176,29 @@ END FreeFonts;
 
 (* ------------- Toolbox of file system ---------------*)
 
-(*
-PROCEDURE List(name: FileDir.FileName; adr: INTEGER; VAR cont: BOOLEAN);
-VAR i0, i, j0, j: INTEGER; hp: FileDir.FileHeader;
+PROCEDURE List(info: FileDir.FileInfo; VAR cont: BOOLEAN);
+VAR i0, i, j0, j: INTEGER;
 BEGIN
   i := 0;
-  WHILE (pat[i] > "*") & (pat[i] = name[i]) DO INC(i) END ;
-  IF (pat[i] = 0X) & (name[i] = 0X) THEN i0 := i; j0 := i
+  WHILE (pat[i] > "*") & (pat[i] = info.name[i]) DO INC(i) END ;
+  IF (pat[i] = 0X) & (info.name[i] = 0X) THEN i0 := i; j0 := i
   ELSIF pat[i] = "*" THEN
     i0 := i; j0 := i+1;
-    WHILE name[i0] # 0X DO
+    WHILE info.name[i0] # 0X DO
       i := i0; j := j0;
-      WHILE (name[i] # 0X) & (name[i] = pat[j]) DO INC(i); INC(j) END ;
+      WHILE (info.name[i] # 0X) & (info.name[i] = pat[j]) DO INC(i); INC(j) END ;
       IF pat[j] = 0X THEN
-        IF name[i] = 0X THEN (*match*) j0 := j ELSE INC(i0) END
+        IF info.name[i] = 0X THEN (*match*) j0 := j ELSE INC(i0) END
       ELSIF pat[j] = "*" THEN i0 := i; j0 := j+1
       ELSE INC(i0)
       END
     END
   END ;
-  IF (name[i0] = 0X) & (pat[j0] = 0X) THEN (*found*)
-    Texts.WriteString(W, name);
+  IF (info.name[i0] = 0X) & (pat[j0] = 0X) THEN (*found*)
+    Texts.WriteString(W, info.name);
     IF pat[j0+1] = "!" THEN (*option*)
-      Kernel.GetSector(adr, hp);
-      Texts.Write(W, 9X); Texts.WriteClock(W, hp.date);
-      Texts.WriteInt(W, hp.aleng*FileDir.SectorSize + hp.bleng - FileDir.HeaderSize, 8); (*length*)
-      (*Texts.WriteHex(W, adr)*)
+      Texts.Write(W, 9X); Texts.WriteClock(W, info.date);
+      Texts.WriteInt(W, info.length, 8);
     END ;
     Texts.WriteLn(W)
   END
@@ -236,7 +233,7 @@ BEGIN Texts.OpenReader(R, Oberon.Par.text, Oberon.Par.pos); Texts.Read(R, ch);
     TextFrames.NewText(t, 0), TextFrames.menuH, X, Y);
   FileDir.Enumerate(pre, List); Texts.Append(t, W.buf)
 END Directory;
-*)
+
 
 PROCEDURE CopyFiles*;
 VAR f, g: Files.File; Rf, Rg: Files.Rider; ch: CHAR;
