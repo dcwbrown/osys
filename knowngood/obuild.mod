@@ -307,9 +307,9 @@ BEGIN
     (*H.ws("GetModule("); H.ws(name); H.wsn(") creating new module desc.");*)
     NEW(mod);  mod.name := name;
     mod.compiled := FALSE;  mod.srcscanned := FALSE;  mod.addedToPE := FALSE;
-    MakeFileDesc(name, "mod",  SourcePrefices, mod.source);
-    MakeFileDesc(name, "smb",  BinaryPrefices, mod.symbols);
-    MakeFileDesc(name, "code", BinaryPrefices, mod.code);
+    MakeFileDesc(name, "mod", SourcePrefices, mod.source);
+    MakeFileDesc(name, "smb", BinaryPrefices, mod.symbols);
+    MakeFileDesc(name, "x64", BinaryPrefices, mod.code);
 
     (* Check for symbol and code file present, matching and up to date *)
     IF (mod.symbols.file # NIL) OR (mod.code.file # NIL) THEN
@@ -412,8 +412,8 @@ BEGIN
     endTime := H.Time();
     WriteHuman((endTime - startTime) DIV 10000, 5);
     H.ws("ms "); WriteHuman(K.Allocated, 10); H.wsn("B heap used.");
-    MakeFileDesc(mod.name, "smb",  NIL, mod.symbols);  ASSERT(mod.symbols.file # NIL);
-    MakeFileDesc(mod.name, "code", NIL, mod.code);     ASSERT(mod.code.file    # NIL);
+    MakeFileDesc(mod.name, "smb", NIL, mod.symbols);  ASSERT(mod.symbols.file # NIL);
+    MakeFileDesc(mod.name, "x64", NIL, mod.code);     ASSERT(mod.code.file    # NIL);
     GetSymbolFileKey(mod.symbols.file, mod.key);
     ScanCodeFileKeyAndImports(mod.code.file, key, mod.imports);
     IF key # mod.key THEN
@@ -492,7 +492,7 @@ BEGIN
   H.Append(Modulename, PEname);  H.Append(".exe", PEname);
 
   H.wn;
-  H.wsl("ModuleFile", LongestModname);
+  H.wsl("Module", LongestModname);
   H.wsn("  static-code global-vars recptrs  cmds lineadr  export  import");
 
   FOR i := 1 TO LongestModname DO H.wc("-") END;

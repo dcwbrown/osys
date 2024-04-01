@@ -22,7 +22,7 @@
 @mkdir knowngood
 @copy *.mod knowngood >NUL
 @copy build2\*.smb knowngood >NUL
-@copy build2\*.code knowngood >NUL
+@copy build2\*.x64 knowngood >NUL
 @copy build2\*.exe knowngood >NUL
 ::
 :end

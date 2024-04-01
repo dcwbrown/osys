@@ -371,7 +371,7 @@ VAR object: ObjectFile;
 BEGIN
   object := Objects;
   WHILE object # NIL DO
-    IF object.file.name # "WinHost.code" THEN CopyFile(object.file) END;
+    IF object.file.name # "WinHost.x64" THEN CopyFile(object.file) END;
     object := object.next
   END;
 

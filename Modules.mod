@@ -46,16 +46,15 @@ VAR
   limit:      INTEGER;
 *)
 
-(*
 PROCEDURE ThisFile(name: ARRAY OF CHAR): Files.File;
 VAR i: INTEGER;  filename: ModuleName;
 BEGIN i := 0;
   WHILE name[i] # 0X DO filename[i] := name[i];  INC(i) END;
-  filename[i]   := ".";  filename[i+1] := "r";  filename[i+2] := "s";
-  filename[i+3] := "c";  filename[i+4] := 0X;
+  filename[i]   := ".";  filename[i+1] := "x";  filename[i+2] := "6";
+  filename[i+3] := "4";  filename[i+4] := 0X;
   RETURN Files.Old(filename)
 END ThisFile;
-*)
+
 
 PROCEDURE error(n: INTEGER;  name: ARRAY OF CHAR);
 BEGIN res := n;  importing := name

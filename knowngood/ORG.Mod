@@ -3118,7 +3118,7 @@ BEGIN
   l.s("  VAR size:  ", Tr);  l.h(Hdr.nvarsize,  Tr);  l.sn("H.", Tr);
 
   (* Write compiled module *)
-  fname := "";  H.Append(modid, fname);  H.Append(".code", fname);
+  fname := "";  H.Append(modid, fname);  H.Append(".x64", fname);
   codefile := Files.New(fname);  Files.Set(R, codefile, 0);
   Files.WriteBytes(R, Hdr, 0, SYSTEM.SIZE(ModuleDesc));
   Files.WriteBytes(R, X64.Text, SYSTEM.SIZE(ModuleDesc), X64.PC - SYSTEM.SIZE(ModuleDesc));
