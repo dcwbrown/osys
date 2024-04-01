@@ -6,6 +6,8 @@
 *.code
 t[0-9]
 knowngood.prev*/*
+background docs/*
+prevgui/*
 buildpre/*
 build1/*
 build2/*

@@ -180,6 +180,14 @@ PROCEDURE List(info: FileDir.FileInfo; VAR cont: BOOLEAN);
 VAR i0, i, j0, j: INTEGER;
 BEGIN
   i := 0;
+  (*
+  H.ws("List, info at "); H.wh(SYSTEM.ADR(info)); H.wsn("H:");
+  H.DumpMem(2, SYSTEM.ADR(info), SYSTEM.ADR(info), SYSTEM.SIZE(FileDir.FileInfo));
+  H.ws("pat at "); H.wh(SYSTEM.ADR(pat));
+  H.ws("H, pat[0] "); H.wc(pat[0]);
+  H.ws(", info.name[0] "); H.wc(info.name[0]);
+  H.wsn(".");
+  *)
   WHILE (pat[i] > "*") & (pat[i] = info.name[i]) DO INC(i) END ;
   IF (pat[i] = 0X) & (info.name[i] = 0X) THEN i0 := i; j0 := i
   ELSIF pat[i] = "*" THEN

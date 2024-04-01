@@ -13,7 +13,7 @@ CONST
   FadrModules = 0E00H;  RvaModules = 2000H;  (* Oberon modules *)
 
   BootstrapVarBytes   = 24;  (* preloaded bootstrap VAR size preceeding imported proc addresses *)
-  Kernel32ImportCount = 37;
+  Kernel32ImportCount = 38;
   Gdi32ImportCount    = 12;
   User32ImportCount   = 26;
 
@@ -234,6 +234,7 @@ BEGIN
   AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "ExitProcess");
   AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "FileTimeToLocalFileTime");
   AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "FileTimeToSystemTime");
+  AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "FindClose");
   AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "FindFirstFileExW");
   AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "FindNextFileW");
   AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "FlushFileBuffers");

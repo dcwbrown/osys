@@ -309,7 +309,11 @@ BEGIN
       END;
     ELSE
       rm := 4;  needsib := TRUE;
-      IF base < 0 THEN dispsize := 4;  mod := 0;  base := 5 END;
+      IF base < 0 THEN                   (* no base, with index and/or offset *)
+        mod := 0;  dispsize := 4;  base := 5
+      ELSIF (base = 5) & (mod = 0) THEN  (* Base is RBP/R13: must use mode with disp *)
+        mod := 1;  dispsize := 1
+      END
     END;
 
     X64.Emit(mod*64 + reg*8 + rm);          (* modregrm *)
@@ -353,7 +357,7 @@ BEGIN
   iprelreg := -1;
   IF (mode IN {Code, String, Global, Import, Impcode}) & (index >= 0) THEN
     (* Preload code (rip) relative address because SIB doesn't support rip relative *)
-    iprelreg := Reserve(-1, {});
+    iprelreg := Reserve(-1, {RBP});
     OpModRegRm(8DH, mode, iprelreg, 8, n, -1, 0, offset, 0); (* lea *)
     mode    := Eadr;
     n       := iprelreg;

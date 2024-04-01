@@ -104,8 +104,9 @@ VAR
   ExitProcess*:                    PROCEDURE-(exitcode: INTEGER);
   FileTimeToLocalFileTime*:        PROCEDURE-(filetime, localfiletime: INTEGER): INTEGER;
   FileTimeToSystemTime*:           PROCEDURE-(filetime, systemtime: INTEGER): INTEGER;
+  FindClose*:                      PROCEDURE-(hfind: INTEGER): INTEGER;
   FindFirstFileExW*:               PROCEDURE-(name, levels, data, op, filter, flags: INTEGER): INTEGER;
-  FindNextFileW*:                  PROCEDURE-(hhf, data: INTEGER): INTEGER;
+  FindNextFileW*:                  PROCEDURE-(hfind, data: INTEGER): INTEGER;
   FlushFileBuffers*:               PROCEDURE-(hFile: INTEGER): INTEGER;
   FormatMessageW:                  PROCEDURE-(flags, source, mid, lid, buf, size, args: INTEGER): INTEGER;
   GetCommandLineW*:                PROCEDURE-(): INTEGER;
