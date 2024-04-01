@@ -63,7 +63,7 @@
 @mkdir buildpre >NUL
 @copy WinPE.mod buildpre >NUL
 @cd buildpre >NUL
-..\knowngood\obuild /v /s ./;../ obuild
+..\knowngood\obuild /v /s ./;../knowngood/ obuild
 @if errorlevel 1 goto end
 @cd ..
 ::
@@ -74,8 +74,11 @@
 @del t1 t2 >NUL 2>NUL
 @mkdir build1 >NUL 2>NUL
 @cd build1
-::if exist ..\buildpre\obuild.exe (..\buildpre\obuild obuild) else (..\knowngood\obuild obuild)
-..\knowngood\obuild /v /s ../ obuild
+if exist ..\buildpre\obuild.exe (
+  ..\buildpre\obuild /v /s ../ obuild
+) else (
+  ..\knowngood\obuild /v /s ../ obuild
+)
 @if errorlevel 1 goto end
 @cd ..
 ::
