@@ -137,6 +137,29 @@ BEGIN
   END
 END Register;
 
+
+PROCEDURE Rename*(old, new: ARRAY OF CHAR; VAR res: INTEGER);
+BEGIN
+  H.wsn("** Files.Rename(old '"); H.ws(old);
+  H.wsn("', new '"); H.ws(new); H.wsn("') ignored **");
+  res := 0;
+  (*
+  Check(old, oldbuf, res);
+  IF res = 0 THEN
+    Check(new, newbuf, res);
+    IF res = 0 THEN
+      FileDir.Delete(oldbuf, adr);
+      IF adr # 0 THEN
+        FileDir.Insert(newbuf, adr);
+        Kernel.GetSector(adr, head); head.name := newbuf; Kernel.PutSector(adr, head)
+      ELSE res := 2
+      END
+    END
+  END
+  *)
+END Rename;
+
+
 PROCEDURE Length*(f: File): INTEGER;
 VAR res, size: INTEGER;
 BEGIN
