@@ -139,24 +139,32 @@ END Register;
 
 
 PROCEDURE Rename*(old, new: ARRAY OF CHAR; VAR res: INTEGER);
+VAR
+  wold, wnew: ARRAY 261 OF SYSTEM.CARD16;
+  winresult:  INTEGER;
+  f:          File;
 BEGIN
-  H.wsn("** Files.Rename(old '"); H.ws(old);
-  H.wsn("', new '"); H.ws(new); H.wsn("') ignored **");
-  res := 0;
   (*
-  Check(old, oldbuf, res);
-  IF res = 0 THEN
-    Check(new, newbuf, res);
-    IF res = 0 THEN
-      FileDir.Delete(oldbuf, adr);
-      IF adr # 0 THEN
-        FileDir.Insert(newbuf, adr);
-        Kernel.GetSector(adr, head); head.name := newbuf; Kernel.PutSector(adr, head)
-      ELSE res := 2
-      END
-    END
-  END
+  H.ws("** Files.Rename(old '"); H.ws(old);
+  H.ws("', new '"); H.ws(new); H.wsn("') **");
   *)
+  winresult := H.Utf8ToUtf16(old, wold);
+  winresult := H.Utf8ToUtf16(new, wnew);
+  winresult := H.MoveFileExW(SYSTEM.ADR(wold), SYSTEM.ADR(wnew), 1);
+  IF winresult = 0 THEN
+    (*
+    H.ws("** Files.Rename(old '"); H.ws(old);
+    H.ws("', new '"); H.ws(new); H.wsn("') failed **");
+    *)
+    res := 2
+  ELSE
+    f := first;
+    WHILE f # NIL DO
+      IF f.registered & (f.name = old) THEN f.name := new END;
+      f := f.next
+    END;
+    res := 0
+  END
 END Rename;
 
 

@@ -14,4 +14,7 @@ build2/*
 buildtest/*
 buildsys/*
 p6000/*
+wirth/old/*
+wirth/PaulReed/*
+wirth/download*
 *.sublime-*

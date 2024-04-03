@@ -1,6 +1,6 @@
 MODULE ORG;  (* DCWB Jun 2023 to Feb 2024; Code generator for X64 *)
 
-(* Originally: N.Wirth, 16.4.2016 / 4.4.2017 / 17.9.2018  Oberon compiler; code generator for RISC*)
+(* Originally: N.Wirth, 16.4.2016 / 4.4.2017 / 31.5.2019  Oberon compiler; code generator for RISC*)
 
 (*
     It may make sense to have a separate 'local' mode, independent of Eadr:
@@ -2827,38 +2827,43 @@ BEGIN
 (*
   ASSERT(varpar = (x.mode = Strucp));
 *)
-  x := X;
-  IF varpar THEN
-    ASSERT(x.mode = Strucp);  ASSERT(x.type.form = ORB.Record)
-  ELSE
-    ASSERT(x.mode # Strucp);  ASSERT(x.type.form = ORB.Pointer)
-  END;
-  r1 := Reserve(-1, {});
-  IF x.mode = Strucp THEN
-    LoadMem(r1, Eadr, FALSE, 8, RSP, -1, 0, x.n + 8 * X64.SPO + 8);
-  ELSE
-    LoadRegUnreserved(r1, x);  (* Load pointer value *)
-    OpModRegRm(85H, Reg, r1, 8, r1, -1, 0, 0, 0);  (* test r1,r1 *)
-    X64.Emit(74H);  pc := X64.PC;  X64.Emit(0);   (* jz: if NIL - which matches all types *)
-    LoadMem(r1, Eadr, FALSE, 8, r1, -1, 0, -10H);  (* Load type tag *)
-  END;
-  Disassemble(Eadr, "TypeTest load record type tag");
-  LoadMem(r1, Eadr, FALSE, 8, r1, -1, 0, T.nofpar * 8);
-  Disassemble(Eadr, "Extract base type tag");
-  r2 := Reserve(-1, {});
-  LoadTypeAddress(r2, T);
-  AluOpToReg(Cmp, Reg, r1, FALSE, 8, r2, -1, 0, 0);  (* cmp r1,r2 *)
-  Release(r1); Release(r2);
-  X64.Patch(pc, 1, X64.PC - (pc + 1));
-  IF isguard THEN
-    X64.Emit(74H);  X64.Emit(6);  (* je: if types match *)
-    CallSysFn(H.TypeGuardFailureProc);
-    Disassemble(0, "Guard type test ");
-  ELSE
+  IF T = NIL THEN
     FreeRegs(X);
-    SetCondition(X, CZ);
-    Disassemble(0, "'IS' Type test ");
-  END;
+    SetCondition(X, 1)  (* True *)
+  ELSE (*fetch tag*)
+    x := X;
+    IF varpar THEN
+      ASSERT(x.mode = Strucp);  ASSERT(x.type.form = ORB.Record)
+    ELSE
+      ASSERT(x.mode # Strucp);  ASSERT(x.type.form = ORB.Pointer)
+    END;
+    r1 := Reserve(-1, {});
+    IF x.mode = Strucp THEN
+      LoadMem(r1, Eadr, FALSE, 8, RSP, -1, 0, x.n + 8 * X64.SPO + 8);
+    ELSE
+      LoadRegUnreserved(r1, x);  (* Load pointer value *)
+      OpModRegRm(85H, Reg, r1, 8, r1, -1, 0, 0, 0);  (* test r1,r1 *)
+      X64.Emit(74H);  pc := X64.PC;  X64.Emit(0);   (* jz: if NIL - which matches all types *)
+      LoadMem(r1, Eadr, FALSE, 8, r1, -1, 0, -10H);  (* Load type tag *)
+    END;
+    Disassemble(Eadr, "TypeTest load record type tag");
+    LoadMem(r1, Eadr, FALSE, 8, r1, -1, 0, T.nofpar * 8);
+    Disassemble(Eadr, "Extract base type tag");
+    r2 := Reserve(-1, {});
+    LoadTypeAddress(r2, T);
+    AluOpToReg(Cmp, Reg, r1, FALSE, 8, r2, -1, 0, 0);  (* cmp r1,r2 *)
+    Release(r1); Release(r2);
+    X64.Patch(pc, 1, X64.PC - (pc + 1));
+    IF isguard THEN
+      X64.Emit(74H);  X64.Emit(6);  (* je: if types match *)
+      CallSysFn(H.TypeGuardFailureProc);
+      Disassemble(0, "Guard type test ");
+    ELSE
+      FreeRegs(X);
+      SetCondition(X, CZ);
+      Disassemble(0, "'IS' Type test ");
+    END
+  END
 END TypeTest;
 
 PROCEDURE Open*(sourcefile: Files.File;  modid: ARRAY OF CHAR);

@@ -1,6 +1,6 @@
-MODULE ORP;  (*N. Wirth 1.7.97 / 17.9.2018  Oberon compiler for RISC in Oberon-07*)
+MODULE ORP;  (*N. Wirth 1.7.97 / 8.3.2020  Oberon compiler for RISC in Oberon-07*)
 
-IMPORT SYSTEM, H := WinHost, Files, ORS, ORB, X64, ORG, l := Listing;
+IMPORT SYSTEM, H := WinHost, Files, ORS, ORB, X64, l := Listing, ORG;
 
   (*Author: Niklaus Wirth, 2014.
     Parser of Oberon-RISC compiler. Uses Scanner ORS to obtain symbols (tokens),
@@ -139,7 +139,7 @@ BEGIN
         END
       ELSE ORS.Mark("incompatible types")
       END
-    ELSIF ~guard THEN ORG.MakeConstItem(x, ORB.boolType, 1)
+    ELSIF ~guard THEN ORG.TypeTest(x, NIL, FALSE, FALSE)
     END
   ELSE ORS.Mark("type mismatch")
   END;
@@ -271,7 +271,7 @@ BEGIN par := x.type.dsc;  n := 0;
     IF par # NIL THEN ASSERT(par.type # NIL) END;
     Parameter(par, x.type.native);  n := 1;
     WHILE sym <= ORS.comma DO
-      Check(sym, "comma?");
+      Check(ORS.comma, "comma?");
       IF par # NIL THEN par := par.next END;
       INC(n);
       IF par # NIL THEN ASSERT(par.type # NIL) END;
@@ -1199,13 +1199,31 @@ BEGIN ORS.Get(sym);  CheckNative(native);
   END
 END ProcedureDecl;
 
+
+PROCEDURE Import;
+VAR impid, impid1: ORS.Ident;
+BEGIN
+  IF sym = ORS.ident THEN
+    ORS.CopyId(impid); ORS.Get(sym);
+    IF sym = ORS.becomes THEN
+      ORS.Get(sym);
+      IF sym = ORS.ident THEN ORS.CopyId(impid1); ORS.Get(sym)
+      ELSE ORS.Mark("id expected"); impid1 := impid
+      END
+    ELSE impid1 := impid
+    END;
+    ORB.Import(impid, impid1)
+  ELSE ORS.Mark("id expected")
+  END
+END Import;
+
+
 PROCEDURE Module*(sourcefile: Files.File; VAR newsymbols: BOOLEAN);
-VAR key:    INTEGER;
-    impid:  ORS.Ident;
-    impid1: ORS.Ident;
-    exno:   INTEGER;
-    obj:    ORB.Object;
-    ann:    ORG.BodyAnnotation;
+VAR
+  key:  INTEGER;
+  exno: INTEGER;
+  obj:  ORB.Object;
+  ann:  ORG.BodyAnnotation;
 BEGIN
   (*Texts.WriteString(W, "  compiling ");*)
   ORS.Get(sym);
@@ -1214,6 +1232,7 @@ BEGIN
     H.wn; H.ws("Sym: "); H.wi(sym); H.ws(", '"); H.ws(ORS.id); H.wsn("'.");
   ELSE
     ORS.Get(sym);
+    dc := 0;
     ORB.Init;  ORB.OpenScope;
     IF sym = ORS.ident THEN
       ORS.CopyId(modid);  ORS.Get(sym);
@@ -1221,25 +1240,12 @@ BEGIN
     ELSE ORS.Mark("identifier expected")
     END;
     Check(ORS.semicolon, "no ;");
-    level := 0;  dc := 0;  key := 0;
+    level := 0;  key := 0;
 
     IF sym = ORS.import THEN
-      ORS.Get(sym);
-      WHILE sym = ORS.ident DO
-        ORS.CopyId(impid);  ORS.Get(sym);
-        IF sym = ORS.becomes THEN
-          ORS.Get(sym);
-          IF sym = ORS.ident THEN ORS.CopyId(impid1);  ORS.Get(sym)
-          ELSE ORS.Mark("id expected")
-          END
-        ELSE impid1 := impid
-        END;
-        ORB.Import(impid, impid1);
-        IF sym = ORS.comma THEN ORS.Get(sym)
-        ELSIF sym = ORS.ident THEN ORS.Mark("comma missing")
-        END
-      END;
-      Check(ORS.semicolon, "no ;")
+      ORS.Get(sym);  Import;
+      WHILE sym = ORS.comma DO ORS.Get(sym); Import END ;
+      Check(ORS.semicolon, "; missing")
     END;
 
     ORG.Open(sourcefile, modid);
@@ -1366,7 +1372,7 @@ END CompileFile;
 
 BEGIN
   IF H.Verbose IN H.LoadFlags THEN
-    H.wsn("OR Compiler  09.02.2024")
+    H.wsn("OR Compiler  NW 8.3.2020 / DCWB 03.04.2024")
   END;
   l.InitBuf(Tr);
   NEW(dummy);  dummy.class := ORB.Var;  dummy.type := ORB.intType;
