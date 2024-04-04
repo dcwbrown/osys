@@ -1,11 +1,6 @@
-MODULE Modules;  (*Link and load on RISC;  NW 20.10.2013 / 9.4.2016*)
+MODULE Modules;  (*Link and load on RISC;  NW 20.10.2013 / 8.1.2019*)
 
 IMPORT SYSTEM, H := WinHost, Files;
-
-CONST
-  versionkey = 1X;
-  MT         = 12;
-  DescSize   = 80;
 
 TYPE
   (*Module*     = POINTER TO ModDesc;*)
@@ -34,17 +29,12 @@ TYPE
 
 VAR
 (*
-  root*:      Module;
   M:          Module;
-  MTOrg*:     INTEGER;
-  AllocPtr*:  INTEGER;
 *)
   res*:       INTEGER;
   importing*: ModuleName;
   imported*:  ModuleName;
-(*
-  limit:      INTEGER;
-*)
+
 
 PROCEDURE ThisFile(name: ARRAY OF CHAR): Files.File;
 VAR i: INTEGER;  filename: ModuleName;
@@ -60,7 +50,7 @@ PROCEDURE error(n: INTEGER;  name: ARRAY OF CHAR);
 BEGIN res := n;  importing := name
 END error;
 
-(*
+
 PROCEDURE Check(s: ARRAY OF CHAR);
 VAR i: INTEGER;  ch: CHAR;
 BEGIN ch := s[0];  res := 1;  i := 1;
@@ -71,7 +61,7 @@ BEGIN ch := s[0];  res := 1;  i := 1;
     IF (i < 32) & (ch = 0X) THEN res := 0 END
   END
 END Check;
-*)
+
 
 PROCEDURE Load*(name: ARRAY OF CHAR;  VAR newmod: Module);
   (*search module in list;  if not found, load module.
@@ -83,64 +73,109 @@ PROCEDURE Load*(name: ARRAY OF CHAR;  VAR newmod: Module);
     res = 5: corrupted file;
     res = 7: no space*)
 VAR
-  mod: Module;
+  mod:       Module;
+  nofimps:   INTEGER;
+  F:         Files.File;
+  R:         Files.Rider;
+  header:    ModDesc;
+  name1:     ModuleName;
+  key:       INTEGER;
+  size:      INTEGER;
+  impname:   ModuleName;
+  import:    ARRAY 16 OF Module;
+  impmod:    Module;
+  impkey:    INTEGER;
+  p:         INTEGER;
+  allocsize: INTEGER;
+  loadlen:   INTEGER;
+  i:         INTEGER;
 (*
-  impmod: Module;
   i, n, key, impkey, mno, nofimps, size: INTEGER;
   p, u, v, w: INTEGER;  (*addresses*)
   ch: CHAR;
   body: Command;
   fixorgP, fixorgD, fixorgT: INTEGER;
   disp, adr, inst, pno, vno, dest, offset: INTEGER;
-  name1, impname: ModuleName;
-  F: Files.File;  R: Files.Rider;
-  import: ARRAY 16 OF Module;
 *)
 BEGIN
-  mod := H.Root;
+  mod := H.Root;  error(0, name);  nofimps := 0;
   res := 0;
   (*nofimps := 0;*)
   WHILE (mod # NIL) & (name # mod.name) DO mod := mod.next END;
   IF mod = NIL THEN (*load*)
-    error(1, name);
-(*
     Check(name);
     IF res = 0 THEN F := ThisFile(name) ELSE F := NIL END;
     IF F # NIL THEN
-      Files.Set(R, F, 0);  Files.ReadString(R, name1);  Files.ReadInt(R, key);  Files.Read(R, ch);
-      Files.ReadInt(R, size);  importing := name1;
-      IF ch = versionkey THEN
-        Files.ReadString(R, impname);   (*imports*)
-        WHILE (impname[0] # 0X) & (res = 0) DO
-          Files.ReadInt(R, impkey);
-          Load(impname, impmod);  import[nofimps] := impmod;  importing := name1;
-          IF res = 0 THEN
-            IF impmod.key = impkey THEN INC(impmod.refcnt);  INC(nofimps)
-            ELSE error(3, name1);  imported := impname
-            END
-          END;
-          Files.ReadString(R, impname)
-        END
-      ELSE error(2, name1)
-      END
-    ELSE error(1, name)
+      H.ws("Loading module "); H.ws(name);
+      H.ws(" from file "); H.ws(F.name); H.wsn(".");
+      Files.Set(R, F, 0);
+      Files.ReadBytes(R, header, SYSTEM.SIZE(ModDesc));
+      name1     := header.name;
+      key       := header.key;
+      size      := header.nimports + header.nvarsize;
+      importing := name1;
+      H.wsn("File header:");
+      H.ws("  name: "); H.ws(name1); H.wsn(".");
+      H.ws("  key:  "); H.wh(key);   H.wsn("H.");
+      H.ws("  size: "); H.wh(size);  H.wsn("H.");
+      (* First load imported modules *)
+      Files.Set(R, F, header.nimports);
+      Files.ReadString(R, impname);
+      WHILE (impname[0] # 0X) & (res = 0) DO
+        Files.ReadInt(R, impkey);
+        H.ws(name); H.ws(" importing "); H.ws(impname); H.wsn(".");
+        Load(impname, impmod);
+        import[nofimps] := impmod;
+        importing := name1;
+        IF res = 0 THEN
+          IF impmod.key = impkey THEN INC(impmod.refcnt);  INC(nofimps)
+          ELSE error(3, name1);  imported := impname
+          END
+        END;
+        Files.ReadString(R, impname)
+      END;
+    ELSE
+      H.ws("Couldn't find compiled binary .X64 file for module "); H.ws(name); H.wsn(".");
+      error(1, name)
     END;
     IF res = 0 THEN (*search for a hole in the list allocate and link*)
-      INC(size, DescSize);  mod := root;
+      mod := H.Root;
       WHILE (mod # NIL) & ~((mod.name[0] = 0X) & (mod.size >= size)) DO mod := mod.next END;
       IF mod = NIL THEN (*no large enough hole was found*)
-        IF AllocPtr + size < limit THEN (*allocate*)
-          p := AllocPtr;  mod := SYSTEM.VAL(Module, p);
-          AllocPtr := (p + size + 100H) DIV 20H * 20H;  mod.size := AllocPtr - p;  mod.num := root.num + 1;
-          mod.next := root;  root := mod
+        H.Allocate(size, p, allocsize);
+        H.ws("H.Allocate requested "); H.wh(size);
+        H.ws("H, got "); H.wh(allocsize);
+        H.ws("H bytes at "); H.wh(p); H.wsn("H.");
+        IF allocsize # 0 THEN
+          mod := SYSTEM.VAL(Module, p);
+          H.ZeroFill(mod^);
+          mod.size := allocsize;
+          mod.num  := H.Root.num + 1;
+          mod.next := H.Root;
+          mod.nimports := 0;  (* Nothing loaded yet - not a candidate for LocateModule *)
+          H.SetRoot(mod);
         ELSE error(7, name1)
         END
       ELSE (*fill hole*) p := ORD(mod)
       END
     END;
     IF res = 0 THEN (*read file*)
-      INC(p, DescSize);  (*allocate descriptor*)
+      (* Skip header and read code (including type descriptors and strings) *)
+      INC(p, SYSTEM.SIZE(ModDesc));
+      Files.Set(R, F, SYSTEM.SIZE(ModDesc));
+      loadlen := header.nimports - SYSTEM.SIZE(ModDesc);
+      ASSERT(loadlen MOD 8 = 0);
+      H.ws("Loading "); H.wh(loadlen); H.wsn("H bytes.");
+      WHILE loadlen > 0 DO
+        Files.ReadInt(R, i);  DEC(loadlen, 8);
+        SYSTEM.PUT(p, i);     INC(p, 8)
+      END;
+      H.wsn("Load completed.");
       mod.name := name;  mod.key := key;  mod.refcnt := 0;
+    END;
+    ASSERT(FALSE);
+(*
+
       mod.data := p;  (*data*)
       SYSTEM.PUT(mod.num * 4 + MTOrg, p);  (*module table entry*)
       Files.ReadInt(R, n);
@@ -223,7 +258,7 @@ BEGIN
         SYSTEM.PUT(adr, inst);  adr := adr - disp*4
       END;
       body   (*initialize module*)
-    ELSIF res = 3 THEN importing := name;
+    ELSIF res >= 3 THEN importing := name;
       WHILE nofimps > 0 DO DEC(nofimps);  DEC(import[nofimps].refcnt) END
     END
 *)

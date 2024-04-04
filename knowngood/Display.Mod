@@ -95,11 +95,13 @@ MODULE Display;  (*NW 5.11.2013 / 3.7.2016*)
 
   PROCEDURE CopyPattern*(col, patadr, x, y, mode: INTEGER);  (*only for modes = paint, invert*)
     VAR a, a0, pwd: INTEGER;
-      w, h, pbt: BYTE; pix: SET;
-  BEGIN SYSTEM.GET(patadr, w); SYSTEM.GET(patadr+1, h); INC(patadr, 2);
-    a := Base + (x DIV 32)*4 + y*Stride;
+      w, h, pbt: BYTE; pix, mask: SET;
+  BEGIN
+    SYSTEM.GET(patadr, w); SYSTEM.GET(patadr+1, h); INC(patadr, 2);
+    WinGui.Dirty(x, y, w, h);
+    a := Base + (x DIV 32)*4 + y*Stride;  x := x MOD 32;  mask := SYSTEM.VAL(SET, ASR(7FFFFFFFH, 31-x));
     FOR a0 := a TO a + (h-1)*Stride BY Stride DO
-      (*build pattern line; w < 32*)
+      (*build pattern line; w <= 32*)
       SYSTEM.GET(patadr, pbt); INC(patadr); pwd := pbt;
       IF w > 8 THEN SYSTEM.GET(patadr, pbt); INC(patadr); pwd := pbt*100H + pwd;
         IF w > 16 THEN SYSTEM.GET(patadr, pbt); INC(patadr); pwd := pbt*10000H + pwd;
@@ -107,17 +109,16 @@ MODULE Display;  (*NW 5.11.2013 / 3.7.2016*)
         END
       END ;
       Get(a0, pix);
-      IF mode = invert THEN Put(a0, SYSTEM.VAL(SET, LSL(pwd, x MOD 32)) / pix)
-      ELSE Put(a0, SYSTEM.VAL(SET, LSL(pwd, x MOD 32)) + pix)
+      IF mode = invert THEN Put(a0, SYSTEM.VAL(SET, LSL(pwd, x)) / pix)
+      ELSE Put(a0, SYSTEM.VAL(SET, LSL(pwd, x)) + pix)
       END ;
-      IF (x MOD 32) + w > 32 THEN (*spill over*)
+      IF x + w > 32 THEN (*spill over*)
         Get(a0+4, pix);
-        IF mode = invert THEN Put(a0+4, SYSTEM.VAL(SET, ASR(pwd, 32-(x MOD 32))) / pix)
-        ELSE Put(a0+4, SYSTEM.VAL(SET, ASR(pwd, 32-(x MOD 32))) + pix)
+        IF mode = invert THEN Put(a0+4, SYSTEM.VAL(SET, ASR(pwd, 32-x)) * mask / pix)
+        ELSE Put(a0+4, SYSTEM.VAL(SET, ASR(pwd, 32-x)) * mask + pix)
         END
       END
-    END;
-    WinGui.Dirty(x, y, w, h)
+    END
   END CopyPattern;
 
   PROCEDURE CopyBlock*(sx, sy, w, h, dx, dy, mode: INTEGER); (*only for mode = replace*)

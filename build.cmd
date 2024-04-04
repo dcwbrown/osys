@@ -142,6 +142,7 @@ Test
 @if errorlevel 1 goto osysbuildfailed
 @cd ..
 ::
+copy build2\OR?.x64
 buildsys\System
 @goto end
 ::

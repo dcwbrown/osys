@@ -19,6 +19,10 @@ CONST
 
   Verbose* = 0;  (* flag in LoadFlags *)
 
+  (* Windows VirtualAlloc flags *)
+  MEMRESERVE           = 2000H;
+  MEMCOMMIT            = 1000H;
+  PAGEEXECUTEREADWRITE = 40H;
 
 TYPE
   Module*     = POINTER- TO ModuleDesc;
@@ -32,7 +36,7 @@ TYPE
     size*:   INTEGER;     (* 38H Allocated memory, set on load (image size in file) *)
     refcnt*: INTEGER;     (* 40H Managed by module loader *)
     (* Addresses *)
-    data:    INTEGER;     (* PO2013 Start of module memory - begins with type descriptors *)
+    xxdata:  INTEGER;     (* PO2013 Start of module memory - begins with type descriptors *)
     code:    INTEGER;     (* PO2013 Start of code (part of module memory) *)
     imp:     INTEGER;     (* PO2013 Imports: address of array of imported module pointers *)
     cmd*:    INTEGER;     (* PO2013 Commands: address of seq of command strings and code offsets *)
@@ -194,7 +198,7 @@ VAR
 
   ModuleSpace*: INTEGER;   (* Start of module space *)
   AllocPtr*:    INTEGER;   (* Start of remaining free module space *)
-  CommitLen:    INTEGER;   (* Committed module space memory *)
+  CommitLen*:   INTEGER;   (* Committed module space memory *)
   Root*:        Module;    (* List of loaded and free'd modules *)
 
   (* System functions *)
@@ -508,10 +512,6 @@ END DumpMem;
 (* -------------------------------------------------------------------------- *)
 
 PROCEDURE PrepareOberonMachine;
-CONST
-  MEMRESERVE           = 2000H;
-  MEMCOMMIT            = 1000H;
-  PAGEEXECUTEREADWRITE = 40H;
 VAR
   reserveadr:   INTEGER;
   size:         INTEGER;        (* loaded length including global vars *)
@@ -955,7 +955,7 @@ BEGIN
   assert(hdr.size # 0); (*, "FindModule hdr.size is 0.");*)
 RETURN hdr END FindModule;
 
-PROCEDURE RelocatePointerAddresses(ptradr, varadr: INTEGER);
+PROCEDURE RelocatePointerAddresses*(ptradr, varadr: INTEGER);
 VAR ptroff: INTEGER;
 BEGIN
   SYSTEM.GET(ptradr, ptroff);
@@ -965,6 +965,42 @@ BEGIN
     SYSTEM.GET(ptradr, ptroff)
   END
 END RelocatePointerAddresses;
+
+
+PROCEDURE LinkImport*(modadr, offset, impno, modno: INTEGER; modules: ARRAY OF Module);
+VAR disp, absreloc: INTEGER;
+BEGIN
+  IF modno = 0 THEN  (* system function *)
+    SYSTEM.GET(modadr + offset, disp);
+    IF    impno = NewProc                   THEN disp := SYSTEM.ADR(NewPointer)            + disp - modadr
+    ELSIF impno = AssertionFailureProc      THEN disp := SYSTEM.ADR(AssertionFailure)      + disp - modadr
+    ELSIF impno = ArraySizeMismatchProc     THEN disp := SYSTEM.ADR(ArraySizeMismatch)     + disp - modadr
+    ELSIF impno = UnterminatedStringProc    THEN disp := SYSTEM.ADR(UnterminatedString)    + disp - modadr
+    ELSIF impno = IndexOutOfRangeProc       THEN disp := SYSTEM.ADR(IndexOutOfRange)       + disp - modadr
+    ELSIF impno = NilPointerDereferenceProc THEN disp := SYSTEM.ADR(NilPointerDereference) + disp - modadr
+    ELSIF impno = TypeGuardFailureProc      THEN disp := SYSTEM.ADR(TypeGuardFailure)      + disp - modadr
+    ELSE  assert(FALSE) (*, "LoadModule: Unexpected system function import number.")*)
+    END;
+    SYSTEM.PUT(modadr + offset, disp)
+  ELSIF modno = 0FFFFH THEN (* 64 bit absolute address relocation *)
+    (* qword at offset contains 32/0,32/module offset or 32/1,16/mod,16/imp *)
+    SYSTEM.GET(modadr + offset, absreloc);
+    IF absreloc DIV 100000000H = 0 THEN  (* offset in this module *)
+      SYSTEM.PUT(modadr + offset, modadr + absreloc)
+    ELSE  (* import reference from another module *)
+      modno := absreloc DIV 10000H MOD 10000H;  assert(modno > 0);
+      impno := absreloc MOD 10000H;
+      assert(impno > 0);
+      SYSTEM.PUT(modadr + offset, ExportedAddress(modules[modno-1], impno-1))
+    END
+  ELSE
+    assert(modno > 0);
+    SYSTEM.GET(modadr + offset, disp);
+    INC(disp, ExportedAddress(modules[modno-1], impno-1) - modadr);
+    SYSTEM.PUT(modadr + offset, disp)
+  END
+END LinkImport;
+
 
 PROCEDURE LoadModule(imagehdr: Module);
 (* Load module whose code image is at modadr *)
@@ -981,8 +1017,6 @@ VAR
   offset:      SYSTEM.CARD32;
   impno:       SYSTEM.CARD16;
   modno:       SYSTEM.CARD16;
-  disp:        SYSTEM.INT32;
-  absreloc:    INTEGER;
   modulebody:  PROCEDURE;
 BEGIN
   SYSTEM.COPY(ORD(imagehdr), AllocPtr, imagehdr.nimports);  (* Copy up to but excluding import table *)
@@ -1012,6 +1046,7 @@ BEGIN
   END;
   modules[i] := NIL;
 
+  (* Link imports from other modules *)
   adr := (adr + 15) DIV 16 * 16;
   SYSTEM.GET(adr, importcount);  INC(adr, 4);
   i := 0;
@@ -1019,35 +1054,7 @@ BEGIN
     SYSTEM.GET(adr, offset); INC(adr, 4);
     SYSTEM.GET(adr, impno);  INC(adr, 2);
     SYSTEM.GET(adr, modno);  INC(adr, 2);
-    IF modno = 0 THEN  (* system function *)
-      SYSTEM.GET(AllocPtr + offset, disp);
-      IF    impno = NewProc                   THEN disp := SYSTEM.ADR(NewPointer)            + disp - AllocPtr
-      ELSIF impno = AssertionFailureProc      THEN disp := SYSTEM.ADR(AssertionFailure)      + disp - AllocPtr
-      ELSIF impno = ArraySizeMismatchProc     THEN disp := SYSTEM.ADR(ArraySizeMismatch)     + disp - AllocPtr
-      ELSIF impno = UnterminatedStringProc    THEN disp := SYSTEM.ADR(UnterminatedString)    + disp - AllocPtr
-      ELSIF impno = IndexOutOfRangeProc       THEN disp := SYSTEM.ADR(IndexOutOfRange)       + disp - AllocPtr
-      ELSIF impno = NilPointerDereferenceProc THEN disp := SYSTEM.ADR(NilPointerDereference) + disp - AllocPtr
-      ELSIF impno = TypeGuardFailureProc      THEN disp := SYSTEM.ADR(TypeGuardFailure)      + disp - AllocPtr
-      ELSE  assert(FALSE) (*, "LoadModule: Unexpected system function import number.")*)
-      END;
-      SYSTEM.PUT(AllocPtr + offset, disp)
-    ELSIF modno = 0FFFFH THEN (* 64 bit absolute address relocation *)
-      (* qword at offset contains 32/0,32/module offset or 32/1,16/mod,16/imp *)
-      SYSTEM.GET(AllocPtr + offset, absreloc);
-      IF absreloc DIV 100000000H = 0 THEN  (* offset in this module *)
-        SYSTEM.PUT(AllocPtr + offset, AllocPtr + absreloc)
-      ELSE  (* import reference from another module *)
-        modno := absreloc DIV 10000H MOD 10000H;  assert(modno > 0);
-        impno := absreloc MOD 10000H;
-        assert(impno > 0);
-        SYSTEM.PUT(AllocPtr + offset, ExportedAddress(modules[modno-1], impno-1))
-      END
-    ELSE
-      assert(modno > 0);
-      SYSTEM.GET(AllocPtr + offset, disp);
-      INC(disp, ExportedAddress(modules[modno-1], impno-1) - AllocPtr);
-      SYSTEM.PUT(AllocPtr + offset, disp)
-    END;
+    LinkImport(AllocPtr, offset, impno, modno, modules);
     INC(i)
   END;
 
@@ -1064,10 +1071,46 @@ BEGIN
 
   (* Execute module body *)
   SYSTEM.PUT(SYSTEM.ADR(modulebody), AllocPtr + loadedhdr.ninitcode);
-  modulebody;
+  INC(AllocPtr, loadedhdr.size);
 
-  INC(AllocPtr, loadedhdr.size)
+  modulebody
 END LoadModule;
+
+PROCEDURE SetRoot*(r: Module); BEGIN
+  ws("* Change Root from "); wh(ORD(Root));
+  ws("H to "); wh(ORD(r)); wsn("H.");
+  Root := r
+END SetRoot;
+
+
+PROCEDURE Allocate*(size: INTEGER; VAR p, alloc: INTEGER);
+VAR adr: INTEGER;
+BEGIN
+  ws("WinHost.Allocate(size "); wh(size);        wsn("H).");
+  ws("  ModuleSpace: ");        wh(ModuleSpace); wsn("H.");
+  ws("  AllocPtr:    ");        wh(AllocPtr);    wsn("H.");
+  ws("  CommitLen:   ");        wh(CommitLen);   wsn("H.");
+
+  p     := 0;
+  alloc := 0;
+  size  := (size + 15) DIV 16 * 16;
+  IF AllocPtr - ModuleSpace + size < 80000000H THEN  (* Hard limit on reserved size 2GB due to relative addressing *)
+    IF AllocPtr + size > ModuleSpace + CommitLen THEN
+      ws("* CommitLen inceased from "); wh(CommitLen);
+      CommitLen := (AllocPtr + size + 4095) DIV 4096 * 4096 - ModuleSpace;
+      ws("H to "); wh(CommitLen); wsn("H.");
+      adr := VirtualAlloc(ModuleSpace, CommitLen, MEMCOMMIT, PAGEEXECUTEREADWRITE);
+      ASSERT(adr = ModuleSpace);
+    END;
+    IF AllocPtr + size <= ModuleSpace + CommitLen THEN
+      p     := AllocPtr;
+      alloc := size;
+      INC(AllocPtr, size);
+      ws("  AllocPtr ->: ");        wh(AllocPtr);    wsn("H.");
+    END
+  END
+END Allocate;
+
 
 PROCEDURE IncPC(increment: INTEGER);  (* Update return address by increment *)
 VAR pc: INTEGER;
@@ -1180,13 +1223,6 @@ BEGIN
     AssertWinErr(GetLastError())
   END;
 
-  (*ws("crlf at "); wh(SYSTEM.ADR(crlf)); wsn("H.");*)
-
   LoadRemainingModules(SYSTEM.VAL(Module, ORD(ImgHeader) + ImgHeader.size));
-
-  (*MessageBoxA(0, SYSTEM.ADR("Complete."), SYSTEM.ADR("WinHost"), 0);*)
-  (*wsn("WinHost complete.");*)
-  (*MessageBox("WinHost", "Complete");*)
-
   ExitProcess(0);
 END WinHost.
