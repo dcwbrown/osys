@@ -1,6 +1,6 @@
 MODULE ORS; (* NW 19.9.93 / 15.3.2017  Scanner in Oberon-07*)
 
-IMPORT SYSTEM, H := WinHost, Texts;  (* DB: dependency Oberon removed *)
+IMPORT SYSTEM, H := WinHost, Files, Texts, Oberon;  (* DB: dependency Oberon removed *)
 
 (* Oberon Scanner does lexical analysis. Input is Oberon-Text, output is
   sequence of symbols, i.e identifiers, numbers, strings, and special symbols.
@@ -56,6 +56,7 @@ VAR
   ListCodegen*:  BOOLEAN;
   ListAssembly*: BOOLEAN;
   Hasty*:        BOOLEAN;
+
 
 
 PROCEDURE CopyId*(VAR ident: Ident);
@@ -334,6 +335,7 @@ BEGIN
   (*w.s("GetSym -> "); IF sym = ident THEN w.s(id) ELSE w.i(sym) END; w.sl(".");*)
 END Get;
 
+
 PROCEDURE Init*(T: Texts.Text; pos: INTEGER);
 BEGIN
   ListCodegen  := FALSE;
@@ -348,13 +350,15 @@ BEGIN
   GetCh
 END Init;
 
+PROCEDURE SourceFile*(): Files.File;
+BEGIN RETURN Texts.Base(R) END SourceFile;
+
 PROCEDURE EnterKW(sym: INTEGER; name: ARRAY OF CHAR);
 BEGIN keyTab[k].id := name; keyTab[k].sym := sym; INC(k)
 END EnterKW;
 
 BEGIN
-  ch := 0X;
-
+  ch     := 0X;
   k      := 0;
   KWX[0] := 0;
   KWX[1] := 0;

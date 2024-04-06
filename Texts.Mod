@@ -373,6 +373,9 @@ PROCEDURE Pos* (VAR R: Reader): INTEGER;
 BEGIN RETURN R.org + R.off
 END Pos;
 
+PROCEDURE Base*(VAR r: Reader): Files.File;
+BEGIN RETURN Files.Base(r.rider) END Base;
+
 (* ------------------ Access: Scanners (NW) ------------------------- *)
 
 PROCEDURE OpenScanner* (VAR S: Scanner; T: Text; pos: INTEGER);

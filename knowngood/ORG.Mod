@@ -2866,10 +2866,10 @@ BEGIN
   END
 END TypeTest;
 
-PROCEDURE Open*(sourcefile: Files.File;  modid: ARRAY OF CHAR);
+PROCEDURE Open*(modid: ARRAY OF CHAR);
 VAR i: INTEGER;
 BEGIN
-  l.Init(sourcefile);
+l.Init(ORS.SourceFile());
   Trflags := {TraceAny, TraceMakeItem};  (*{TraceAny, TraceMakeItem};*)
   (*Trace(TraceAny, "ORG Open('"); l.s(sourcefn, Tr); l.sn("')", Tr);*)
   X64.ClearStack;   ClearRegs;

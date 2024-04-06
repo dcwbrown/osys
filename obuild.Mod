@@ -258,7 +258,9 @@ VAR
 BEGIN
   (*H.wsn("- ScanSourceFileImports -");*)
   firstimport := NIL;
-  NEW(mod.text);  Texts.OpenFile(mod.text, mod.source.file);  ORS.Init(mod.text, 0);
+  NEW(mod.text);
+  Texts.OpenFile(mod.text, mod.source.file);
+  ORS.Init(mod.text, 0);
   ORS.Get(sym);
   IF sym # ORS.module THEN ORS.Mark("ModuleFile does not start with MODULE.") END;
   ORS.Get(sym);
@@ -397,21 +399,21 @@ RETURN result END DetermineNextCompilation;
 
 
 PROCEDURE CompileModule(mod: ModuleFile);
-VAR startTime, endTime, key: INTEGER;  newsymbols: BOOLEAN;
+VAR key: INTEGER;  newsymbols: BOOLEAN;
 BEGIN
   IF FirstCompile THEN H.wn; FirstCompile := FALSE END;
-  H.ws("Compiling "); H.wsl(mod.name, LongestModname);
 
   ASSERT(mod.text # NIL);
-  startTime := H.Time();
   ORS.Init(mod.text, 0);  (* Rewind text to beginning for full compilation *)
   newsymbols := TRUE;
-  ORP.Module(mod.source.file, newsymbols);
+  ORP.Module(newsymbols);
 
   IF ORS.errcnt = 0 THEN
+    (*
     endTime := H.Time();
     WriteHuman((endTime - startTime) DIV 10000, 5);
     H.ws("ms "); WriteHuman(K.Allocated, 10); H.wsn("B heap used.");
+    *)
     MakeFileDesc(mod.name, "smb", NIL, mod.symbols);  ASSERT(mod.symbols.file # NIL);
     MakeFileDesc(mod.name, "x64", NIL, mod.code);     ASSERT(mod.code.file    # NIL);
     GetSymbolFileKey(mod.symbols.file, mod.key);

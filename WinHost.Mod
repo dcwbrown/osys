@@ -36,13 +36,13 @@ TYPE
     size*:   INTEGER;     (* 38H Allocated memory, set on load (image size in file) *)
     refcnt*: INTEGER;     (* 40H Managed by module loader *)
     (* Addresses *)
-    xxdata:  INTEGER;     (* PO2013 Start of module memory - begins with type descriptors *)
-    code:    INTEGER;     (* PO2013 Start of code (part of module memory) *)
-    imp:     INTEGER;     (* PO2013 Imports: address of array of imported module pointers *)
+    vars*:   INTEGER;     (* 48H Start of global VARs *)
+    xxcode:  INTEGER;     (* PO2013 Start of code (part of module memory) *)
+    xximp:   INTEGER;     (* PO2013 Imports: address of array of imported module pointers *)
     cmd*:    INTEGER;     (* PO2013 Commands: address of seq of command strings and code offsets *)
-    ent:     INTEGER;     (* PO2013 Entries: address of array of exported offsets *)
+    xxent:   INTEGER;     (* PO2013 Entries: address of array of exported offsets *)
     ptr*:    INTEGER;     (* PO2013 Pointers: address of array of pointer var addresses *)
-    unused:  INTEGER;
+    xxunused:INTEGER;
 
     (* Old values *)
     d1:         INTEGER;       (* 80H *)
@@ -970,6 +970,12 @@ END RelocatePointerAddresses;
 PROCEDURE LinkImport*(modadr, offset, impno, modno: INTEGER; modules: ARRAY OF Module);
 VAR disp, absreloc: INTEGER;
 BEGIN
+  (*
+  ws("LinkImport(modadr "); wh(modadr);
+  ws("H, offset ");         wh(offset);
+  ws("H, impno ");          wh(impno);
+  ws("H, modno ");          wh(modno); wsn("H, modules).");
+  *)
   IF modno = 0 THEN  (* system function *)
     SYSTEM.GET(modadr + offset, disp);
     IF    impno = NewProc                   THEN disp := SYSTEM.ADR(NewPointer)            + disp - modadr
@@ -1060,8 +1066,9 @@ BEGIN
 
   (* Relocate pointer addresses *)
   assert(loadedhdr.ptr # 0);  assert(ORD(loadedhdr) = AllocPtr);
+  loadedhdr.vars := AllocPtr + loadedhdr.nimports;
   INC(loadedhdr.ptr, AllocPtr);
-  RelocatePointerAddresses(loadedhdr.ptr, AllocPtr + loadedhdr.nimports);
+  RelocatePointerAddresses(loadedhdr.ptr, loadedhdr.vars);
 
   INC(loadedhdr.cmd, AllocPtr);
 
@@ -1076,9 +1083,13 @@ BEGIN
   modulebody
 END LoadModule;
 
+
 PROCEDURE SetRoot*(r: Module); BEGIN
+  (*
   ws("* Change Root from "); wh(ORD(Root));
-  ws("H to "); wh(ORD(r)); wsn("H.");
+  ws("H (");                 ws(Root.name);
+  ws(") to ");               wh(ORD(r)); wsn("H.");
+  *)
   Root := r
 END SetRoot;
 
@@ -1086,19 +1097,24 @@ END SetRoot;
 PROCEDURE Allocate*(size: INTEGER; VAR p, alloc: INTEGER);
 VAR adr: INTEGER;
 BEGIN
+  (*
   ws("WinHost.Allocate(size "); wh(size);        wsn("H).");
   ws("  ModuleSpace: ");        wh(ModuleSpace); wsn("H.");
   ws("  AllocPtr:    ");        wh(AllocPtr);    wsn("H.");
   ws("  CommitLen:   ");        wh(CommitLen);   wsn("H.");
+  *)
 
   p     := 0;
   alloc := 0;
   size  := (size + 15) DIV 16 * 16;
   IF AllocPtr - ModuleSpace + size < 80000000H THEN  (* Hard limit on reserved size 2GB due to relative addressing *)
     IF AllocPtr + size > ModuleSpace + CommitLen THEN
-      ws("* CommitLen inceased from "); wh(CommitLen);
-      CommitLen := (AllocPtr + size + 4095) DIV 4096 * 4096 - ModuleSpace;
-      ws("H to "); wh(CommitLen); wsn("H.");
+
+      ws("* CommitLen increased from "); wh(CommitLen);
+      (* Round up to a multiple of 256K *)
+      CommitLen := (AllocPtr + size + 40000H - 1) DIV 40000H * 40000H - ModuleSpace;
+      ws("H to "); wh(CommitLen); wsn("H *");
+
       adr := VirtualAlloc(ModuleSpace, CommitLen, MEMCOMMIT, PAGEEXECUTEREADWRITE);
       ASSERT(adr = ModuleSpace);
     END;
@@ -1106,7 +1122,7 @@ BEGIN
       p     := AllocPtr;
       alloc := size;
       INC(AllocPtr, size);
-      ws("  AllocPtr ->: ");        wh(AllocPtr);    wsn("H.");
+      (* ws("  AllocPtr ->: ");        wh(AllocPtr);    wsn("H.");*)
     END
   END
 END Allocate;

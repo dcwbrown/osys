@@ -1,6 +1,6 @@
 MODULE ORP;  (*N. Wirth 1.7.97 / 8.3.2020  Oberon compiler for RISC in Oberon-07*)
 
-IMPORT SYSTEM, H := WinHost, Files, ORS, ORB, X64, l := Listing, ORG;
+IMPORT SYSTEM, H := WinHost, Kernel, Files, Texts, Oberon, ORS, ORB, X64, l := Listing, ORG;
 
   (*Author: Niklaus Wirth, 2014.
     Parser of Oberon-RISC compiler. Uses Scanner ORS to obtain symbols (tokens),
@@ -31,6 +31,9 @@ VAR
 
   (* Trace *)
   Tr: l.Buffer;
+  W:  Texts.Writer;
+
+  NewSF: BOOLEAN;
 
 
 PROCEDURE Check(s: INTEGER;  msg: ARRAY OF CHAR);
@@ -1218,25 +1221,27 @@ BEGIN
 END Import;
 
 
-PROCEDURE Module*(sourcefile: Files.File; VAR newsymbols: BOOLEAN);
+PROCEDURE Module*(VAR newsymbols: BOOLEAN);
 VAR
   key:  INTEGER;
   exno: INTEGER;
   obj:  ORB.Object;
   ann:  ORG.BodyAnnotation;
+  start: INTEGER;
 BEGIN
-  (*Texts.WriteString(W, "  compiling ");*)
+  start := H.Time();
+  Texts.WriteString(W, "  compiling ");
   ORS.Get(sym);
   IF sym # ORS.module THEN
     ORS.Mark("must start with MODULE");
-    H.wn; H.ws("Sym: "); H.wi(sym); H.ws(", '"); H.ws(ORS.id); H.wsn("'.");
+    (*H.wn; H.ws("Sym: "); H.wi(sym); H.ws(", '"); H.ws(ORS.id); H.wsn("'.");*)
   ELSE
     ORS.Get(sym);
     dc := 0;
     ORB.Init;  ORB.OpenScope;
     IF sym = ORS.ident THEN
       ORS.CopyId(modid);  ORS.Get(sym);
-      (*Texts.WriteString(W, modid);  Texts.Append(Oberon.Log, W.buf)*)
+      Texts.WriteString(W, modid);  Texts.Append(Oberon.Log, W.buf)
     ELSE ORS.Mark("identifier expected")
     END;
     Check(ORS.semicolon, "no ;");
@@ -1248,7 +1253,7 @@ BEGIN
       Check(ORS.semicolon, "; missing")
     END;
 
-    ORG.Open(sourcefile, modid);
+    ORG.Open(modid);
     Declarations(dc);
     ORG.SetDataSize((dc + 7) DIV 8 * 8);
 
@@ -1269,8 +1274,8 @@ BEGIN
     END;
     IF sym # ORS.period THEN ORS.Mark("period missing") END;
 
-    (* Identify record descriptors that need exporting because they are
-       referenced by exported pointer types *)
+    (* Identify record descriptors that need exporting because *)
+    (* they are referenced by exported pointer types.          *)
     obj := ORB.topScope.next;
     WHILE obj # NIL DO
       IF (obj.class = ORB.Typ)
@@ -1295,85 +1300,71 @@ BEGIN
     END;
 
     IF ORS.errcnt = 0 THEN
-      (*
-      Texts.WriteString(W, "Exporting symbols for module ");
-      Texts.WriteString(W, modid); Texts.WriteLn(W);
-      *)
       ORB.Export(modid, newsymbols, key);
-      (*IF newsymbols THEN Texts.WriteString(W, " new symbol file") END*)
+      IF newsymbols THEN Texts.WriteString(W, "  new symbol file") END
     END;
 
     IF ORS.errcnt = 0 THEN
       ORG.Close(modid, key, exno);
-      (*Texts.WriteInt(W, X64.PC, 8);  Texts.WriteInt(W, dc, 8);  Texts.WriteHex(W, key)*)
+      Texts.WriteString(W, "  ");
+      Texts.WriteInt(W, (H.Time() - start) DIV 10000, 1); Texts.WriteString(W, "ms  ");
+      Texts.WriteInt(W, Kernel.Allocated DIV 1000, 1);    Texts.WriteString(W, "KB heap used  ");
+      Texts.WriteInt(W, X64.PC, 1);                       Texts.WriteString(W, "  ");
+      Texts.WriteInt(W, dc, 1);                           Texts.WriteString(W, " ");
+      Texts.WriteHex(W, key)
     ELSE
-      H.wn;  H.ws("compilation FAILED")
-      (*
       Texts.WriteLn(W);  Texts.WriteString(W, "compilation FAILED");
-      Texts.Append(Oberon.Log, W.buf);
-      *)
     END;
-
-    (*Texts.WriteLn(W);  Texts.Append(Oberon.Log, W.buf);*)
+    Texts.WriteLn(W);  Texts.Append(Oberon.Log, W.buf);
     ORB.CloseScope;  pbsList := NIL
   END
 END Module;
 
-(*
 PROCEDURE Option(VAR S: Texts.Scanner);
 BEGIN NewSF := FALSE;
   IF S.nextCh = "/" THEN
-    Texts.Scan(S);  Texts.Scan(S);
+    Texts.Scan(S); Texts.Scan(S);
     IF (S.class = Texts.Name) & (S.s[0] = "s") THEN NewSF := TRUE END
   END
 END Option;
 
 PROCEDURE Compile*;
-VAR beg, end, time: INTEGER;
-    T: Texts.Text;
-    S: Texts.Scanner;
-BEGIN Texts.OpenScanner(S, Oberon.Par.text, Oberon.Par.pos);  Texts.Scan(S);
+VAR
+  beg, end, time: INTEGER;
+  T: Texts.Text;
+  S: Texts.Scanner;
+BEGIN Texts.OpenScanner(S, Oberon.Par.text, Oberon.Par.pos); Texts.Scan(S);
   IF S.class = Texts.Char THEN
     IF S.c = "@" THEN
-      Option(S);  Oberon.GetSelection(T, beg, end, time);
-      IF time >= 0 THEN ORS.Init(T, beg);  Module END
+      Option(S); Oberon.GetSelection(T, beg, end, time);
+      IF time >= 0 THEN ORS.Init(T, beg); Module(NewSF) END
     ELSIF S.c = "^" THEN
-      Option(S);  Oberon.GetSelection(T, beg, end, time);
+      Option(S); Oberon.GetSelection(T, beg, end, time);
       IF time >= 0 THEN
-        Texts.OpenScanner(S, T, beg);  Texts.Scan(S);
+        Texts.OpenScanner(S, T, beg); Texts.Scan(S);
         IF S.class = Texts.Name THEN
-          Texts.WriteString(W, S.s);  NEW(T);  Texts.Open(T, S.s);
-          IF T.len > 0 THEN ORS.Init(T, 0);  Module END
+          Texts.WriteString(W, S.s); NEW(T); Texts.Open(T, S.s);
+          IF T.len > 0 THEN ORS.Init(T, 0); Module(NewSF) END
         END
       END
     END
   ELSE
     WHILE S.class = Texts.Name DO
-      NEW(T);  Texts.Open(T, S.s);
-      IF T.len > 0 THEN Option(S);  ORS.Init(T, 0);  Module
-      ELSE Texts.WriteString(W, S.s);  Texts.WriteString(W, " not found");
-        Texts.WriteLn(W);  Texts.Append(Oberon.Log, W.buf)
-      END;
+      NEW(T); Texts.Open(T, S.s);
+      IF T.len > 0 THEN Option(S); ORS.Init(T, 0); Module(NewSF)
+      ELSE Texts.WriteString(W, S.s); Texts.WriteString(W, " not found");
+        Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf)
+      END ;
       IF (T.len # 0) & (ORS.errcnt = 0) THEN Texts.Scan(S) ELSE S.class := 0 END
     END
-  END;
+  END ;
   Oberon.Collect(0)
 END Compile;
-*)
 
-(*
-PROCEDURE CompileFile*(f: Files.File; VAR newsymbols: BOOLEAN);
-VAR T: Texts.Text;
-BEGIN
-  NEW(T);  Texts.OpenFile(T, f);  IF T.len > 0 THEN ORS.Init(T, 0);
-  Module(f, newsymbols) END;
-END CompileFile;
-*)
 
 BEGIN
-  IF H.Verbose IN H.LoadFlags THEN
-    H.wsn("OR Compiler  NW 8.3.2020 / DCWB 03.04.2024")
-  END;
+  Texts.OpenWriter(W); Texts.WriteString(W, "OR Compiler  NW 8.3.2020 / DCWB 03.04.2024");
+  Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf);
   l.InitBuf(Tr);
   NEW(dummy);  dummy.class := ORB.Var;  dummy.type := ORB.intType;
   expression := expression0;  Type := Type0;  FormalType := FormalType0

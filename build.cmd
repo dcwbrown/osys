@@ -31,6 +31,8 @@
 @fc knowngood\obuild.mod  obuild.mod  >NUL
 @if errorlevel 1 goto buildcompiler
 ::
+@if not exist build2\obuild.exe goto buildcompiler
+::
 @goto buildsystem
 ::
 ::
@@ -63,7 +65,7 @@
 @mkdir buildpre >NUL
 @copy WinPE.mod buildpre >NUL
 @cd buildpre >NUL
-..\knowngood\obuild /v /s ./;../knowngood/ obuild
+..\knowngood\obuild /v /s ../knowngood/Console.;../knowngood/ obuild
 @if errorlevel 1 goto end
 @cd ..
 ::
@@ -75,9 +77,9 @@
 @mkdir build1 >NUL 2>NUL
 @cd build1
 if exist ..\buildpre\obuild.exe (
-  ..\buildpre\obuild /v /s ../ obuild
+  ..\buildpre\obuild /v /s ../Console.;../ obuild
 ) else (
-  ..\knowngood\obuild /v /s ../ obuild
+  ..\knowngood\obuild /v /s ../Console.;../ obuild
 )
 @if errorlevel 1 goto end
 @cd ..
@@ -87,7 +89,7 @@ if exist ..\buildpre\obuild.exe (
 @echo ---------------- Build new compiler using newly built compiler -----------------
 @mkdir build2 >NUL 2>NUL
 @cd build2
-..\build1\obuild /v /s ../ obuild
+..\build1\obuild /v /s ../Console.;../ obuild
 @if errorlevel 1 goto end
 @if exist obuild.exe goto obexists
 ::
@@ -102,7 +104,7 @@ if exist ..\buildpre\obuild.exe (
 @echo --------------------------------- Build tests ----------------------------------
 @mkdir buildtest >NUL 2>NUL
 @cd buildtest
-..\build2\obuild /v /s ../ /b ../build2/ Test
+..\build2\obuild /v /s ../Console.;../ /b ../build2/ Test
 @if errorlevel 1 goto testbuildfailed
 @if exist Test.exe goto testexists
 @echo.
@@ -138,16 +140,21 @@ Test
 @rd /s /q buildsys 2>NUL
 @md buildsys
 @cd buildsys
-..\build2\obuild /v /s ../ /b ../build2/ System
+copy ..\*.mod >NUL
+copy ..\*.Tool >NUL
+copy ..\*.Fnt >NUL
+copy ..\*.Lib >NUL
+..\build2\obuild /v /s ./ ORP
+..\build2\obuild /v /s ./ System
 @if errorlevel 1 goto osysbuildfailed
-@cd ..
 ::
-copy build2\OR?.x64
-buildsys\System
+System
+@cd ..
 @goto end
 ::
 ::
 :osysbuildfailed
+@cd ..
 @echo.
 @echo Oberon system build failed.
 

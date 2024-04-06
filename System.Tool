@@ -4,7 +4,7 @@ Edit.ChangeFont Oberon10i.Scn.Fnt
 Edit.ChangeFont Oberon10b.Scn.Fnt
 
 System.Directory ^
-  *.Mod  *.Bak  *.Tool  *.Text  *.Scn.Fnt  *.smb  *.rsc
+  *.Mod  *.Bak  *.Tool  *.Text  *.Scn.Fnt  *.smb  *.x64
 
 ORP.Compile @  ORP.Compile @/s  ORP.Compile name~
 System.Free ~
