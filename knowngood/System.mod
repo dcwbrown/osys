@@ -1,4 +1,5 @@
-MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
+MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016 / DCWB 06.04.2024*)
+
 IMPORT SYSTEM, H := WinHost, Kernel, FileDir, Files, Modules,
   Input, Display, Viewers, Fonts, Texts, Oberon, MenuViewers, TextFrames, Edit;
 

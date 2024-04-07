@@ -232,18 +232,19 @@ BEGIN
 END ThisCommand;
 
 PROCEDURE Free*(name: ARRAY OF CHAR);
-(*
 VAR mod, imp: Module;  p, q: INTEGER;
-BEGIN mod := root;  res := 0;
+BEGIN mod := H.Root;  res := 0;
   WHILE (mod # NIL) & (mod.name # name) DO mod := mod.next END;
   IF mod # NIL THEN
     IF mod.refcnt = 0 THEN
-      mod.name[0] := 0X;  p := mod.imp;  q := mod.cmd;
+      mod.name[0] := 0X;
+      (*
+      p := mod.imp;  q := mod.cmd;
       WHILE p < q DO SYSTEM.GET(p, imp);  DEC(imp.refcnt);  INC(p, 4) END;
+      *)
     ELSE res := 1
     END
   END
-*)
 END Free;
 
 PROCEDURE Init*;

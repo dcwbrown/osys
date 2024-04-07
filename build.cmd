@@ -1,4 +1,6 @@
 :: build.cmd - build Oberon comiler and system
+;;
+SET VERBOSE=
 ::
 :: The compiler is built if any files affecting the compiler have changed
 ::
@@ -65,7 +67,7 @@
 @mkdir buildpre >NUL
 @copy WinPE.mod buildpre >NUL
 @cd buildpre >NUL
-..\knowngood\obuild /v /s ../knowngood/Console.;../knowngood/ obuild
+..\knowngood\obuild %VERBOSE% /s ../knowngood/Console.;../knowngood/ obuild
 @if errorlevel 1 goto end
 @cd ..
 ::
@@ -77,9 +79,9 @@
 @mkdir build1 >NUL 2>NUL
 @cd build1
 if exist ..\buildpre\obuild.exe (
-  ..\buildpre\obuild /v /s ../Console.;../ obuild
+  ..\buildpre\obuild %VERBOSE% /s ../Console.;../ obuild
 ) else (
-  ..\knowngood\obuild /v /s ../Console.;../ obuild
+  ..\knowngood\obuild %VERBOSE% /s ../Console.;../ obuild
 )
 @if errorlevel 1 goto end
 @cd ..
@@ -89,7 +91,7 @@ if exist ..\buildpre\obuild.exe (
 @echo ---------------- Build new compiler using newly built compiler -----------------
 @mkdir build2 >NUL 2>NUL
 @cd build2
-..\build1\obuild /v /s ../Console.;../ obuild
+..\build1\obuild %VERBOSE% /s ../Console.;../ obuild
 @if errorlevel 1 goto end
 @if exist obuild.exe goto obexists
 ::
@@ -104,7 +106,7 @@ if exist ..\buildpre\obuild.exe (
 @echo --------------------------------- Build tests ----------------------------------
 @mkdir buildtest >NUL 2>NUL
 @cd buildtest
-..\build2\obuild /v /s ../Console.;../ /b ../build2/ Test
+..\build2\obuild %VERBOSE% /s ../Console.;../ /b ../build2/ Test
 @if errorlevel 1 goto testbuildfailed
 @if exist Test.exe goto testexists
 @echo.
@@ -144,8 +146,8 @@ copy ..\*.mod >NUL
 copy ..\*.Tool >NUL
 copy ..\*.Fnt >NUL
 copy ..\*.Lib >NUL
-..\build2\obuild /v /s ./ ORP
-..\build2\obuild /v /s ./ System
+..\build2\obuild %VERBOSE% /s ./ ORP
+..\build2\obuild %VERBOSE% /s ./ System
 @if errorlevel 1 goto osysbuildfailed
 ::
 System

@@ -3,7 +3,6 @@ MODULE Input; (*NW 5.10.86 / 15.11.90 Ceres-2; PDR 21.4.12 / NW 15.5.2013 Ceres-
 
 IMPORT SYSTEM, H := WinHost, WinGui;
 
-
 VAR
   kbdCode: BYTE;     (*last keyboard code read*)
   Recd:    BOOLEAN;
@@ -42,10 +41,16 @@ PROCEDURE Read*(VAR ch: CHAR);
 BEGIN
   WHILE ~Recd DO Peek() END;
   IF Shift OR Ctrl THEN INC(kbdCode, 80H) END; (*ctrl implies shift*)
-(* ch := kbdTab[kbdCode]; *)
-  SYSTEM.GET(KTabAdr + kbdCode, ch);
+  SYSTEM.GET(KTabAdr + kbdCode, ch);  (* Was: ch := kbdTab[kbdCode]; *)
   IF Ctrl THEN ch := CHR(ORD(ch) MOD 20H) END;
-  Recd := FALSE
+  Recd := FALSE;
+
+  IF ~Ctrl THEN
+    H.ws("kbdCode "); H.wh(kbdCode);
+    H.ws("H -> ");    H.wh(ORD(ch));  H.wc("H");
+    IF ch >= 20X THEN H.ws(" '"); H.wc(ch); H.wc("'") END;
+    H.wsn(".")
+  END
 END Read;
 
 PROCEDURE Mouse*(VAR keys: SET; VAR x, y: INTEGER);
@@ -82,7 +87,18 @@ BEGIN Up := FALSE; Shift := FALSE; Ctrl := FALSE; Recd := FALSE;
     00 3C 4B 49 4F 29 28 00  00 3E 3F 4C 3A 50 5F 00
     00 00 22 00 7B 2B 00 00  00 00 0D 7D 00 7C 00 00
     00 00 00 00 00 00 08 00  00 00 00 00 00 00 00 00
-    00 7F 00 00 00 00 1B 00  00 00 00 00 00 00 00 00$)
+    00 7F 00 00 00 00 1B 00  00 00 00 00 00 00 00 00$);
+
+  (* UK keyboard changes *)
+  SYSTEM.PUT(KTabAdr + 09EH, 022X);  (* " was @ *)
+  SYSTEM.PUT(KTabAdr + 061H, 05CX);  (* \ was unused *)
+  SYSTEM.PUT(KTabAdr + 0E1H, 07CX);  (* | was unused *)
+  SYSTEM.PUT(KTabAdr + 00EH, 023X);  (* # was ` *)
+  SYSTEM.PUT(KTabAdr + 0D2H, 040X);  (* @ was " *)
+  SYSTEM.PUT(KTabAdr + 05DH, 060X);  (* ` was \ *)
+  SYSTEM.PUT(KTabAdr + 0DDH, 07EX);  (* ~ was | *)
+  (* Note: does not generate UK pound sterling sign (U+00A3) or *)
+  (* not sign (U+00AC) as these are outside 7 bit ASCII.        *)
 END Init;
 
 BEGIN Init

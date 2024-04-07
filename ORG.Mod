@@ -1098,6 +1098,7 @@ BEGIN Trace(TraceAny, "StrToChar(x: ");  l.Item(x, Tr);  l.n(Tr);
   ASSERT(x.mode      = String);
   ASSERT(x.n         = 2);  (* String length - a character and a zero terminator *)
   ASSERT(x.readonly);
+  x.type := ORB.charType;
   x.mode := Const;  x.n := ORD(Str[x.offset]);  x.offset := 0;
 END StrToChar;
 
