@@ -14,6 +14,7 @@ CONST
   IndexOutOfRangeProc*       = 4;
   NilPointerDereferenceProc* = 5;
   TypeGuardFailureProc*      = 6;
+  HandlerCount               = 7;
 
   MaxPath* = 780;  (* Enough UTF-8 bytes for for 260 wide chars *)
 
@@ -55,6 +56,7 @@ TYPE
     nvarsize*:  INTEGER;
     d9:         INTEGER;        (* 20H *)
   END;
+
 
   (* -------------------- Windows exception structures -------------------- *)
 
@@ -185,9 +187,10 @@ VAR
   ShowWindow*:                     PROCEDURE-(wn, cm: INTEGER);
   TranslateMessage*:               PROCEDURE-(ms: INTEGER): INTEGER;
   InvalidateRect*:                 PROCEDURE-(wn, rc, er: INTEGER): INTEGER;
-
   (* End of pre-loaded variables *)
 
+  (* Linker expects handlers to follow immediately after pre-loaded vars *)
+  Handlers*: ARRAY HandlerCount OF PROCEDURE;
 
   Stdin:      INTEGER;
   Stdout:     INTEGER;
@@ -200,16 +203,6 @@ VAR
   AllocPtr*:    INTEGER;   (* Start of remaining free module space *)
   CommitLen*:   INTEGER;   (* Committed module space memory *)
   Root*:        Module;    (* List of loaded and free'd modules *)
-
-  (* System functions *)
-  NewPointer*:           PROCEDURE(ptr, tag: INTEGER);
-  AssertionFailure:      PROCEDURE;
-  ArraySizeMismatch:     PROCEDURE;
-  UnterminatedString:    PROCEDURE;
-  IndexOutOfRange:       PROCEDURE;
-  NilPointerDereference: PROCEDURE;
-  TypeGuardFailure:      PROCEDURE;
-  PostMortemDump:        PROCEDURE(hdr: Module; offset: INTEGER);
 
   ExceptionDepth: INTEGER;
 
@@ -284,9 +277,6 @@ PROCEDURE wcn*; BEGIN IF ~Sol THEN wn END END wcn;  (* Conditional newline *)
 
 PROCEDURE ws*(s: ARRAY OF CHAR); BEGIN Log(s) END ws;
 
-PROCEDURE wsl*(s: ARRAY OF CHAR; w: INTEGER);  (* Left justified with trailing spaces *)
-BEGIN Log(s);  DEC(w, Length(s));  WHILE w > 0 DO wc(" "); DEC(w) END END wsl;
-
 PROCEDURE wsr*(s: ARRAY OF CHAR; w: INTEGER);  (* Right justified with leading spaces *)
 BEGIN DEC(w, Length(s));  WHILE w > 0 DO wc(" "); DEC(w) END; Log(s) END wsr;
 
@@ -300,10 +290,6 @@ PROCEDURE wh*(n: INTEGER);
 VAR hex: ARRAY 32 OF CHAR;
 BEGIN IntToHex(n, hex); Log(hex) END wh;
 
-PROCEDURE whl*(n, w: INTEGER);  (* Left justified with trailing spaces *)
-VAR hex: ARRAY 32 OF CHAR;
-BEGIN IntToHex(n, hex); wsl(hex, w) END whl;
-
 PROCEDURE whr*(n, w: INTEGER);  (* Right justified with leading spaces *)
 VAR hex: ARRAY 32 OF CHAR;
 BEGIN IntToHex(n, hex); wsr(hex, w) END whr;
@@ -316,10 +302,6 @@ BEGIN IntToHex(n, hex); wsz(hex, w) END whz;
 PROCEDURE wi*(n: INTEGER);
 VAR dec: ARRAY 32 OF CHAR;
 BEGIN IntToDecimal(n, dec); Log(dec) END wi;
-
-PROCEDURE wil*(n, w: INTEGER);  (* Left justified with trailing spaces *)
-VAR dec: ARRAY 32 OF CHAR;
-BEGIN IntToDecimal(n, dec); wsl(dec, w) END wil;
 
 PROCEDURE wir*(n, w: INTEGER);  (* Right justified with leading spaces *)
 VAR dec: ARRAY 32 OF CHAR;
@@ -411,7 +393,7 @@ BEGIN RETURN TimeAsClock(Time()) END Clock;
 PROCEDURE ExtClock*(): INTEGER;
 (* Returns local time as                                              *)
 (* 13/0,15/year,4/month,5/day,5/hour,6/minute,6/second,10/millisecond *)
-BEGIN RETURN TimeAsClock(Time()) END ExtClock;
+BEGIN RETURN TimeAsExtClock(Time()) END ExtClock;
 
 
 (*
@@ -507,7 +489,7 @@ END DumpMem;
 (* System functions have not been set up, meaning                             *)
 (*   The code may not use system functions such as NEW, ASSERT etc.           *)
 (*   Faults like Array size mismatch or unterminated string will crash        *)
-(* Any global variables set to code addresses must be reset after WinHost is   *)
+(* Any global variables set to code addresses must be reset after WinHost is  *)
 (*   moved to Oberon memory.                                                  *)
 (* -------------------------------------------------------------------------- *)
 
@@ -613,10 +595,7 @@ BEGIN
 
   IF hdr # NIL THEN LocateLine(hdr, offset) END;
 
-  IF (hdr # NIL) & (PostMortemDump # NIL) & (ExceptionDepth < 2) THEN
-    INC(ExceptionDepth);
-    PostMortemDump(hdr, offset)
-  ELSIF p # NIL THEN
+  IF p # NIL THEN
     ws("  rax "); whz(p.context.rax, 16);  ws("  rbx "); whz(p.context.rbx, 16);
     ws("  rcx "); whz(p.context.rcx, 16);  ws("  rdx "); whz(p.context.rdx, 16);  wn;
     ws("  rsp "); whz(p.context.rsp, 16);  ws("  rbp "); whz(p.context.rbp, 16);
@@ -666,14 +645,11 @@ BEGIN
   (* Get caller address of trap caller - Note: assume caller has no local vars *)
   SYSTEM.GET(SYSTEM.ADR(LEN(desc)) + 8, adr);
   LocateAddress(adr, NIL);
-  (*
-  IF (modadr # 0) & (PostMortemDump # NIL) & (ExceptionDepth < 2) THEN
-    INC(ExceptionDepth);
-    PostMortemDump(modadr, adr - modadr)
-  END;
-  *)
   ExitProcess(99)
 END Trap;
+
+PROCEDURE NewPointerHandler();
+BEGIN wcn; Trap("** New pointer handler not istalled") END NewPointerHandler;
 
 PROCEDURE AssertionFailureHandler();
 BEGIN wcn; Trap("** Assertion failure")      END AssertionFailureHandler;
@@ -693,8 +669,17 @@ BEGIN wcn; Trap("** NIL pointer dereference") END NilPointerDereferenceHandler;
 PROCEDURE TypeGuardFailureHandler();
 BEGIN wcn; Trap("** Type guard failure")      END TypeGuardFailureHandler;
 
-PROCEDURE NewPointerHandler(ptr, len: INTEGER);
-BEGIN wcn; Trap("** New pointer handler not istalled") END NewPointerHandler;
+PROCEDURE InitSysHandlers;
+BEGIN
+  Handlers[NewProc]                   := NewPointerHandler;
+  Handlers[AssertionFailureProc]      := AssertionFailureHandler;
+  Handlers[ArraySizeMismatchProc]     := ArraySizeMismatchHandler;
+  Handlers[UnterminatedStringProc]    := UnterminatedStringHandler;
+  Handlers[IndexOutOfRangeProc]       := IndexOutOfRangeHandler;
+  Handlers[NilPointerDereferenceProc] := NilPointerDereferenceHandler;
+  Handlers[TypeGuardFailureProc]      := TypeGuardFailureHandler
+END InitSysHandlers;
+
 
 
 (* ------------------ WinHost internal assertion handlers ------------------- *)
@@ -940,12 +925,6 @@ END WriteStdout;
 
 (* -------------------------------------------------------------------------- *)
 
-PROCEDURE ExportedAddress(modhdr: Module; index: INTEGER): INTEGER;
-VAR exportoffset: SYSTEM.CARD32;
-BEGIN
-  SYSTEM.GET(ORD(modhdr) + modhdr.nexports + index * 4, exportoffset);
-RETURN ORD(modhdr) + exportoffset END ExportedAddress;
-
 PROCEDURE FindModule(name: ARRAY OF CHAR; key: INTEGER): Module;
 VAR
   hdr:     Module;
@@ -955,38 +934,21 @@ BEGIN
   assert(hdr.size # 0); (*, "FindModule hdr.size is 0.");*)
 RETURN hdr END FindModule;
 
-PROCEDURE RelocatePointerAddresses*(ptradr, varadr: INTEGER);
-VAR ptroff: INTEGER;
+
+PROCEDURE ExportedAddress(modhdr: Module; index: INTEGER): INTEGER;
+VAR exportoffset: SYSTEM.CARD32;
 BEGIN
-  SYSTEM.GET(ptradr, ptroff);
-  WHILE ptroff >= 0 DO
-    SYSTEM.PUT(ptradr, varadr + ptroff);
-    INC(ptradr, 8);
-    SYSTEM.GET(ptradr, ptroff)
-  END
-END RelocatePointerAddresses;
+  SYSTEM.GET(ORD(modhdr) + modhdr.nexports + index * 4, exportoffset);
+RETURN ORD(modhdr) + exportoffset END ExportedAddress;
 
 
 PROCEDURE LinkImport*(modadr, offset, impno, modno: INTEGER; modules: ARRAY OF Module);
 VAR disp, absreloc: INTEGER;
 BEGIN
-  (*
-  ws("LinkImport(modadr "); wh(modadr);
-  ws("H, offset ");         wh(offset);
-  ws("H, impno ");          wh(impno);
-  ws("H, modno ");          wh(modno); wsn("H, modules).");
-  *)
   IF modno = 0 THEN  (* system function *)
     SYSTEM.GET(modadr + offset, disp);
-    IF    impno = NewProc                   THEN disp := SYSTEM.ADR(NewPointer)            + disp - modadr
-    ELSIF impno = AssertionFailureProc      THEN disp := SYSTEM.ADR(AssertionFailure)      + disp - modadr
-    ELSIF impno = ArraySizeMismatchProc     THEN disp := SYSTEM.ADR(ArraySizeMismatch)     + disp - modadr
-    ELSIF impno = UnterminatedStringProc    THEN disp := SYSTEM.ADR(UnterminatedString)    + disp - modadr
-    ELSIF impno = IndexOutOfRangeProc       THEN disp := SYSTEM.ADR(IndexOutOfRange)       + disp - modadr
-    ELSIF impno = NilPointerDereferenceProc THEN disp := SYSTEM.ADR(NilPointerDereference) + disp - modadr
-    ELSIF impno = TypeGuardFailureProc      THEN disp := SYSTEM.ADR(TypeGuardFailure)      + disp - modadr
-    ELSE  assert(FALSE) (*, "LoadModule: Unexpected system function import number.")*)
-    END;
+    ASSERT((impno >= 0) & (impno <= HandlerCount));
+    disp := SYSTEM.ADR(Handlers) + 8 * impno + disp - modadr;
     SYSTEM.PUT(modadr + offset, disp)
   ELSIF modno = 0FFFFH THEN (* 64 bit absolute address relocation *)
     (* qword at offset contains 32/0,32/module offset or 32/1,16/mod,16/imp *)
@@ -1006,6 +968,18 @@ BEGIN
     SYSTEM.PUT(modadr + offset, disp)
   END
 END LinkImport;
+
+
+PROCEDURE RelocatePointerAddresses*(ptradr, varadr: INTEGER);
+VAR ptroff: INTEGER;
+BEGIN
+  SYSTEM.GET(ptradr, ptroff);
+  WHILE ptroff >= 0 DO
+    SYSTEM.PUT(ptradr, varadr + ptroff);
+    INC(ptradr, 8);
+    SYSTEM.GET(ptradr, ptroff)
+  END
+END RelocatePointerAddresses;
 
 
 PROCEDURE LoadModule(imagehdr: Module);
@@ -1177,14 +1151,6 @@ BEGIN
   Log                   := NoLog;
   Sol                   := FALSE;
   ExceptionDepth        := 0;
-  NewPointer            := NIL;
-  AssertionFailure      := NIL;
-  ArraySizeMismatch     := NIL;
-  UnterminatedString    := NIL;
-  IndexOutOfRange       := NIL;
-  NilPointerDereference := NIL;
-  TypeGuardFailure      := NIL;
-  PostMortemDump        := NIL;
 
   (* Initialise console input/output *)
   Stdin  := GetStdHandle(-10);  (* -10:   StdInputHandle *)
@@ -1224,15 +1190,7 @@ BEGIN
   Root.next := NIL;
   AllocPtr := ModuleSpace + ImgHeader.size;
 
-
-  (* Initialise system fuction handlers *)
-  NewPointer            := NewPointerHandler;
-  AssertionFailure      := AssertionFailureHandler;
-  ArraySizeMismatch     := ArraySizeMismatchHandler;
-  UnterminatedString    := UnterminatedStringHandler;
-  IndexOutOfRange       := IndexOutOfRangeHandler;
-  NilPointerDereference := NilPointerDereferenceHandler;
-  TypeGuardFailure      := TypeGuardFailureHandler;
+  InitSysHandlers;
 
   (* Trap OS exceptions *)
   IF AddVectoredExceptionHandler(1, SYSTEM.ADR(ExceptionHandler)) = 0 THEN

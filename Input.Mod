@@ -43,14 +43,7 @@ BEGIN
   IF Shift OR Ctrl THEN INC(kbdCode, 80H) END; (*ctrl implies shift*)
   SYSTEM.GET(KTabAdr + kbdCode, ch);  (* Was: ch := kbdTab[kbdCode]; *)
   IF Ctrl THEN ch := CHR(ORD(ch) MOD 20H) END;
-  Recd := FALSE;
-
-  IF ~Ctrl THEN
-    H.ws("kbdCode "); H.wh(kbdCode);
-    H.ws("H -> ");    H.wh(ORD(ch));  H.wc("H");
-    IF ch >= 20X THEN H.ws(" '"); H.wc(ch); H.wc("'") END;
-    H.wsn(".")
-  END
+  Recd := FALSE
 END Read;
 
 PROCEDURE Mouse*(VAR keys: SET; VAR x, y: INTEGER);

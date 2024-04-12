@@ -43,8 +43,8 @@ BEGIN ch := s[0];  res := 1;  i := 1;
 END Check;
 
 
-PROCEDURE ReadBuf(VAR r: Files.Rider;  VAR buf: ARRAY OF BYTE);
-BEGIN Files.ReadBytes(r, buf, LEN(buf)) END ReadBuf;
+PROCEDURE ReadVar(VAR r: Files.Rider;  VAR var: ARRAY OF BYTE);
+BEGIN Files.ReadBytes(r, var, LEN(var)) END ReadVar;
 
 
 PROCEDURE Load*(name: ARRAY OF CHAR;  VAR newmod: Module);
@@ -189,7 +189,7 @@ BEGIN
       Files.ReadBytes(R, impcount, 4);
       (*H.ws("Import count: "); H.wi(impcount); H.wsn(".");*)
       FOR i := 1 TO impcount DO
-        ReadBuf(R, offset);  ReadBuf(R, impno);  ReadBuf(R, modno);
+        ReadVar(R, offset);  ReadVar(R, impno);  ReadVar(R, modno);
         H.LinkImport(ORD(mod), offset, impno, modno, import)
       END;
 

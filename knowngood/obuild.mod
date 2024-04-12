@@ -456,15 +456,23 @@ BEGIN
   END;
 END Build;
 
+PROCEDURE wsl(s: ARRAY OF CHAR; w: INTEGER);
+VAR l: INTEGER;
+BEGIN
+  H.ws(s);
+  DEC(w, H.Length(s));
+  WHILE w > 0 DO H.wc(" "); DEC(w) END
+END wsl;
 
 PROCEDURE AddModule(mod: ModuleFile);
 VAR
   r:   Files.Rider;
   hdr: H.ModuleDesc;
+  l:   INTEGER;
 BEGIN
   Files.Set(r, mod.code.file, 0);
   Files.ReadBytes(r, hdr, SYSTEM.SIZE(H.ModuleDesc));
-  H.wsl(mod.name, LongestModname + 1);
+  wsl(mod.name, LongestModname + 1);
   WriteHuman(hdr.ptr, 12);  INC(TotalCode,    hdr.ptr);
   WriteHuman(hdr.nvarsize, 12);   INC(TotalGlobals, hdr.nvarsize);
   WriteHuman(hdr.cmd      - hdr.ptr,      8);
@@ -494,7 +502,7 @@ BEGIN
   H.Append(Modulename, PEname);  H.Append(".exe", PEname);
 
   H.wn;
-  H.wsl("Module", LongestModname);
+  wsl("Module", LongestModname);
   H.wsn("  static-code global-vars recptrs  cmds lineadr  export  import");
 
   FOR i := 1 TO LongestModname DO H.wc("-") END;
@@ -505,7 +513,7 @@ BEGIN
   AddImports(GetModule(Modulename));
 
   H.wb(LongestModname);  H.wsn(" ============ ===========");
-  H.wsl("Total", LongestModname + 1);
+  wsl("Total", LongestModname + 1);
   WriteHuman(TotalCode, 12);
   WriteHuman(TotalGlobals, 12);
   H.wn;

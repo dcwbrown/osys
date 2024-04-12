@@ -1,6 +1,6 @@
 :: build.cmd - build Oberon comiler and system
 ;;
-SET VERBOSE=
+@SET VERBOSE=
 ::
 :: The compiler is built if any files affecting the compiler have changed
 ::
@@ -126,11 +126,13 @@ Test
 @cd ..
 @echo Compiler build successful. Run snapgood.cmd to snapshot as known good.
 @goto buildsystem
+::@goto buildlinker
 ::
 :testfailed
 @echo.
 @echo Compiler build failed. Tests.mod failed.
 @goto end
+::
 ::
 ::
 ::
@@ -159,6 +161,33 @@ System
 @cd ..
 @echo.
 @echo Oberon system build failed.
-
-
+@goto end
+::
+::
+::
+::
+:buildlinker
+::
+::  Build linker
+::
+@rd /s /q buildlink 2>nul
+@md buildlink
+@cd buildlink
+@copy ..\build2\*.x64 >NUL
+@copy ..\build2\*.smb >NUL
+@copy ..\*.mod >NUL
+..\build2\obuild %VERBOSE% /s ./ Link
+@if errorlevel 1 goto linkbuildfailed
+::
+Link
+@cd ..
+@goto end
+::
+::
+:linkbuildfailed
+@cd ..
+@echo.
+@echo Linker build failed.
+::
+::
 :end

@@ -265,7 +265,7 @@ BEGIN
   SYSTEM.PUT(List0 + 16, 0);
   Allocated := 0;
 
-  SYSTEM.PUT(SYSTEM.ADR(H.NewPointer), SYSTEM.ADR(New));
+  SYSTEM.PUT(SYSTEM.ADR(H.Handlers[H.NewProc]), SYSTEM.ADR(New));
 
   IF H.Verbose IN H.LoadFlags THEN
     H.ws("* Heap allocated at ");  H.wh(HeapOrg);

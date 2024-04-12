@@ -1301,17 +1301,14 @@ BEGIN
 
     IF ORS.errcnt = 0 THEN
       ORB.Export(modid, newsymbols, key);
-      IF newsymbols THEN Texts.WriteString(W, "  new symbol file") END
+      IF newsymbols THEN Texts.WriteString(W, " new symbol file") END
     END;
 
     IF ORS.errcnt = 0 THEN
       ORG.Close(modid, key, exno);
-      Texts.WriteString(W, "  ");
-      Texts.WriteInt(W, (H.Time() - start) DIV 10000, 1); Texts.WriteString(W, "ms  ");
-      Texts.WriteInt(W, Kernel.Allocated DIV 1000, 1);    Texts.WriteString(W, "KB heap used  ");
-      Texts.WriteInt(W, X64.PC, 1);                       Texts.WriteString(W, "  ");
-      Texts.WriteInt(W, dc, 1);                           Texts.WriteString(W, " ");
-      Texts.WriteHex(W, key)
+      Texts.WriteInt(W, X64.PC, 6);  Texts.WriteInt(W, dc, 6);
+      Texts.WriteHex(W, key);
+      Texts.WriteInt(W, (H.Time() - start) DIV 10000, 4); Texts.WriteString(W, "ms")
     ELSE
       Texts.WriteLn(W);  Texts.WriteString(W, "compilation FAILED");
     END;

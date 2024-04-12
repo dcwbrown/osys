@@ -42,6 +42,7 @@ VAR
   id*:          Ident;    (* for identifiers *)
   str*:         ARRAY stringBufSize OF CHAR;
   errcnt*:      INTEGER;
+  W:            Texts.Writer;
 
   ch:       CHAR;      (* Last character read *)
   errpos:   INTEGER;
@@ -82,11 +83,12 @@ PROCEDURE Mark*(msg: ARRAY OF CHAR);
 VAR p: INTEGER;
 BEGIN p := Pos();
   IF (p > errpos) & (errcnt < 25) THEN
-    H.wn;
-    H.ws("  [");     H.wi(linenum);
-    H.ws(":");       H.wi(p - linebeg);
-    H.ws("] pos ");  H.wi(p);
-    H.wc(" ");       H.ws(msg)
+    Texts.WriteLn(W);
+    Texts.WriteString(W, "  [");    Texts.WriteInt(W, linenum, 1);
+    Texts.WriteString(W, ":");      Texts.WriteInt(W, p - linebeg, 1);
+    Texts.WriteString(W, "] pos "); Texts.WriteInt(W, p, 1);
+    Texts.Write(W, " ");            Texts.WriteString(W, msg);
+    Texts.Append(Oberon.Log, W.buf)
   END;
   INC(errcnt); errpos := p + 4
 END Mark;
@@ -358,6 +360,7 @@ BEGIN keyTab[k].id := name; keyTab[k].sym := sym; INC(k)
 END EnterKW;
 
 BEGIN
+  Texts.OpenWriter(W);
   ch     := 0X;
   k      := 0;
   KWX[0] := 0;
