@@ -13,6 +13,7 @@ build1/*
 build2/*
 buildtest/*
 buildsys/*
+buildlink/*
 p6000/*
 wirth/old/*
 wirth/PaulReed/*

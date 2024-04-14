@@ -14,7 +14,7 @@ CONST
   IndexOutOfRangeProc*       = 4;
   NilPointerDereferenceProc* = 5;
   TypeGuardFailureProc*      = 6;
-  HandlerCount               = 7;
+  HandlerCount*              = 7;
 
   MaxPath* = 780;  (* Enough UTF-8 bytes for for 260 wide chars *)
 
@@ -99,7 +99,7 @@ TYPE
 VAR
   (* Start of pre-loaded variables (preset by WinPE.mod) *)
   Exeadr:     INTEGER;  (* Image PE header loaded address *)
-  ImgHeader:  Module;   (* Image Oberon section loaded address *)
+  ImgHeader*: Module;   (* Image Oberon section loaded address *)
   LoadFlags*: SET;
 
   (* Pre-loaded Kernel32 imports *)
@@ -1145,6 +1145,54 @@ VAR result: INTEGER;
 BEGIN result := SYSTEM.ADR(result) + 8
 RETURN result END GetRSP;
 
+PROCEDURE PressKeyToContinue;
+VAR ch: CHAR;
+BEGIN wcn; ws("Press any key to continue "); ch := GetChar(); wn
+END PressKeyToContinue;
+
+PROCEDURE NewStartup;
+VAR
+  res, loadedlen, reserveadr, reservelen, lastbyte: INTEGER;
+  mod: Module;
+BEGIN
+  wsn("* WinHost starting *");
+  ws("* Exeadr:       "); wh(Exeadr);         wsn("H *");
+  ws("* ImgHeader at: "); wh(ORD(ImgHeader)); wsn("H *");
+  ws("* LoadFlags:    "); wh(ORD(LoadFlags)); wsn("H *");
+
+  (* Show loaded modules *)
+  wsn("* Modules: *");
+  mod := ImgHeader;
+  WHILE mod # NIL DO
+    ws("  "); ws(mod.name);
+    ws(" at "); wh(ORD(mod));
+    ws("H size "); wh(mod.size);
+    wsn("H.");
+    lastbyte := ORD(mod) + mod.size - 1;
+    mod := mod.next;
+  END;
+
+  ws("* lastbyte "); wh(lastbyte);
+  ws("H => loaded length "); wh(lastbyte + 1 - ORD(ImgHeader));
+  loadedlen := (lastbyte + 1 - ORD(ImgHeader) + 4095) DIV 4096 * 4096;
+  ws("H, rounded up to whole pages "); wh(loadedlen);
+  wsn("H.");
+
+  (*Testing*) INC(loadedlen, 10000H);
+
+  (* Extend memory to 2GB reserve *)
+  (*loadedlen := 1000000H;*)
+  reserveadr := ORD(ImgHeader) + loadedlen;
+  reservelen := 80000000H - loadedlen;
+  ws("Reserving memory from "); wh(reserveadr);
+  ws("H up to "); wh(reserveadr + reservelen); wsn("H.");
+  res := VirtualAlloc(reserveadr, reservelen, MEMRESERVE, PAGEEXECUTEREADWRITE);
+  ws("* VirtualAlloc result "); wh(res); wsn("H *");
+  IF res = 0 THEN ws(": "); WriteWindowsErrorMessage(GetLastError()); wsn(".")  END;
+  PressKeyToContinue;
+  ExitProcess(0)
+
+END NewStartup;
 
 BEGIN
   HWnd                  := 0;
@@ -1160,43 +1208,50 @@ BEGIN
 
   Log := WriteStdout;
 
-  IF Verbose IN LoadFlags THEN
-    ws("* WinHost starting, ImgHeader at "); wh(ORD(ImgHeader)); wsn("H.");
-    ws("* Initial RSP "); wh(GetRSP()); wsn("H.");
-  END;
+  IF 63 IN LoadFlags THEN  (* New non-copying startup variant *)
 
-  PrepareOberonMachine;
+    NewStartup
 
-  IF ImgHeader.size # (ImgHeader.nimports + ImgHeader.nvarsize + 15) DIV 16 * 16 THEN
-    assertmsg(FALSE, "Invalid image size in bootstrap image (WinHost) header")
-  END;
+  ELSE
 
-  (* Copy boot module into newly committed memory and switch PC to the new code. *)
-  SYSTEM.COPY(ORD(ImgHeader), ModuleSpace, ImgHeader.size);
+    IF Verbose IN LoadFlags THEN
+      ws("* WinHost starting, ImgHeader at "); wh(ORD(ImgHeader)); wsn("H.");
+      ws("* Initial RSP "); wh(GetRSP()); wsn("H.");
+    END;
 
-  (***** Transfer program counter to copied code *****)
-  IncPC(ModuleSpace - ORD(ImgHeader));
+    PrepareOberonMachine;
 
-  Log := WriteStdout;  (* Correct Log fn address following move *)
-  IF Verbose IN LoadFlags THEN
-    ws("* Transferred PC to code copied to Oberon memory at ");  wh(GetPC());  wsn("H.")
-  END;
+    IF ImgHeader.size # (ImgHeader.nimports + ImgHeader.nvarsize + 15) DIV 16 * 16 THEN
+      assertmsg(FALSE, "Invalid image size in bootstrap image (WinHost) header")
+    END;
 
-  SYSTEM.PUT(SYSTEM.ADR(Root), ModuleSpace);
-  INC(Root.cmd, ModuleSpace);
-  INC(Root.ptr, ModuleSpace);
-  RelocatePointerAddresses(Root.ptr, ModuleSpace + Root.nimports);
+    (* Copy boot module into newly committed memory and switch PC to the new code. *)
+    SYSTEM.COPY(ORD(ImgHeader), ModuleSpace, ImgHeader.size);
 
-  Root.next := NIL;
-  AllocPtr := ModuleSpace + ImgHeader.size;
+    (***** Transfer program counter to copied code *****)
+    IncPC(ModuleSpace - ORD(ImgHeader));
 
-  InitSysHandlers;
+    Log := WriteStdout;  (* Correct Log fn address following move *)
+    IF Verbose IN LoadFlags THEN
+      ws("* Transferred PC to code copied to Oberon memory at ");  wh(GetPC());  wsn("H.")
+    END;
 
-  (* Trap OS exceptions *)
-  IF AddVectoredExceptionHandler(1, SYSTEM.ADR(ExceptionHandler)) = 0 THEN
-    AssertWinErr(GetLastError())
-  END;
+    SYSTEM.PUT(SYSTEM.ADR(Root), ModuleSpace);
+    INC(Root.cmd, ModuleSpace);
+    INC(Root.ptr, ModuleSpace);
+    RelocatePointerAddresses(Root.ptr, ModuleSpace + Root.nimports);
 
-  LoadRemainingModules(SYSTEM.VAL(Module, ORD(ImgHeader) + ImgHeader.size));
-  ExitProcess(0);
+    Root.next := NIL;
+    AllocPtr := ModuleSpace + ImgHeader.size;
+
+    InitSysHandlers;
+
+    (* Trap OS exceptions *)
+    IF AddVectoredExceptionHandler(1, SYSTEM.ADR(ExceptionHandler)) = 0 THEN
+      AssertWinErr(GetLastError())
+    END;
+
+    LoadRemainingModules(SYSTEM.VAL(Module, ORD(ImgHeader) + ImgHeader.size));
+    ExitProcess(0)
+  END
 END WinHost.

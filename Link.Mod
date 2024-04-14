@@ -1,16 +1,25 @@
 MODULE Link;  (* Create exe from a list of compiled Oberon modules *)
 (* DCWB 14.04.2023..10.02.2024 *)
 
-IMPORT SYSTEM, H := WinHost, K := Kernel, X64, Files, Modules;
+IMPORT SYSTEM, Host := WinHost, Kernel, X64, Files, Modules;
 
 CONST
-  HeaderSize      =  400H;
-  MemoryAlignment = 1000H;  (* Sections are a multiple of this size in memory *)
-  FileAlignment   =  200H;  (* Sections are a multiple of this size on file *)
+  HeaderSize      =  200H;
+  MemoryAlignment = 1000H;   (* Sections are a multiple of this size in memory *)
+  FileAlignment   =  200H;   (* Sections are a multiple of this size on file *)
 
-  ImageBase   = 400000H;
-  FadrImport  = 0400H;  RvaImport  = 1000H;  (* Import directory table *)
-  FadrModules = 0E00H;  RvaModules = 2000H;  (* Oberon modules *)
+  (* Import section *)
+  FadrImport  = HeaderSize;  (* Import directory table *)
+  RvaImport   = 1000H;
+  ImportVSize = 0F000H;      (* Size reserved for import table in memory *)
+
+  (* Note: Import table is sized large to place module base at 1,0000,0000H *)
+
+  (* Modules section *)
+  FadrModules = 0E00H;
+  RvaModules  = RvaImport + ImportVSize; (* 2000H; *)
+  ImageBase   = 0FFFF0000H;  (* Image base must be multiple of 64k / 10000H  *)
+  ModuleBase  = ImageBase + RvaModules;
 
   BootstrapVarBytes   = 24;  (* preloaded bootstrap VAR size preceeding imported proc addresses *)
   Kernel32ImportCount = 38;
@@ -18,21 +27,7 @@ CONST
   User32ImportCount   = 26;
 
 TYPE
-  ModuleDesc = H.ModuleDesc;
-
-  (* Temporary new code header
-  ModuleDesc* = RECORD-
-    length*:   SYSTEM.CARD32;  (* File length *)
-    initcode*: SYSTEM.CARD32;
-    pointers*: SYSTEM.CARD32;
-    commands*: SYSTEM.CARD32;
-    exports*:  SYSTEM.CARD32;
-    imports*:  SYSTEM.CARD32;  (* VARs start here following import resolution *)
-    varsize*:  SYSTEM.CARD32;
-    key*:      INTEGER;
-  END;
-  *)
-
+  ModuleDesc = Host.ModuleDesc;
 
   ObjectFile = POINTER TO ObjectFileDesc;
   ObjectFileDesc = RECORD
@@ -144,21 +139,21 @@ TYPE
 
 
 VAR
-  FileName:   ARRAY 512 OF CHAR;
-  ExeFile:    Files.File;
-  Exe:        Files.Rider;
-  OberonSize: INTEGER;
-  ImportSize: INTEGER;
-  Objects:    ObjectFile;
-  LastObject: ObjectFile;
-  Verbose:    BOOLEAN;
+  FileName:     ARRAY 512 OF CHAR;
+  ExeFile:      Files.File;
+  Exe:          Files.Rider;
+  ModuleSize:   INTEGER;
+  ImportMSize:  INTEGER;  (* Import section size in memory (multiple of 16 bytes) *)
+  Objects:      ObjectFile;
+  LastObject:   ObjectFile;
+  Verbose:      BOOLEAN;
+  EntryPoint:   INTEGER;
 
-  Bootstrap:  BootstrapBuffer;
+  (*Bootstrap:  BootstrapBuffer;*)
 
   Idt:        ImportDirectoryTable;
 
-  Mem:        ARRAY 10000H OF BYTE;
-  AllocPtr:   INTEGER;
+  Mem:        ARRAY 10000H OF BYTE;  (* Will be loaded at ImageBase + RvaModules *)
   ModAdr:     ARRAY 16 OF RECORD  (* Module name to base address map *)
     name: Modules.ModuleName;
     key:  INTEGER;
@@ -199,9 +194,10 @@ END FileAlign;
 PROCEDURE WriteImports;
 VAR
   i, dll, n:   INTEGER;
-  target:      INTEGER;
   importhints: ARRAY 1500 OF BYTE;
   hintsize:    INTEGER;
+  target:      INTEGER;
+  mod:         Modules.Module;
 
   PROCEDURE FieldRVA(VAR field: ARRAY OF BYTE): U32;
   BEGIN RETURN RvaImport + SYSTEM.ADR(field) - SYSTEM.ADR(Idt) END FieldRVA;
@@ -218,14 +214,15 @@ VAR
     lookups[n] := RvaImport + SYSTEM.SIZE(ImportDirectoryTable) + i;
     INC(n);
     ASSERT(dll < 256);
-    ASSERT(i + H.Length(name) + 3 < LEN(hints));
+    ASSERT(i + Host.Length(name) + 3 < LEN(hints));
     hints[i] := dll;  hints[i+1] := 0;  INC(i, 2);
     AddProc(hints, i, name);
   END AddImport;
 
 BEGIN
-  H.ZeroFill(Idt);
-  target := RvaModules + Bootstrap.Header.nimports + BootstrapVarBytes;
+  Host.ZeroFill(Idt);
+  mod := SYSTEM.VAL(Modules.Module, SYSTEM.ADR(Mem));
+  target := RvaModules + mod.nimports + BootstrapVarBytes;
 
   (* **NOTE** these imports must be in exactly the same order as the *)
   (* corresponding procedure variable declarations in WinHost.mode   *)
@@ -336,61 +333,25 @@ BEGIN
   Files.WriteBytes(Exe, Idt, 0, SYSTEM.SIZE(ImportDirectoryTable));
   Files.WriteBytes(Exe, importhints, 0, hintsize);
 
-  ImportSize := Align(Files.Pos(Exe), 16) - FadrImport;
-  (*H.ws("IDT size "); H.wh(ImportSize); H.wsn("H.");*)
-  IF FadrImport + ImportSize >= FadrModules THEN
-    H.ws("FadrImport + ImportSize: "); H.wh(FadrImport + ImportSize); H.ws("H - increase FadrModules");
+  ImportMSize := Align(Files.Pos(Exe), 16) - FadrImport;
+  ASSERT(ImportMSize <= ImportVSize);
+
+
+  (*Host.ws("IDT size "); Host.wh(ImportMSize); Host.wsn("H.");*)
+  IF FadrImport + ImportMSize >= FadrModules THEN
+    Host.ws("FadrImport + ImportMSize: "); Host.wh(FadrImport + ImportMSize); Host.ws("H - increase FadrModules");
     ASSERT(FALSE)
   END;
-  IF RvaImport  + ImportSize >= RvaModules THEN
-    H.ws("RvaImport  + ImportSize: "); H.wh(RvaImport  + ImportSize); H.ws("H - increase RvaModules");
+  IF RvaImport  + ImportMSize >= RvaModules THEN
+    Host.ws("RvaImport  + ImportMSize: "); Host.wh(RvaImport  + ImportMSize); Host.ws("H - increase RvaModules");
     ASSERT(FALSE)
   END;
+
+  (*
+  Host.wsn("Idt: ");
+  Host.DumpMem(2, SYSTEM.ADR(Idt), SYSTEM.ADR(Idt), target - (RvaModules + mod.nimports));
+  *)
 END WriteImports;
-
-
-(* -------------------------------------------------------------------------- *)
-(* -------------------------------------------------------------------------- *)
-
-PROCEDURE CopyFile(f: Files.File);
-VAR  r: Files.Rider;  buf: ARRAY 1000H OF BYTE;
-BEGIN
-  IF Verbose THEN
-    H.ws("Adding "); H.ws(f.name); H.ws(" at file offset "); H.wh(Files.Pos(Exe));
-    H.ws("H, FadrModules + "); H.wh(Files.Pos(Exe) - FadrModules); H.wsn("H.")
-  END;
-  ASSERT(Files.Pos(Exe) MOD 16 = 0);
-  Files.Set(r, f, 0);
-  WHILE ~r.eof DO
-    Files.ReadBytes(r, buf, LEN(buf));
-    Files.WriteBytes(Exe, buf, 0, LEN(buf) - r.res);
-  END;
-  FileAlign(Exe, 16);
-END CopyFile;
-
-
-PROCEDURE WriteZeroes(n: INTEGER);
-VAR i: INTEGER;
-BEGIN FOR i := 1 TO n DO Files.WriteByte(Exe, 0) END END WriteZeroes;
-
-
-PROCEDURE WriteModules;
-VAR object: ObjectFile;
-BEGIN
-  object := Objects;
-  WHILE object # NIL DO
-    IF object.file.name # "WinHost.x64" THEN CopyFile(object.file) END;
-    object := object.next
-  END;
-
-  WriteZeroes(SYSTEM.SIZE(ModuleDesc));  (* Mark end of modules *)
-
-  (* Fill Oberon section to a whole multiple of section alignment *)
-  (* by writing 0 to its last byte *)
-  FileAlign(Exe, FileAlignment);
-
-  OberonSize := Files.Pos(Exe) - FadrModules;
-END WriteModules;
 
 
 (* -------------------------------------------------------------------------- *)
@@ -418,7 +379,7 @@ VAR
   shdr: SectionHeader;
 
 BEGIN
-  H.ZeroFill(shdr);
+  Host.ZeroFill(shdr);
   shdr.Name             := name;
   shdr.VirtualSize      := vsize;
   shdr.VirtualAddress   := rva;
@@ -444,15 +405,15 @@ VAR
 
 BEGIN
   (*
-  H.ws("Size of eMagic:     "); H.wh(SYSTEM.ADR(hdr.zeroes)     - SYSTEM.ADR(hdr.eMagic));     H.wsn("H.");
-  H.ws("Size of zeroes:     "); H.wh(SYSTEM.ADR(hdr.eLfanew)    - SYSTEM.ADR(hdr.zeroes));     H.wsn("H.");
-  H.ws("Size of eLfanew:    "); H.wh(SYSTEM.ADR(hdr.dosProgram) - SYSTEM.ADR(hdr.eLfanew));    H.wsn("H.");
-  H.ws("Size of dosProgram: "); H.wh(SYSTEM.ADR(hdr.signature)  - SYSTEM.ADR(hdr.dosProgram)); H.wsn("H.");
-  H.ws("Size of signature:  "); H.wh(SYSTEM.ADR(hdr.machine)    - SYSTEM.ADR(hdr.signature));  H.wsn("H.");
-  H.ws("Size of Zeroes58:   "); H.wh(SYSTEM.SIZE(Zeroes58));                                   H.wsn("H.");
-  H.ws("Size of PEheader:   "); H.wh(SYSTEM.SIZE(PEheader));                                   H.wsn("H.");
+  Host.ws("Size of eMagic:     "); Host.wh(SYSTEM.ADR(hdr.zeroes)     - SYSTEM.ADR(hdr.eMagic));     Host.wsn("Host.");
+  Host.ws("Size of zeroes:     "); Host.wh(SYSTEM.ADR(hdr.eLfanew)    - SYSTEM.ADR(hdr.zeroes));     Host.wsn("Host.");
+  Host.ws("Size of eLfanew:    "); Host.wh(SYSTEM.ADR(hdr.dosProgram) - SYSTEM.ADR(hdr.eLfanew));    Host.wsn("Host.");
+  Host.ws("Size of dosProgram: "); Host.wh(SYSTEM.ADR(hdr.signature)  - SYSTEM.ADR(hdr.dosProgram)); Host.wsn("Host.");
+  Host.ws("Size of signature:  "); Host.wh(SYSTEM.ADR(hdr.machine)    - SYSTEM.ADR(hdr.signature));  Host.wsn("Host.");
+  Host.ws("Size of Zeroes58:   "); Host.wh(SYSTEM.SIZE(Zeroes58));                                   Host.wsn("Host.");
+  Host.ws("Size of PEheader:   "); Host.wh(SYSTEM.SIZE(PEheader));                                   Host.wsn("Host.");
   *)
-  H.ZeroFill(hdr);
+  Host.ZeroFill(hdr);
 
   (* MSDOS stub *)
   hdr.eMagic               := 5A4DH;
@@ -478,10 +439,10 @@ BEGIN
   hdr.pe32magic               := 20BH;  (* PE32+ *)
   hdr.majorLinkerVersion      := 1;
   hdr.minorLinkerVersion      := 49H;
-  hdr.sizeOfCode              := Align(OberonSize, FileAlignment);
-  hdr.sizeOfInitializedData   := Align(ImportSize, MemoryAlignment);
+  hdr.sizeOfCode              := Align(ModuleSize, FileAlignment);
+  hdr.sizeOfInitializedData   := ImportVSize;  (* ModuleSize already accounted for by hdr.sizeOfCode *)
   hdr.sizeOfUninitializedData := 0;
-  hdr.addressOfEntryPoint     := RvaModules + Bootstrap.Header.ninitcode;
+  hdr.addressOfEntryPoint     := EntryPoint;
   hdr.baseOfCode              := RvaModules;
 
   (* Windows specific PE32+ fields *)
@@ -490,9 +451,11 @@ BEGIN
   hdr.fileAlignment           := FileAlignment;
   hdr.majorOSVersion          := 1;
   hdr.majorSubsystemVersion   := 5;
-  hdr.sizeOfImage             := Align(HeaderSize, MemoryAlignment)
-                               + Align(OberonSize, MemoryAlignment)
+  hdr.sizeOfImage             := RvaModules + Align(ModuleSize, MemoryAlignment);
+                               (*Align(HeaderSize, MemoryAlignment)
+                               + Align(ModuleSize, MemoryAlignment)
                                + 4096;   (* import section *)
+                               *)
   hdr.sizeOfHeaders           := HeaderSize;
   hdr.subsystem               := 3;    (* Console *)
 (*hdr.subsystem               := 2;*)  (* Windows *)
@@ -504,7 +467,7 @@ BEGIN
 
   (* Optional header data directories *)
   hdr.importTableRVA          := RvaImport;
-  hdr.importTableSize         := ImportSize;
+  hdr.importTableSize         := ImportVSize;
 
   spos(0);
   Files.WriteBytes(Exe, hdr, 0, SYSTEM.SIZE(PEheader));
@@ -512,20 +475,29 @@ BEGIN
 
   (* Write section headers *)
   WriteSectionHeader(".idata",
-                     Align(ImportSize, MemoryAlignment),   (* Size in memory *)
-                     Align(ImportSize, FileAlignment),     (* Size on disk *)
+                     ImportVSize,                           (* Section size in memory *)
+                     Align(ImportMSize, FileAlignment),     (* Size on disk *)
                      RvaImport, FadrImport,
                      SReadable + SWriteable + SInitialised);
+
   WriteSectionHeader("Oberon",
-                     Align(OberonSize, MemoryAlignment),    (* Size in memory *)
-                     Align(OberonSize, FileAlignment),      (* Size on disk *)
+                     Align(ModuleSize, MemoryAlignment),    (* Size in memory *)
+                     Align(ModuleSize, FileAlignment),      (* Size on disk *)
                      RvaModules, FadrModules,
                      SReadable + SWriteable + SExecutable + SCode);
+
+  Host.ws("After PE header, Pos(Exe) ");                Host.wh(Files.Pos(Exe));
+  Host.ws("H, Align(Files.Pos(Exe), FileAlignment) ");  Host.wh(Align(Files.Pos(Exe), FileAlignment));
+  Host.ws("H, HeaderSize "); Host.wh(HeaderSize); Host.wsn("H.");
+
+  ASSERT(Align(Files.Pos(Exe), FileAlignment) = HeaderSize);
+
 END WritePEHeader;
 
 (* -------------------------------------------------------------------------- *)
 (* -------------------------------------------------------------------------- *)
 
+(*
 PROCEDURE AddModule*(f: Files.File);
 VAR obj: ObjectFile;
 BEGIN
@@ -534,83 +506,35 @@ BEGIN
   IF Objects = NIL THEN Objects := obj ELSE LastObject.next := obj END;
   LastObject := obj
 END AddModule;
-
-
-PROCEDURE GetBootstrap;
-VAR
-  f: Files.File;
-  r: Files.Rider;
-BEGIN
-  f := Objects.file;  Objects := Objects.next;  (* First object is the bootstrap *)
-  Files.Set(r, f, 0);
-  Files.ReadBytes(r, Bootstrap,  SYSTEM.SIZE(BootstrapBuffer));
-  (*H.ws("Bootstrap bytes read: "); w.i(Files.Pos(r)); H.wsn(".");*)
-  ASSERT(r.res >= 0);
-  Files.Close(f)
-END GetBootstrap;
-
-PROCEDURE WriteBootstrap(LoadFlags: SET);
-BEGIN
-  (* Fixup bootstrap image size in header *)
-  Bootstrap.Header.size := (Bootstrap.Header.nimports + Bootstrap.Header.nvarsize + 15) DIV 16 * 16;
-  (*
-  H.ws("Bootstrap.Header.nimports "); H.wh(Bootstrap.Header.nimports);
-  H.ws("H, Bootstrap.Header.nvarsize "); H.wh(Bootstrap.Header.nvarsize);
-  H.ws("H, Bootstrap.Header.size "); H.wh(Bootstrap.Header.size);
-  H.wsn("H.");
-  *)
-
-  spos(FadrModules);
-  Files.WriteBytes(Exe, Bootstrap, 0, Bootstrap.Header.nimports);  (* Code and tables   *)
-
-  (* Preset bootstrap modules global VARs *)
-  Files.WriteInt(Exe, ImageBase);                                 (* EXE load address  *)
-  Files.WriteInt(Exe, ImageBase + RvaModules);                    (* Header address    *)
-  Files.WriteSet(Exe, LoadFlags);
-  ASSERT(Files.Pos(Exe) -  (FadrModules + Bootstrap.Header.nimports) = BootstrapVarBytes);
-
-  (* Preset bootstrap VARs with WIndows proc addresses *)
-  Files.WriteBytes(Exe, Idt.Kernel32Lookups, 0, Kernel32ImportCount * 8);
-  Files.WriteBytes(Exe, Idt.User32Lookups,   0, User32ImportCount   * 8);
-  Files.WriteBytes(Exe, Idt.Gdi32Lookups,  0, Gdi32ImportCount  * 8);
-
-  WriteZeroes(Bootstrap.Header.nvarsize
-            - ((Kernel32ImportCount + User32ImportCount + Gdi32ImportCount) * 8 + BootstrapVarBytes));
-  FileAlign(Exe, 16)
-END WriteBootstrap;
+*)
 
 
 PROCEDURE ReadVar(VAR r: Files.Rider;  VAR var: ARRAY OF BYTE);
 BEGIN Files.ReadBytes(r, var, LEN(var)) END ReadVar;
 
 
-PROCEDURE ExportedAddress(modhdr: Modules.Module; index: INTEGER): INTEGER;
-VAR exportoffset: SYSTEM.CARD32;
+PROCEDURE ExportedAddress(modhdr: INTEGER; index: INTEGER): INTEGER;
+VAR exportoffset: SYSTEM.CARD32;  mod: Modules.Module;
 BEGIN
-  SYSTEM.GET(ORD(modhdr) + modhdr.nexports + index * 4, exportoffset);
-RETURN ORD(modhdr) + exportoffset END ExportedAddress;
+  mod := SYSTEM.VAL(Modules.Module, SYSTEM.ADR(Mem[modhdr]));
+  SYSTEM.GET(SYSTEM.ADR(Mem[modhdr]) + mod.nexports + index * 4, exportoffset);
+RETURN ModuleBase + modhdr + exportoffset END ExportedAddress;
 
 
-PROCEDURE LinkImport*(modadr, offset, impno, modno: INTEGER; modules: ARRAY OF Modules.Module);
-VAR disp, absreloc: INTEGER;
+PROCEDURE LinkImport*(modadr, offset, impno, modno: INTEGER; modules: ARRAY OF INTEGER);
+VAR disp: SYSTEM.INT32; absreloc, handlertableadr: INTEGER;
 BEGIN
   (*
-  ws("LinkImport(modadr "); wh(modadr);
-  ws("H, offset ");         wh(offset);
-  ws("H, impno ");          wh(impno);
-  ws("H, modno ");          wh(modno); wsn("H, modules).");
+  Host.ws("LinkImport(modadr "); Host.wh(modadr);
+  Host.ws("H, offset ");         Host.wh(offset);
+  Host.ws("H, impno ");          Host.wh(impno);
+  Host.ws("H, modno ");          Host.wh(modno); Host.wsn("H, modules).");
   *)
   IF modno = 0 THEN  (* system function *)
     SYSTEM.GET(modadr + offset, disp);
-    IF    impno = NewProc                   THEN disp := SYSTEM.ADR(NewPointer)            + disp - modadr
-    ELSIF impno = AssertionFailureProc      THEN disp := SYSTEM.ADR(AssertionFailure)      + disp - modadr
-    ELSIF impno = ArraySizeMismatchProc     THEN disp := SYSTEM.ADR(ArraySizeMismatch)     + disp - modadr
-    ELSIF impno = UnterminatedStringProc    THEN disp := SYSTEM.ADR(UnterminatedString)    + disp - modadr
-    ELSIF impno = IndexOutOfRangeProc       THEN disp := SYSTEM.ADR(IndexOutOfRange)       + disp - modadr
-    ELSIF impno = NilPointerDereferenceProc THEN disp := SYSTEM.ADR(NilPointerDereference) + disp - modadr
-    ELSIF impno = TypeGuardFailureProc      THEN disp := SYSTEM.ADR(TypeGuardFailure)      + disp - modadr
-    ELSE  assert(FALSE) (*, "LoadModule: Unexpected system function import number.")*)
-    END;
+    ASSERT((impno >= 0) & (impno <= Host.HandlerCount));
+    handlertableadr := SYSTEM.ADR(Host.Handlers);
+    disp := handlertableadr + 8 * impno + disp - modadr;
     SYSTEM.PUT(modadr + offset, disp)
   ELSIF modno = 0FFFFH THEN (* 64 bit absolute address relocation *)
     (* qword at offset contains 32/0,32/module offset or 32/1,16/mod,16/imp *)
@@ -618,13 +542,13 @@ BEGIN
     IF absreloc DIV 100000000H = 0 THEN  (* offset in this module *)
       SYSTEM.PUT(modadr + offset, modadr + absreloc)
     ELSE  (* import reference from another module *)
-      modno := absreloc DIV 10000H MOD 10000H;  assert(modno > 0);
+      modno := absreloc DIV 10000H MOD 10000H;  ASSERT(modno > 0);
       impno := absreloc MOD 10000H;
-      assert(impno > 0);
+      ASSERT(impno > 0);
       SYSTEM.PUT(modadr + offset, ExportedAddress(modules[modno-1], impno-1))
     END
   ELSE
-    assert(modno > 0);
+    ASSERT(modno > 0);
     SYSTEM.GET(modadr + offset, disp);
     INC(disp, ExportedAddress(modules[modno-1], impno-1) - modadr);
     SYSTEM.PUT(modadr + offset, disp)
@@ -632,35 +556,52 @@ BEGIN
 END LinkImport;
 
 
-PROCEDURE LoadModule(f: Files.File);
+PROCEDURE RelocatePointerAddresses*(ptradr, varadr: INTEGER);
+VAR ptroff: INTEGER;
+BEGIN
+  SYSTEM.GET(ptradr, ptroff);
+  WHILE ptroff >= 0 DO
+    SYSTEM.PUT(ptradr, varadr + ptroff);
+    INC(ptradr, 8);
+    SYSTEM.GET(ptradr, ptroff)
+  END
+END RelocatePointerAddresses;
+
+
+PROCEDURE LoadModule(fn: ARRAY OF CHAR): Modules.Module;
 VAR
+  f:       Files.File;
   mod:     Modules.Module;
   R:       Files.Rider;
   i, m:    INTEGER;
-  size:    INTEGER;
-  modules: ARRAY 32 OF INTEGER;
-  impcnt:  INTEGER;
+  modules: ARRAY 32 OF INTEGER;  (* Offset into Mem of start of module *)
+  impcnt:  SYSTEM.CARD32;
   impname: Modules.ModuleName;
+  impkey:  INTEGER;
   modnum:  INTEGER;
+  offset:  SYSTEM.CARD32;
+  impno:   SYSTEM.CARD16;
+  modno:   SYSTEM.CARD16;
+  ptradr:  INTEGER;
+  ptroff:  INTEGER;
 BEGIN
+  f := Files.Old(fn);
   Files.Set(R, f, 0);
-  mod := SYSTEM.VAL(Modules.Module, SYSTEM.ADR(Mem[AllocPtr]));
+  mod := SYSTEM.VAL(Modules.Module, SYSTEM.ADR(Mem[ModuleSize]));
   ReadVar(R, mod^);
   ModAdr[ModCount].name := mod.name;
   ModAdr[ModCount].key  := mod.key;
-  ModAdr[ModCount].adr  := AllocPtr;
-  INC(ModCount);
-  m := AllocPtr + SYSTEM.SIZE(Modules.ModDesc);
+  ModAdr[ModCount].adr  := ModuleSize;  (* Offset into Mem = relative to ModuleBase *)
+  m := ModuleSize + SYSTEM.SIZE(Modules.ModDesc);
   FOR i := SYSTEM.SIZE(Modules.ModDesc) + 1 TO mod.nimports DO
-    Files.ReadByte(R, mem[m]);  INC(m)
+    Files.ReadByte(R, Mem[m]);  INC(m)
   END;
-  FOR i := 1 TO mod.nvarsize DO mem[m] := 0;  INC(m) END;
-  size := mod.nimports + mod.nvarsize;
+  FOR i := 1 TO mod.nvarsize DO Mem[m] := 0;  INC(m) END;
 
   (* Build list of imported module addresses *)
   Files.ReadString(R, impname);
   impcnt := 0;
-  WHILE (impname[0] # 0X) & (res = 0) DO
+  WHILE impname[0] # 0X DO
     modnum := 0;
     WHILE (modnum < ModCount) & (ModAdr[modnum].name # impname) DO INC(modnum) END;
     ASSERT(modnum < ModCount);
@@ -676,43 +617,125 @@ BEGIN
   Files.ReadBytes(R, impcnt, 4);
   FOR i := 1 TO impcnt DO
     ReadVar(R, offset);  ReadVar(R, impno);  ReadVar(R, modno);
-    LinkImport(ORD(mod), offset, impno, modno, import)
+    LinkImport(ORD(mod), offset, impno, modno, modules)
   END;
 
+  (* Relocate pointer addresses *)
+  ptradr := ORD(mod) + mod.ptr;
+  SYSTEM.GET(ptradr, ptroff);
+  WHILE ptroff >= 0 DO
+    SYSTEM.PUT(ptradr, ptroff + ModuleBase + ORD(mod) + mod.nimports);
+    INC(ptradr, 8);
+    SYSTEM.GET(ptradr, ptroff)
+  END;
 
-END LoadModule;
+  INC(mod.ptr, ModuleBase + ModuleSize);
+
+  Host.ws("Loaded module "); Host.wi(ModCount);
+  Host.ws(" '");             Host.ws(ModAdr[ModCount].name);
+  Host.ws("' at ");          Host.wh(ModAdr[ModCount].adr);
+  Host.ws("H nimports ");    Host.wh(mod.nimports);
+  Host.ws("H nvarsize ");    Host.wh(mod.nvarsize);  Host.wsn("H.");
+
+  mod.size := (mod.nimports + mod.nvarsize + 16) DIV 16 * 16;
+
+  INC(ModCount);
+  INC(ModuleSize, mod.size)
+RETURN mod END LoadModule;
 
 
-PROCEDURE Generate*(filename: ARRAY OF CHAR; LoadFlags: SET);
-VAR fpos: INTEGER;
+PROCEDURE PresetWinHost;
+VAR mod: Modules.Module;  varpos, i: INTEGER;
 BEGIN
-  Verbose := H.Verbose IN LoadFlags;
+  mod    := SYSTEM.VAL(Modules.Module, SYSTEM.ADR(Mem));
+  Host.ws("PresetWinHost. mod.name "); Host.ws(mod.name); Host.ws(", nimports "); Host.wh(mod.nimports); Host.wsn("H.");
+  varpos := mod.nimports;
+  SYSTEM.PUT(SYSTEM.ADR(Mem[varpos]), ImageBase);   INC(varpos, 8);
+  SYSTEM.PUT(SYSTEM.ADR(Mem[varpos]), ModuleBase);  INC(varpos, 8);
+  SYSTEM.PUT(SYSTEM.ADR(Mem[varpos]), {63});        INC(varpos, 8);
 
-  IF Verbose THEN
-    H.ws("Link.Generate. SIZE(ModuleDesc) "); H.wh(SYSTEM.SIZE(ModuleDesc));
-    H.ws("H, SIZE(PEheader) "); H.wh(SYSTEM.SIZE(PEheader)); H.wsn("H.")
-  END;
+  Host.ws("Before IDT lookups write, varpos "); Host.wh(varpos); Host.wsn("H.");
 
-  ExeFile := Files.New(filename);
+  Host.ws("SYSTEM.ADR(Idt.Kernel32Lookups) "); Host.wh(SYSTEM.ADR(Idt.Kernel32Lookups)); Host.wsn("H.");
+  Host.ws("SYSTEM.ADR(Mem[varpos])         "); Host.wh(SYSTEM.ADR(Mem[varpos]));         Host.wsn("H.");
+  Host.ws("Kernel32ImportCount * 8         "); Host.wh(Kernel32ImportCount * 8);         Host.wsn("H.");
 
-  GetBootstrap;
-  WriteImports;
-  WriteBootstrap(LoadFlags);
-  WriteModules;
-  WritePEHeader;
-  Files.Register(ExeFile);
+  SYSTEM.COPY(SYSTEM.ADR(Idt.Kernel32Lookups), SYSTEM.ADR(Mem[varpos]), Kernel32ImportCount * 8);
+  INC(varpos, Kernel32ImportCount * 8);
 
-  IF Verbose THEN H.ws("Link generated "); H.ws(filename); H.wsn(".") END
-END Generate;
+  SYSTEM.COPY(SYSTEM.ADR(Idt.User32Lookups), SYSTEM.ADR(Mem[varpos]), User32ImportCount * 8);
+  INC(varpos, User32ImportCount * 8);
+
+  SYSTEM.COPY(SYSTEM.ADR(Idt.Gdi32Lookups), SYSTEM.ADR(Mem[varpos]), Gdi32ImportCount * 8);
+  INC(varpos, Gdi32ImportCount * 8);
+END PresetWinHost;
+
 
 PROCEDURE Init*;
 BEGIN Objects := NIL;  LastObject := NIL  END Init;
 
-BEGIN Init
-  AddModule(Files.Old("WinHost.x64"));
-  AddModule(Files.Old("Kernel.x64"));
-  AddModule(Files.Old("FileDir.x64"));
-  AddModule(Files.Old("Files.x64"));
-  AddModule(Files.Old("Modules.x64"));
-  Generate("innercore.exe", {});
+
+PROCEDURE CallJumpIndirect(opcode: INTEGER; mod: Modules.Module);
+VAR target: INTEGER;  disp: SYSTEM.INT32;
+BEGIN
+  IF mod.ninitcode # 0 THEN
+    Mem[ModuleSize] := opcode;  INC(ModuleSize);
+    target := mod.ninitcode + ORD(mod) - SYSTEM.ADR(Mem);
+    disp := target - (ModuleSize + 4);
+    SYSTEM.PUT(SYSTEM.ADR(Mem[ModuleSize]), disp);
+    INC(ModuleSize, 4)
+  END
+END CallJumpIndirect;
+
+
+PROCEDURE do*;
+VAR
+  WinHostHdr: Modules.Module;
+  KernelHdr:  Modules.Module;
+  FilesHdr:   Modules.Module;
+  ModulesHdr: Modules.Module;
+BEGIN
+  Host.wsn("Linking.");
+  ModuleSize := 0;
+  WinHostHdr := LoadModule("WinHost.x64");
+  KernelHdr  := LoadModule("Kernel.x64");
+  FilesHdr   := LoadModule("Files.x64");
+  ModulesHdr := LoadModule("Modules.x64");
+
+  WinHostHdr.next := SYSTEM.VAL(Modules.Module, ModuleBase + ORD(KernelHdr)  - SYSTEM.ADR(Mem));
+  KernelHdr.next  := SYSTEM.VAL(Modules.Module, ModuleBase + ORD(FilesHdr)   - SYSTEM.ADR(Mem));
+  FilesHdr.next   := SYSTEM.VAL(Modules.Module, ModuleBase + ORD(ModulesHdr) - SYSTEM.ADR(Mem));
+  ModulesHdr.next := NIL;
+
+  (* Set up initialisation *)
+  EntryPoint := RvaModules (*ModuleBase*) + ModuleSize;
+
+  CallJumpIndirect(0E8H, WinHostHdr);  (* Call *)
+  CallJumpIndirect(0E8H, KernelHdr);   (* Call *)
+  CallJumpIndirect(0E8H, FilesHdr);    (* Call *)
+  CallJumpIndirect(0E9H, ModulesHdr);  (* Jump *)
+
+  ModuleSize := ModuleSize;
+
+  Host.ws("ModuleSize ");    Host.wh(ModuleSize);
+  Host.ws("H entry point "); Host.wh(EntryPoint); Host.wsn("H.");
+
+  ExeFile := Files.New("innercore.exe");
+
+  Files.Set(Exe, ExeFile, 0);
+  WriteImports;
+  PresetWinHost;
+
+  spos(FadrModules);
+  Files.WriteBytes(Exe, Mem, 0, ModuleSize);
+  FileAlign(Exe, FileAlignment);
+  ModuleSize := Files.Pos(Exe) - FadrModules;
+
+  WritePEHeader;
+  Files.Register(ExeFile);
+
+  Host.wsn("Link generated innercore.exe.")
+END do;
+
+BEGIN Init; do
 END Link.

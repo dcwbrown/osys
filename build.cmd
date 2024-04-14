@@ -1,6 +1,6 @@
 :: build.cmd - build Oberon comiler and system
 ;;
-@SET VERBOSE=
+@SET VERBOSE=/v
 ::
 :: The compiler is built if any files affecting the compiler have changed
 ::
@@ -35,7 +35,7 @@
 ::
 @if not exist build2\obuild.exe goto buildcompiler
 ::
-@goto buildsystem
+@goto skipcompiler
 ::
 ::
 :buildcompiler
@@ -125,6 +125,11 @@ Test
 @if errorlevel 1 goto testfailed
 @cd ..
 @echo Compiler build successful. Run snapgood.cmd to snapshot as known good.
+::
+::
+:skipcompiler
+::
+::
 @goto buildsystem
 ::@goto buildlinker
 ::
@@ -180,7 +185,18 @@ System
 @if errorlevel 1 goto linkbuildfailed
 ::
 Link
+@if errorlevel 1 goto linkrunfailed
+::
+::
+innercore
 @cd ..
+@goto end
+::
+::
+:linkrunfailed
+@cd ..
+@echo.
+@echo Link run failed.
 @goto end
 ::
 ::
