@@ -67,7 +67,7 @@
 @mkdir buildpre >NUL
 @copy WinPE.mod buildpre >NUL
 @cd buildpre >NUL
-..\knowngood\obuild %VERBOSE% /s ../knowngood/Console.;../knowngood/ obuild
+..\knowngood\obuild %VERBOSE% /s ./;../knowngood/Console.;../knowngood/ obuild
 @if errorlevel 1 goto end
 @cd ..
 ::

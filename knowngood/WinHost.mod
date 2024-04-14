@@ -140,6 +140,7 @@ VAR
   Sleep*:                          PROCEDURE-(ms: INTEGER);
   UnmapViewOfFile:                 PROCEDURE-(adr: INTEGER): INTEGER;
   VirtualAlloc*:                   PROCEDURE-(address, size, type, protection: INTEGER): INTEGER;
+  VirtualQuery*:                   PROCEDURE-(address, buffer, length: INTEGER): INTEGER;
   WriteFile*:                      PROCEDURE-(hFile, lpBuffer, nNumberOfBytesToWrite, lpNumberOfBytesWritten, lpOverlapped: INTEGER): INTEGER;
 
   (* Pre-loaded Gdi32 imports *)

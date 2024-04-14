@@ -22,7 +22,7 @@ CONST
   ModuleBase  = ImageBase + RvaModules;
 
   BootstrapVarBytes   = 24;  (* preloaded bootstrap VAR size preceeding imported proc addresses *)
-  Kernel32ImportCount = 38;
+  Kernel32ImportCount = 39;
   Gdi32ImportCount    = 12;
   User32ImportCount   = 26;
 
@@ -269,6 +269,7 @@ BEGIN
   AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "Sleep");
   AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "UnmapViewOfFile");
   AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "VirtualAlloc");
+  AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "VirtualQuery");
   AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "WriteFile");
   ASSERT(n = Kernel32ImportCount);
   INC(target, 8 * n);
