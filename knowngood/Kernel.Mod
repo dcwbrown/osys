@@ -248,7 +248,7 @@ BEGIN
   *)
 
   (* Initialize heap *)
-  HeapOrg := H.VirtualAlloc(80000000H, reserve, MEMRESERVE, PAGEREADWRITE);
+  HeapOrg := H.VirtualAlloc(200000000H, reserve, MEMRESERVE, PAGEREADWRITE);
   (*H.ws("Virtual alloc reservation returned ");  H.wh(HeapOrg);  H.wsn("H.");*)
   ASSERT(HeapOrg # 0);
   HeapOrg := H.VirtualAlloc(HeapOrg, commit, MEMCOMMIT, PAGEREADWRITE);
@@ -274,4 +274,7 @@ BEGIN
   END;
 END Init;
 
-BEGIN Init END Kernel.
+BEGIN
+  IF 63 IN H.LoadFlags THEN H.wsn("Reached kernel.") END;
+  Init;
+END Kernel.

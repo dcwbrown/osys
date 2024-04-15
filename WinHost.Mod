@@ -1196,6 +1196,10 @@ VAR
   res, loadedlen, reserveadr, reservelen, lastbyte, adr, size: INTEGER;
   mod: Module;
 BEGIN
+  ModuleSpace := ORD(ImgHeader);
+  Root        := ImgHeader;
+  InitSysHandlers;
+
   wsn("* WinHost starting *");
   ws("* Exeadr:       "); wh(Exeadr);         wsn("H *");
   ws("* ImgHeader at: "); wh(ORD(ImgHeader)); wsn("H *");
@@ -1213,7 +1217,6 @@ BEGIN
     mod := mod.next;
   END;
 
-  ModuleSpace := ORD(ImgHeader);
   AllocPtr    := lastbyte + 1;
   CommitLen   := (AllocPtr + 0FFFFH) DIV 10000H * 10000H - ModuleSpace;
   wsn("Derived values: ");
@@ -1227,8 +1230,7 @@ BEGIN
   ws("H, rounded up to allocation granularity "); wh(loadedlen);
   wsn("H.");
 
-   (* Extend memory to 2GB reserve *)
-  (*loadedlen := 1000000H;*)
+  (* Extend memory to 2GB reserve *)
   reserveadr := ORD(ImgHeader) + loadedlen;
   reservelen := 80000000H - loadedlen;
   ws("Reserving memory from "); wh(reserveadr);
@@ -1237,45 +1239,11 @@ BEGIN
   ws("* VirtualAlloc result "); wh(res); wsn("H *");
   IF res = 0 THEN ws(": "); WriteWindowsErrorMessage(GetLastError()); wsn(".")  END;
 
-  (*
-  (* Query existing virtual memory *)
-  wsn("Virtual memory before allocating.");
-  adr := ORD(ImgHeader);
-  size := QueryMem(adr);  INC(adr, size);
-  WHILE (size > 0) & (adr < 180000000H) DO
-    size := QueryMem(adr);  INC(adr, size)
-  END;
-
-  (* Attempt allocating from memory between loaded and reserved *)
-
-  Allocate(3000H, adr, size);
-  ws("Allocated at "); wh(adr); ws("H size "); wh(size); wsn("H.");
-  ws("  AllocPtr:    "); wh(AllocPtr);    wsn("H.");
-  ws("  CommitLen:   "); wh(CommitLen);   wsn("H.");
-
-  Allocate(5000H, adr, size);
-  ws("Allocated at "); wh(adr); ws("H size "); wh(size); wsn("H.");
-  ws("  AllocPtr:    "); wh(AllocPtr);    wsn("H.");
-  ws("  CommitLen:   "); wh(CommitLen);   wsn("H.");
-
-  wsn("Virtual memory after allocating.");
-  adr := ORD(ImgHeader);
-  size := QueryMem(adr);  INC(adr, size);
-  WHILE (size > 0) & (adr < 180000000H) DO
-    size := QueryMem(adr);  INC(adr, size)
-  END;
-
-  wsn("---");
-  DumpMem(0, 100006000H, 100006000H, 1000H);
-  wsn("---");
-  DumpMem(0, 10000A000H, 10000A000H, 1000H);
-  wsn("---");
-
-  PressKeyToContinue;
-  ExitProcess(0)
-  *)
-
+  IF AddVectoredExceptionHandler(1, SYSTEM.ADR(ExceptionHandler)) = 0 THEN
+    AssertWinErr(GetLastError())
+  END
 END NewStartup;
+
 
 BEGIN
   HWnd                  := 0;

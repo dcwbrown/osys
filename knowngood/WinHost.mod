@@ -1070,14 +1070,12 @@ END SetRoot;
 
 
 PROCEDURE Allocate*(size: INTEGER; VAR p, alloc: INTEGER);
-VAR adr: INTEGER;
+VAR adr, newcommitlen: INTEGER;
 BEGIN
-  (*
   ws("WinHost.Allocate(size "); wh(size);        wsn("H).");
   ws("  ModuleSpace: ");        wh(ModuleSpace); wsn("H.");
   ws("  AllocPtr:    ");        wh(AllocPtr);    wsn("H.");
   ws("  CommitLen:   ");        wh(CommitLen);   wsn("H.");
-  *)
 
   p     := 0;
   alloc := 0;
@@ -1085,13 +1083,21 @@ BEGIN
   IF AllocPtr - ModuleSpace + size < 80000000H THEN  (* Hard limit on reserved size 2GB due to relative addressing *)
     IF AllocPtr + size > ModuleSpace + CommitLen THEN
 
-      ws("* CommitLen increased from "); wh(CommitLen);
+      ws("* CommitLen increasing from "); wh(CommitLen);
       (* Round up to a multiple of 256K *)
-      CommitLen := (AllocPtr + size + 40000H - 1) DIV 40000H * 40000H - ModuleSpace;
-      ws("H to "); wh(CommitLen); wsn("H *");
+      newcommitlen := (AllocPtr + size + 40000H - 1) DIV 40000H * 40000H - ModuleSpace;
+      ws("H to "); wh(newcommitlen); wsn("H *");
 
-      adr := VirtualAlloc(ModuleSpace, CommitLen, MEMCOMMIT, PAGEEXECUTEREADWRITE);
-      ASSERT(adr = ModuleSpace);
+      ws("Calling VirtualAlloc(addr "); wh(ModuleSpace+CommitLen);
+      ws("H, size "); wh(newcommitlen-CommitLen);
+      wsn("H, MEMCOMMIT, PAGEEXECUTEREADWRITE).");
+      adr := VirtualAlloc(ModuleSpace+CommitLen, newcommitlen-CommitLen, MEMCOMMIT, PAGEEXECUTEREADWRITE);
+      IF adr = 0 THEN
+        ws(": "); WriteWindowsErrorMessage(GetLastError()); wsn(".");
+        ExitProcess(0);
+      END;
+      ASSERT(adr = ModuleSpace + CommitLen);
+      CommitLen := newcommitlen
     END;
     IF AllocPtr + size <= ModuleSpace + CommitLen THEN
       p     := AllocPtr;
@@ -1151,11 +1157,49 @@ VAR ch: CHAR;
 BEGIN wcn; ws("Press any key to continue "); ch := GetChar(); wn
 END PressKeyToContinue;
 
+PROCEDURE QueryMem(adr: INTEGER): INTEGER;
+TYPE
+  mbidesc = RECORD-
+    BaseAddress:       INTEGER;
+    AllocationBase:    INTEGER;
+    AllocationProtect: SYSTEM.CARD32;
+    PartitionId:       SYSTEM.CARD16;
+    RegionSize:        INTEGER;
+    State:             SYSTEM.CARD32;
+    Protect:           SYSTEM.CARD32;
+    Type:              SYSTEM.CARD32
+  END;
+VAR mbi: mbidesc;  res, size: INTEGER;
+BEGIN
+  size := 0;
+  res := VirtualQuery(adr, SYSTEM.ADR(mbi), SYSTEM.SIZE(mbidesc));
+  IF res >= SYSTEM.SIZE(mbidesc) THEN
+    ws("VirtualQuery adr "); wh(adr);
+    ws("H, result "); wh(res); wsn("H.");
+    ws("  BaseAddress:       "); wh(mbi.BaseAddress);       wsn("H.");
+    ws("  AllocationBase:    "); wh(mbi.AllocationBase);    wsn("H.");
+    ws("  AllocationProtect: "); wh(mbi.AllocationProtect); wsn("H.");
+    ws("  PartitionId:       "); wh(mbi.PartitionId);       wsn("H.");
+    ws("  RegionSize:        "); wh(mbi.RegionSize);        wsn("H.");
+    ws("  State:             "); wh(mbi.State);             wsn("H.");
+    ws("  Protect:           "); wh(mbi.Protect);           wsn("H.");
+    ws("  Type:              "); wh(mbi.Type);              wsn("H.");
+    DumpMem(0, SYSTEM.ADR(mbi), 0, res);
+    IF adr < ORD(ImgHeader) + 180000000H THEN
+      size := mbi.RegionSize
+    END
+  END
+RETURN size END QueryMem;
+
 PROCEDURE NewStartup;
 VAR
-  res, loadedlen, reserveadr, reservelen, lastbyte: INTEGER;
+  res, loadedlen, reserveadr, reservelen, lastbyte, adr, size: INTEGER;
   mod: Module;
 BEGIN
+  ModuleSpace := ORD(ImgHeader);
+  Root        := ImgHeader;
+  InitSysHandlers;
+
   wsn("* WinHost starting *");
   ws("* Exeadr:       "); wh(Exeadr);         wsn("H *");
   ws("* ImgHeader at: "); wh(ORD(ImgHeader)); wsn("H *");
@@ -1173,16 +1217,20 @@ BEGIN
     mod := mod.next;
   END;
 
+  AllocPtr    := lastbyte + 1;
+  CommitLen   := (AllocPtr + 0FFFFH) DIV 10000H * 10000H - ModuleSpace;
+  wsn("Derived values: ");
+  ws("  ModuleSpace: "); wh(ModuleSpace); wsn("H.");
+  ws("  AllocPtr:    "); wh(AllocPtr);    wsn("H.");
+  ws("  CommitLen:   "); wh(CommitLen);   wsn("H.");
+
   ws("* lastbyte "); wh(lastbyte);
   ws("H => loaded length "); wh(lastbyte + 1 - ORD(ImgHeader));
-  loadedlen := (lastbyte + 1 - ORD(ImgHeader) + 4095) DIV 4096 * 4096;
-  ws("H, rounded up to whole pages "); wh(loadedlen);
+  loadedlen := (lastbyte + 1 - ORD(ImgHeader) + 65535) DIV 65536 * 65536;
+  ws("H, rounded up to allocation granularity "); wh(loadedlen);
   wsn("H.");
 
-  (*Testing*) INC(loadedlen, 10000H);
-
   (* Extend memory to 2GB reserve *)
-  (*loadedlen := 1000000H;*)
   reserveadr := ORD(ImgHeader) + loadedlen;
   reservelen := 80000000H - loadedlen;
   ws("Reserving memory from "); wh(reserveadr);
@@ -1190,10 +1238,12 @@ BEGIN
   res := VirtualAlloc(reserveadr, reservelen, MEMRESERVE, PAGEEXECUTEREADWRITE);
   ws("* VirtualAlloc result "); wh(res); wsn("H *");
   IF res = 0 THEN ws(": "); WriteWindowsErrorMessage(GetLastError()); wsn(".")  END;
-  PressKeyToContinue;
-  ExitProcess(0)
 
+  IF AddVectoredExceptionHandler(1, SYSTEM.ADR(ExceptionHandler)) = 0 THEN
+    AssertWinErr(GetLastError())
+  END
 END NewStartup;
+
 
 BEGIN
   HWnd                  := 0;

@@ -10,7 +10,7 @@ TYPE
   ModDesc*    = H.ModuleDesc;
 
 VAR
-(*M:          Module;*)
+  M:          Module;     (* Loaded module 'Oberon' *)
   res*:       INTEGER;
   importing*: ModuleName;
   imported*:  ModuleName;
@@ -92,6 +92,7 @@ BEGIN
   res := 0;
   (*nofimps := 0;*)
   WHILE (mod # NIL) & (name # mod.name) DO mod := mod.next END;
+
   IF mod = NIL THEN (*load*)
     Check(name);
     IF res = 0 THEN F := ThisFile(name) ELSE F := NIL END;
@@ -104,7 +105,7 @@ BEGIN
       Files.ReadBytes(R, header, SYSTEM.SIZE(ModDesc));
       name1     := header.name;
       key       := header.key;
-      size      := header.nimports + header.nvarsize;
+      size      := (header.nimports + header.nvarsize + 15) DIV 16 * 16;
       importing := name1;
       (*
       H.wsn("File header:");
@@ -260,6 +261,10 @@ BEGIN
 END Init;
 
 BEGIN Init;
+  IF 63 IN H.LoadFlags THEN
+    H.wsn("Reached Modules.");
+    Load("Oberon", M);
+  END;
 (*
   Load("Oberon", M);
   LED(res);  REPEAT UNTIL FALSE  (*only if load fails*)

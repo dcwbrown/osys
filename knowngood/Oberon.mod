@@ -424,7 +424,10 @@ BEGIN
   Loop
 END Reset;
 
-BEGIN User[0] := 0X;
+BEGIN
+  IF 63 IN H.LoadFlags THEN H.wsn("Reached Oberon.") END;
+
+  User[0] := 0X;
   Arrow.Fade := FlipArrow; Arrow.Draw := FlipArrow;
   Star.Fade := FlipStar; Star.Draw := FlipStar;
   OpenCursor(Mouse); OpenCursor(Pointer);
@@ -436,5 +439,10 @@ BEGIN User[0] := 0X;
 
   CurTask := NIL;
   ActCnt := 0; CurTask := NewTask(GC, 1000); Install(CurTask);
-  (*Modules.Load("System", Mod); Mod := NIL; Loop*)
+
+  IF 63 IN H.LoadFlags THEN
+    H.wsn("Reached Oberon.");
+    Modules.Load("System", Mod); Mod := NIL; (*Loop*)
+  END
+
 END Oberon.

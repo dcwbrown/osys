@@ -6,12 +6,12 @@ VAR
   Log*: Texts.Text;
 
   Par*: RECORD
-    text*:  Texts.Text;
-    pos*:   INTEGER
+    text*: Texts.Text;
+    pos*:  INTEGER
   END;
 
-  ActCnt:     INTEGER; (*action count for GC*)
-  Mod:        Modules.Module;
+  ActCnt: INTEGER; (*action count for GC*)
+  Mod:    Modules.Module;
 
 
 PROCEDURE GetSelection* (VAR text: Texts.Text; VAR beg, end, time: INTEGER);
@@ -34,6 +34,8 @@ BEGIN
 END LogNotify;
 
 BEGIN
+  IF 63 IN H.LoadFlags THEN H.wsn("Reached Console.Oberon.") END;
+
   NEW(Log);
   Texts.Open(Log, "");
   Log.notify := LogNotify;

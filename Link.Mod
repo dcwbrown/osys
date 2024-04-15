@@ -530,12 +530,15 @@ RETURN exportoffset END ExportedOffset;
 
 
 PROCEDURE LinkImport*(
-  modofs:       INTEGER;  (* Module offset relative to Mem/ModuleBase of importing module *)
+  modofs:       INTEGER;  (* Module offset of importing module relative to Mem/ModuleBase *)
   offset:       INTEGER;  (* Offset within importing module of disp/abs value being updated *)
   impno, modno: INTEGER;
   modules:      ARRAY OF INTEGER
 );
-VAR disp: SYSTEM.INT32; modadr, expoffset, absreloc, handlertableadr: INTEGER;
+VAR
+  disp: SYSTEM.INT32;
+  modadr, expoffset, absreloc: INTEGER;
+  handlersoffset: INTEGER;
 BEGIN
 
   H.ws("LinkImport(modofs "); H.wh(modofs);
@@ -545,10 +548,19 @@ BEGIN
 
   modadr := SYSTEM.ADR(Mem[modofs]);
   IF modno = 0 THEN  (* system function *)
+    H.wsn("System function link:");
+    H.ws("  importing module offset "); H.wh(modofs);        H.wsn("H.");
     SYSTEM.GET(modadr + offset, disp);
+    H.ws("  original disp   -"); H.wh(-disp);                H.wsn("H.");
     ASSERT((impno >= 0) & (impno <= H.HandlerCount));
-    handlertableadr := SYSTEM.ADR(H.Handlers);
-    disp := handlertableadr + 8 * impno + disp - modofs;
+    handlersoffset := SYSTEM.ADR(H.Handlers) - 100000000H;  (* Handler table offset from start of modules *)
+    H.ws("  handlers offset  "); H.wh(handlersoffset);       H.wsn("H.");
+    INC(disp, handlersoffset + 8 * impno - modofs);
+    IF disp >= 0 THEN
+      H.ws("  updated disp     "); H.wh(disp);               H.wsn("H.")
+    ELSE
+      H.ws("  updated disp    -"); H.wh(-disp);              H.wsn("H.")
+    END;
     SYSTEM.PUT(modadr + offset, disp)
   ELSIF modno = 0FFFFH THEN (* 64 bit absolute address relocation *)
     (* qword at offset contains 32/0,32/module offset or 32/1,16/mod,16/imp *)
@@ -559,11 +571,13 @@ BEGIN
       modno := absreloc DIV 10000H MOD 10000H;  ASSERT(modno > 0);
       impno := absreloc MOD 10000H;
       ASSERT(impno > 0);
-      SYSTEM.PUT(modadr + offset, ExportedOffset(modules[modno-1], impno-1))
+      SYSTEM.PUT(modadr + offset, ModuleBase + modules[modno-1]
+                                  + ExportedOffset(modules[modno-1], impno-1))
     END
   ELSE
     ASSERT(modno > 0);
     SYSTEM.GET(modadr + offset, disp);
+    H.wsn("Disp32 relative link:");
     H.ws("  source module offset "); H.wh(modofs);           H.wsn("H.");
     H.ws("  target module offset "); H.wh(modules[modno-1]); H.wsn("H.");
     expoffset := ExportedOffset(modules[modno-1], impno-1);
@@ -647,6 +661,10 @@ BEGIN
 
   (* Link imports *)
   Files.ReadBytes(R, impcnt, 4);
+  IF impcnt > 0 THEN
+    H.ws("Linking "); H.wi(impcnt);
+    H.ws(" imports to module "); H.ws(mod.name); H.wsn(".");
+  END;
   FOR i := 1 TO impcnt DO
     ReadVar(R, offset);  ReadVar(R, impno);  ReadVar(R, modno);
     LinkImport(ModuleSize, offset, impno, modno, modules)
@@ -662,6 +680,7 @@ BEGIN
   END;
 
   INC(mod.ptr, ModuleBase + ModuleSize);
+  INC(mod.cmd, ModuleBase + ModuleSize);
 
   H.ws("Loaded module "); H.wi(ModCount);
   H.ws(" '");             H.ws(ModAdr[ModCount].name);
@@ -682,9 +701,10 @@ BEGIN
   mod    := SYSTEM.VAL(Modules.Module, SYSTEM.ADR(Mem));
   H.ws("PresetWinHost. mod.name "); H.ws(mod.name); H.ws(", nimports "); H.wh(mod.nimports); H.wsn("H.");
   varpos := mod.nimports;
-  SYSTEM.PUT(SYSTEM.ADR(Mem[varpos]), ImageBase);   INC(varpos, 8);
-  SYSTEM.PUT(SYSTEM.ADR(Mem[varpos]), ModuleBase);  INC(varpos, 8);
-  SYSTEM.PUT(SYSTEM.ADR(Mem[varpos]), {63});        INC(varpos, 8);
+  SYSTEM.PUT(SYSTEM.ADR(Mem[varpos]), ImageBase);       INC(varpos, 8);
+  SYSTEM.PUT(SYSTEM.ADR(Mem[varpos]), ModuleBase);      INC(varpos, 8);
+  SYSTEM.PUT(SYSTEM.ADR(Mem[varpos]), {63, H.Verbose}); INC(varpos, 8);
+  ASSERT(varpos - mod.nimports = BootstrapVarBytes);
 
   H.ws("Before IDT lookups write, varpos "); H.wh(varpos); H.wsn("H.");
 
