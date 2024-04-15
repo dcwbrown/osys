@@ -274,4 +274,11 @@ BEGIN
   END;
 END Init;
 
-BEGIN Init END Kernel.
+BEGIN
+  IF 63 IN H.LoadFlags THEN
+    H.wsn("Reached kernel.");
+    H.ExitProcess(0)
+  ELSE
+    Init
+  END
+END Kernel.

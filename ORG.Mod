@@ -1016,6 +1016,7 @@ BEGIN
   Trace(TraceMakeItem, "MakeItem(y: "); l.Object(y, Tr); l.s(", curlev: ", Tr);
   l.i(curlev, Tr); l.s(")", Tr);
   ASSERT(y.class IN {ORB.Const, ORB.Var, ORB.Par, ORB.SProc, ORB.Typ});
+  (*TODO rather than ASSERTing if class is a Module, should throw error. *)
   H.ZeroFill(x);
   X64.ClearMode(x);
   x.mode     := y.class;
