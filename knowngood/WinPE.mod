@@ -217,7 +217,7 @@ VAR
 
 BEGIN
   H.ZeroFill(Idt);
-  target := RvaModules + Bootstrap.Header.nimports + BootstrapVarBytes;
+  target := RvaModules + Bootstrap.Header.vars + BootstrapVarBytes;
 
   (* **NOTE** these imports must be in exactly the same order as the *)
   (* corresponding procedure variable declarations in WinHost.mode   *)
@@ -474,7 +474,7 @@ BEGIN
   hdr.sizeOfCode              := Align(OberonSize, FileAlignment);
   hdr.sizeOfInitializedData   := Align(ImportSize, MemoryAlignment);
   hdr.sizeOfUninitializedData := 0;
-  hdr.addressOfEntryPoint     := RvaModules + Bootstrap.Header.ninitcode;
+  hdr.addressOfEntryPoint     := RvaModules + Bootstrap.Header.init;
   hdr.baseOfCode              := RvaModules;
 
   (* Windows specific PE32+ fields *)
@@ -545,29 +545,29 @@ END GetBootstrap;
 PROCEDURE WriteBootstrap(LoadFlags: SET);
 BEGIN
   (* Fixup bootstrap image size in header *)
-  Bootstrap.Header.size := (Bootstrap.Header.nimports + Bootstrap.Header.nvarsize + 15) DIV 16 * 16;
+  Bootstrap.Header.size := (Bootstrap.Header.vars + Bootstrap.Header.varsize + 15) DIV 16 * 16;
   (*
-  H.ws("Bootstrap.Header.nimports "); H.wh(Bootstrap.Header.nimports);
-  H.ws("H, Bootstrap.Header.nvarsize "); H.wh(Bootstrap.Header.nvarsize);
+  H.ws("Bootstrap.Header.vars "); H.wh(Bootstrap.Header.vars);
+  H.ws("H, Bootstrap.Header.varsize "); H.wh(Bootstrap.Header.varsize);
   H.ws("H, Bootstrap.Header.size "); H.wh(Bootstrap.Header.size);
   H.wsn("H.");
   *)
 
   spos(FadrModules);
-  Files.WriteBytes(Exe, Bootstrap, 0, Bootstrap.Header.nimports);  (* Code and tables   *)
+  Files.WriteBytes(Exe, Bootstrap, 0, Bootstrap.Header.vars);  (* Code and tables   *)
 
   (* Preset bootstrap modules global VARs *)
   Files.WriteInt(Exe, ImageBase);                                 (* EXE load address  *)
   Files.WriteInt(Exe, ImageBase + RvaModules);                    (* Header address    *)
   Files.WriteSet(Exe, LoadFlags);
-  ASSERT(Files.Pos(Exe) -  (FadrModules + Bootstrap.Header.nimports) = BootstrapVarBytes);
+  ASSERT(Files.Pos(Exe) -  (FadrModules + Bootstrap.Header.vars) = BootstrapVarBytes);
 
   (* Preset bootstrap VARs with WIndows proc addresses *)
   Files.WriteBytes(Exe, Idt.Kernel32Lookups, 0, Kernel32ImportCount * 8);
   Files.WriteBytes(Exe, Idt.User32Lookups,   0, User32ImportCount   * 8);
   Files.WriteBytes(Exe, Idt.Gdi32Lookups,  0, Gdi32ImportCount  * 8);
 
-  WriteZeroes(Bootstrap.Header.nvarsize
+  WriteZeroes(Bootstrap.Header.varsize
             - ((Kernel32ImportCount + User32ImportCount + Gdi32ImportCount) * 8 + BootstrapVarBytes));
   FileAlign(Exe, 16)
 END WriteBootstrap;

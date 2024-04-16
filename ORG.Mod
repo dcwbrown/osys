@@ -2869,7 +2869,7 @@ BEGIN
 END TypeTest;
 
 PROCEDURE Open*(modid: ARRAY OF CHAR);
-VAR i: INTEGER;
+VAR i: INTEGER;  obj: ORB.Object;
 BEGIN
 l.Init(ORS.SourceFile());
   Trflags := {TraceAny, TraceMakeItem};  (*{TraceAny, TraceMakeItem};*)
@@ -2887,6 +2887,18 @@ l.Init(ORS.SourceFile());
   X64.SetPC(SYSTEM.SIZE(ModuleDesc));
   X64.Align(16);
   Disasmpc := X64.PC;
+
+  (* Emit imported module names and keys *)
+  obj := ORB.topScope.next;
+  WHILE (obj # NIL) & (obj.class = ORB.Mod) DO  (* imports *)
+    IF obj.dsc # ORB.system THEN
+      X64.EmitString(obj(ORB.Module).orgname);  (* name *)
+      X64.EmitBytes(8, obj.val)                 (* key  *)
+    END;
+    obj := obj.next
+  END;
+  X64.Emit(0);
+  X64.Align(16)
 END Open;
 
 PROCEDURE SetDataSize*(dc: INTEGER);
@@ -2895,7 +2907,7 @@ BEGIN Varsize := dc END SetDataSize;
 PROCEDURE Header*;
 BEGIN
   Trace(TraceAny, "Header - module initialisation code entry point."); l.n(Tr);
-  Hdr.ninitcode := X64.PC;  (* Set entry point address *)
+  Hdr.init := X64.PC;  (* Set entry point address *)
 END Header;
 
 PROCEDURE wsize(size: INTEGER);
@@ -2955,11 +2967,9 @@ BEGIN
   l.s("  Import fixups: ", Tr);  l.i(ImpFInx, Tr);  l.n(Tr);
   l.n(Tr);
 
-  Hdr.name := modid;
-  Hdr.key  := key;
-
-
-  Hdr.nvarsize := Varsize;
+  Hdr.name    := modid;
+  Hdr.key     := key;
+  Hdr.varsize := Varsize;
 
   (* Prepare to patch header pointers directly into X64.Text *)
 
@@ -2992,7 +3002,7 @@ BEGIN
   (* ------------------------ Emit line annotations ------------------------- *)
 
   X64.Align(16);
-  Hdr.nlines := X64.PC;
+  Hdr.lines := X64.PC;
   bodyan := BodyAnnotations;
   WHILE bodyan # NIL DO
     linean := bodyan.firstline;
@@ -3033,7 +3043,7 @@ BEGIN
 
   (* ---------- Determine export table offset and resident length ----------- *)
   X64.Align(16);
-  Hdr.nexports := X64.PC;     (* Set export table address *)
+  Hdr.exports := X64.PC;     (* Set export table address *)
   reslen := (X64.PC + exno * 4 + 15) DIV 16 * 16;
   (* Note there are exno-1 export entries plus a -1 terminator *)
 
@@ -3079,12 +3089,12 @@ BEGIN
   IF X64.PC # reslen THEN
     l.n(Tr); l.s("** PC ", Tr);   l.h(X64.PC, Tr);
     l.s("H, reslen ", Tr);        l.h(reslen, Tr);
-    l.s("H, Hdr.nexports ", Tr);  l.h(Hdr.nexports, Tr);
+    l.s("H, Hdr.exports ", Tr);   l.h(Hdr.exports, Tr);
     l.s("H, exno ", Tr);          l.h(exno, Tr);
     l.sn("H **", Tr)
   END;
   ASSERT(X64.PC = reslen);
-  Hdr.nimports := reslen; (* Set resident size / var offset *)
+  Hdr.vars := reslen; (* Set resident size / var offset *)
 
   (* Relocate code references to module global VARs *)
   (*l.n(Tr); l.i(VarFInx, Tr); l.sn(" VAR relocations.", Tr);*)
@@ -3106,6 +3116,7 @@ BEGIN
 
   (* Emit imports *)
   X64.Align(16);
+  Hdr.imprefs := X64.PC;
   X64.EmitBytes(4, ImpFInx);
   FOR i := 0 TO ImpFInx - 1 DO
     X64.EmitBytes(4, ImpFix[i].offset);
@@ -3117,12 +3128,12 @@ BEGIN
 
   (* Display header content *)
   l.sn("Header:", Tr);
-  l.s("  Size:      ", Tr);  l.h(Hdr.size,      Tr);  l.sn("H.", Tr);
-  l.s("  Init code: ", Tr);  l.h(Hdr.ninitcode, Tr);  l.sn("H.", Tr);
-  l.s("  Pointers:  ", Tr);  l.h(Hdr.ptr,       Tr);  l.sn("H.", Tr);
-  l.s("  Exports:   ", Tr);  l.h(Hdr.nexports,  Tr);  l.sn("H.", Tr);
-  l.s("  Imports:   ", Tr);  l.h(Hdr.nimports,  Tr);  l.sn("H.", Tr);
-  l.s("  VAR size:  ", Tr);  l.h(Hdr.nvarsize,  Tr);  l.sn("H.", Tr);
+  l.s("  Size:       ", Tr);  l.h(Hdr.size,    Tr);  l.sn("H.", Tr);
+  l.s("  Init code:  ", Tr);  l.h(Hdr.init,    Tr);  l.sn("H.", Tr);
+  l.s("  Pointers:   ", Tr);  l.h(Hdr.ptr,     Tr);  l.sn("H.", Tr);
+  l.s("  Exports:    ", Tr);  l.h(Hdr.exports, Tr);  l.sn("H.", Tr);
+  l.s("  VAR offset: ", Tr);  l.h(Hdr.vars,    Tr);  l.sn("H.", Tr);
+  l.s("  VAR size:   ", Tr);  l.h(Hdr.varsize, Tr);  l.sn("H.", Tr);
 
   (* Write compiled module *)
   fname := "";  H.Append(modid, fname);  H.Append(".x64", fname);

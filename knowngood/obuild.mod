@@ -235,7 +235,7 @@ BEGIN
   Files.Set(r, f, 0);
   Files.ReadBytes(r, hdr, SYSTEM.SIZE(H.ModuleDesc));
   key := hdr.key;
-  Files.Set(r, f, hdr.nimports);
+  Files.Set(r, f, hdr.vars);
   NEW(import);
   last := NIL;
   Files.ReadString(r, import.name);
@@ -474,12 +474,12 @@ BEGIN
   Files.ReadBytes(r, hdr, SYSTEM.SIZE(H.ModuleDesc));
   wsl(mod.name, LongestModname + 1);
   WriteHuman(hdr.ptr, 12);  INC(TotalCode,    hdr.ptr);
-  WriteHuman(hdr.nvarsize, 12);   INC(TotalGlobals, hdr.nvarsize);
-  WriteHuman(hdr.cmd      - hdr.ptr,      8);
-  WriteHuman(hdr.nlines   - hdr.cmd,      6);
-  WriteHuman(hdr.nexports - hdr.nlines,   8);
-  WriteHuman(hdr.nimports - hdr.nexports, 8);
-  WriteHuman(hdr.size     - hdr.nimports, 8);
+  WriteHuman(hdr.varsize, 12);   INC(TotalGlobals, hdr.varsize);
+  WriteHuman(hdr.cmd     - hdr.ptr,     8);
+  WriteHuman(hdr.lines   - hdr.cmd,     6);
+  WriteHuman(hdr.exports - hdr.lines,   8);
+  WriteHuman(hdr.vars    - hdr.exports, 8);
+  WriteHuman(hdr.size    - hdr.vars,    8);
   H.wn;
   WinPE.AddModule(mod.code.file);
   mod.addedToPE := TRUE

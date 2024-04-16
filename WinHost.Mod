@@ -30,31 +30,22 @@ TYPE
   ModuleName* = ARRAY 32 OF CHAR;
 
   ModuleDesc* = RECORD-
-    name*:   ModuleName;  (* 00H *)
-    next*:   Module;      (* 20H Set on load *)
-    key*:    INTEGER;     (* 28H *)
-    num*:    INTEGER;     (* 30H Module num, set on load *)
-    size*:   INTEGER;     (* 38H Allocated memory, set on load (image size in file) *)
-    refcnt*: INTEGER;     (* 40H Managed by module loader *)
+    name*:    ModuleName;  (* 00H *)
+    next*:    Module;      (* 20H Set on load *)
+    key*:     INTEGER;     (* 28H *)
+    num*:     INTEGER;     (* 30H Module num, set on load *)
+    size*:    INTEGER;     (* 38H Allocated memory, set on load (image size in file) *)
+    refcnt*:  INTEGER;     (* 40H Managed by module loader *)
     (* Addresses *)
-    vars*:   INTEGER;     (* 48H Start of global VARs *)
-    xxcode:  INTEGER;     (* PO2013 Start of code (part of module memory) *)
-    xximp:   INTEGER;     (* PO2013 Imports: address of array of imported module pointers *)
-    cmd*:    INTEGER;     (* PO2013 Commands: address of seq of command strings and code offsets *)
-    xxent:   INTEGER;     (* PO2013 Entries: address of array of exported offsets *)
-    ptr*:    INTEGER;     (* PO2013 Pointers: address of array of pointer var addresses *)
-    xxunused:INTEGER;
-
-    (* Old values *)
-    d1:         INTEGER;       (* 80H *)
-    ninitcode*: INTEGER;
-    d3:         INTEGER;
-    d4:         INTEGER;
-    nexports*:  INTEGER;
-    nlines*:    INTEGER;
-    nimports*:  INTEGER;
-    nvarsize*:  INTEGER;
-    d9:         INTEGER;        (* 20H *)
+    vars*:    INTEGER;     (* 48H Start of global VARs / in code file start of import ref table *)
+    init*:    INTEGER;     (* 50H Module initialisation entry point *)
+    imprefs*: INTEGER;     (* 58H Imports references *)
+    cmd*:     INTEGER;     (* 60H PO2013 Commands: address of seq of command strings and code offsets *)
+    exports*: INTEGER;     (* 68H PO2013 Entries: address of array of exported offsets *)
+    ptr*:     INTEGER;     (* 70H PO2013 Pointers: address of array of pointer var addresses *)
+    lines*:   INTEGER;     (* 78H Line numbers etc. to address mapping *)
+    varsize*: INTEGER;     (* 80H Size of module VARs *)
+    reserve1: INTEGER;     (* 88H *)
   END;
 
 
@@ -512,7 +503,7 @@ BEGIN
   hdr  := ImgHeader;
   size := 0;
   WHILE hdr.size # 0 DO
-    INC(size, (hdr.nimports + hdr.nvarsize + 15) DIV 16 * 16);
+    INC(size, (hdr.vars + hdr.varsize + 15) DIV 16 * 16);
     hdr := SYSTEM.VAL(Module, ORD(hdr) + hdr.size)
   END;
 
@@ -551,7 +542,7 @@ PROCEDURE LocateModule(adr: INTEGER): Module;
 VAR  (*modadr: INTEGER;*)  hdr: Module;
 BEGIN
   hdr := Root;
-  WHILE (hdr # NIL) & ((adr < ORD(hdr)) OR (adr >= ORD(hdr)+hdr.nimports)) DO
+  WHILE (hdr # NIL) & ((adr < ORD(hdr)) OR (adr >= ORD(hdr)+hdr.vars)) DO
     hdr := hdr.next
   END;
 RETURN hdr END LocateModule;
@@ -561,8 +552,8 @@ VAR
   adr, line, pc, i: INTEGER;
   name: ARRAY 32 OF CHAR;
 BEGIN
-  IF hdr.nlines # 0 THEN
-    adr := ORD(hdr) + hdr.nlines;
+  IF hdr.lines # 0 THEN
+    adr := ORD(hdr) + hdr.lines;
     GetString(adr, name);
     WHILE name[0] # 0X DO
       SYSTEM.GET(adr, line);  INC(adr, 8);
@@ -939,7 +930,7 @@ RETURN hdr END FindModule;
 PROCEDURE ExportedAddress(modhdr: Module; index: INTEGER): INTEGER;
 VAR exportoffset: SYSTEM.CARD32;
 BEGIN
-  SYSTEM.GET(ORD(modhdr) + modhdr.nexports + index * 4, exportoffset);
+  SYSTEM.GET(ORD(modhdr) + modhdr.exports + index * 4, exportoffset);
 RETURN ORD(modhdr) + exportoffset END ExportedAddress;
 
 
@@ -1000,24 +991,24 @@ VAR
   modno:       SYSTEM.CARD16;
   modulebody:  PROCEDURE;
 BEGIN
-  SYSTEM.COPY(ORD(imagehdr), AllocPtr, imagehdr.nimports);  (* Copy up to but excluding import table *)
+  SYSTEM.COPY(ORD(imagehdr), AllocPtr, imagehdr.vars);  (* Copy up to but excluding import table *)
   loadedhdr := SYSTEM.VAL(Module, AllocPtr);
 
   (* Update length in header to loaded size *)
-  loadedhdr.size   := (loadedhdr.nimports + loadedhdr.nvarsize + 15) DIV 16 * 16;
+  loadedhdr.size   := (loadedhdr.vars + loadedhdr.varsize + 15) DIV 16 * 16;
 
   IF Verbose IN LoadFlags THEN
     ws("* Loaded ");              ws(loadedhdr.name);
     ws(" at ");                   wh(AllocPtr);
-    ws("H, code ");               wh(loadedhdr.nimports);
-    ws("H bytes, data ");         wh(loadedhdr.nvarsize);
+    ws("H, code ");               wh(loadedhdr.vars);
+    ws("H bytes, data ");         wh(loadedhdr.varsize);
     ws("H bytes, loaded size ");  wh(loadedhdr.size);
     ws("H bytes, limit ");        wh(AllocPtr + loadedhdr.size);  wsn("H.")
   END;
 
   (* Build list of imported module header addresses *)
   i := 0;
-  adr := ORD(imagehdr) + loadedhdr.nimports;
+  adr := ORD(imagehdr) + loadedhdr.vars;
   GetString(adr, impmod);
   WHILE impmod[0] # 0X DO
     SYSTEM.GET(adr, key);  INC(adr, 8);
@@ -1041,7 +1032,7 @@ BEGIN
 
   (* Relocate pointer addresses *)
   assert(loadedhdr.ptr # 0);  assert(ORD(loadedhdr) = AllocPtr);
-  loadedhdr.vars := AllocPtr + loadedhdr.nimports;
+  INC(loadedhdr.vars, AllocPtr);
   INC(loadedhdr.ptr, AllocPtr);
   RelocatePointerAddresses(loadedhdr.ptr, loadedhdr.vars);
 
@@ -1052,7 +1043,7 @@ BEGIN
   Root := loadedhdr;
 
   (* Execute module body *)
-  SYSTEM.PUT(SYSTEM.ADR(modulebody), AllocPtr + loadedhdr.ninitcode);
+  SYSTEM.PUT(SYSTEM.ADR(modulebody), AllocPtr + loadedhdr.init);
   INC(AllocPtr, loadedhdr.size);
 
   modulebody
@@ -1272,7 +1263,7 @@ BEGIN
 
     PrepareOberonMachine;
 
-    IF ImgHeader.size # (ImgHeader.nimports + ImgHeader.nvarsize + 15) DIV 16 * 16 THEN
+    IF ImgHeader.size # (ImgHeader.vars + ImgHeader.varsize + 15) DIV 16 * 16 THEN
       assertmsg(FALSE, "Invalid image size in bootstrap image (WinHost) header")
     END;
 
@@ -1290,7 +1281,7 @@ BEGIN
     SYSTEM.PUT(SYSTEM.ADR(Root), ModuleSpace);
     INC(Root.cmd, ModuleSpace);
     INC(Root.ptr, ModuleSpace);
-    RelocatePointerAddresses(Root.ptr, ModuleSpace + Root.nimports);
+    RelocatePointerAddresses(Root.ptr, ModuleSpace + Root.vars);
 
     Root.next := NIL;
     AllocPtr := ModuleSpace + ImgHeader.size;

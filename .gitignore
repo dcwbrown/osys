@@ -7,6 +7,7 @@
 t[0-9]
 knowngood.prev*/*
 background docs/*
+Pirklbauer/*
 prevgui/*
 buildpre/*
 build1/*

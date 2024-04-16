@@ -47,6 +47,14 @@ PROCEDURE ReadVar(VAR r: Files.Rider;  VAR var: ARRAY OF BYTE);
 BEGIN Files.ReadBytes(r, var, LEN(var)) END ReadVar;
 
 
+(*
+PROCEDURE LoadFrom(F: Files.File; pos: INTEGER;  VAR newmod: Module);
+BEGIN
+
+END LoadFrom;
+*)
+
+
 PROCEDURE Load*(name: ARRAY OF CHAR;  VAR newmod: Module);
   (*search module in list;  if not found, load module.
     res = 0: already present or loaded;
@@ -79,14 +87,6 @@ VAR
   impno:     SYSTEM.CARD16;
   modno:     SYSTEM.CARD16;
   body:      Command;
-(*
-  i, n, key, impkey, mno, nofimps, size: INTEGER;
-  p, u, v, w: INTEGER;  (*addresses*)
-  ch: CHAR;
-  body: Command;
-  fixorgP, fixorgD, fixorgT: INTEGER;
-  disp, adr, inst, pno, vno, dest, offset: INTEGER;
-*)
 BEGIN
   mod := H.Root;  error(0, name);  nofimps := 0;
   res := 0;
@@ -105,7 +105,7 @@ BEGIN
       Files.ReadBytes(R, header, SYSTEM.SIZE(ModDesc));
       name1     := header.name;
       key       := header.key;
-      size      := (header.nimports + header.nvarsize + 15) DIV 16 * 16;
+      size      := (header.vars + header.varsize + 15) DIV 16 * 16;
       importing := name1;
       (*
       H.wsn("File header:");
@@ -114,7 +114,7 @@ BEGIN
       H.ws("  size: "); H.wh(size);  H.wsn("H.");
       *)
       (* Load list of imported modules *)
-      Files.Set(R, F, header.nimports);
+      Files.Set(R, F, header.vars);
       Files.ReadString(R, impname);
       WHILE (impname[0] # 0X) & (res = 0) DO
         Files.ReadInt(R, impkey);
@@ -151,7 +151,7 @@ BEGIN
           mod.size := allocsize;
           mod.num  := H.Root.num + 1;
           mod.next := H.Root;
-          mod.nimports := 0;  (* Nothing loaded yet - not a candidate for LocateModule *)
+          mod.vars := 0;  (* Nothing loaded yet - not a candidate for LocateModule *)
           H.SetRoot(mod);
         ELSE error(7, name1)
         END
@@ -164,7 +164,7 @@ BEGIN
       IF res = 0 THEN (*read file*)
         INC(p, SYSTEM.SIZE(ModDesc));  (* Skip header *)
         Files.Set(R, F, SYSTEM.SIZE(ModDesc));
-        loadlen := header.nimports - SYSTEM.SIZE(ModDesc);
+        loadlen := header.vars - SYSTEM.SIZE(ModDesc);
         ASSERT(loadlen MOD 8 = 0);
         WHILE loadlen > 0 DO
           Files.ReadInt(R, i);  DEC(loadlen, 8);
@@ -173,15 +173,15 @@ BEGIN
         mod.name := name;  mod.key := key;  mod.refcnt := 0;
       END;
 
-      mod.vars     := ORD(mod) + header.nimports;
-      mod.cmd      := ORD(mod) + header.cmd;
-      mod.nexports := header.nexports;
-      mod.nlines   := header.nlines;
+      mod.vars    := ORD(mod) + header.vars;
+      mod.cmd     := ORD(mod) + header.cmd;
+      mod.exports := header.exports;
+      mod.lines   := header.lines;
 
       H.ws("* Loaded ");             H.ws(mod.name);
       H.ws(" at ");                  H.wh(ORD(mod));
-      H.ws("H, code ");              H.wh(header.nimports);
-      H.ws("H bytes, data ");        H.wh(header.nvarsize);
+      H.ws("H, code ");              H.wh(header.vars);
+      H.ws("H bytes, data ");        H.wh(header.varsize);
       H.ws("H bytes, loaded size "); H.wh(mod.size);
       H.wsn("H.");
 
@@ -198,7 +198,7 @@ BEGIN
       mod.ptr  := ORD(mod) + header.ptr;
       H.RelocatePointerAddresses(mod.ptr, mod.vars);
 
-      body := SYSTEM.VAL(Command, ORD(mod) + header.ninitcode);
+      body := SYSTEM.VAL(Command, ORD(mod) + header.init);
       body   (*initialize module*)
 (*
     ELSIF res >= 3 THEN importing := name;
