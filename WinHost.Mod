@@ -36,7 +36,6 @@ TYPE
     num*:     INTEGER;     (* 30H Module num, set on load *)
     size*:    INTEGER;     (* 38H Allocated memory, set on load (image size in file) *)
     refcnt*:  INTEGER;     (* 40H Managed by module loader *)
-    (* Addresses *)
     vars*:    INTEGER;     (* 48H Start of global VARs / in code file start of import ref table *)
     init*:    INTEGER;     (* 50H Module initialisation entry point *)
     imprefs*: INTEGER;     (* 58H Imports references *)

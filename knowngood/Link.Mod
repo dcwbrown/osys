@@ -521,11 +521,6 @@ VAR exportoffset: SYSTEM.CARD32;  mod: Modules.Module;
 BEGIN
   mod := SYSTEM.VAL(Modules.Module, SYSTEM.ADR(Mem[modhdr]));
   SYSTEM.GET(ORD(mod) + mod.exports + index * 4, exportoffset);
-(*
-  (* Debug log *)
-  H.ws("  export "); H.ws(mod.name); H.ws("["); H.wi(index);
-  H.ws("] is offset "); H.wh(exportoffset); H.wsn("H.");
-*)
 RETURN exportoffset END ExportedOffset;
 
 
@@ -540,29 +535,12 @@ VAR
   modadr, expoffset, absreloc: INTEGER;
   handlersoffset: INTEGER;
 BEGIN
-(*
-  H.ws("LinkImport(modofs "); H.wh(modofs);
-  H.ws("H, offset ");         H.wh(offset);
-  H.ws("H, impno ");          H.wh(impno);
-  H.ws("H, modno ");          H.wh(modno); H.wsn("H, modules).");
-*)
   modadr := SYSTEM.ADR(Mem[modofs]);
   IF modno = 0 THEN  (* system function *)
-(*
-    H.wsn("System function link:");
-    H.ws("  importing module offset "); H.wh(modofs);        H.wsn("H.");
-*)
     SYSTEM.GET(modadr + offset, disp);
-(*  H.ws("  original disp   -"); H.wh(-disp);                H.wsn("H.");*)
     ASSERT((impno >= 0) & (impno <= H.HandlerCount));
     handlersoffset := SYSTEM.ADR(H.Handlers) - 100000000H;  (* Handler table offset from start of modules *)
-(*  H.ws("  handlers offset  "); H.wh(handlersoffset);       H.wsn("H.");*)
     INC(disp, handlersoffset + 8 * impno - modofs);
-    IF disp >= 0 THEN
-(*    H.ws("  updated disp     "); H.wh(disp);               H.wsn("H.")*)
-    ELSE
-(*    H.ws("  updated disp    -"); H.wh(-disp);              H.wsn("H.")*)
-    END;
     SYSTEM.PUT(modadr + offset, disp)
   ELSIF modno = 0FFFFH THEN (* 64 bit absolute address relocation *)
     (* qword at offset contains 32/0,32/module offset or 32/1,16/mod,16/imp *)
@@ -579,18 +557,8 @@ BEGIN
   ELSE
     ASSERT(modno > 0);
     SYSTEM.GET(modadr + offset, disp);
-(*
-    H.wsn("Disp32 relative link:");
-    H.ws("  source module offset "); H.wh(modofs);           H.wsn("H.");
-    H.ws("  target module offset "); H.wh(modules[modno-1]); H.wsn("H.");
-*)
     expoffset := ExportedOffset(modules[modno-1], impno-1);
-(*
-    H.ws("  export offset        "); H.wh(expoffset);        H.wsn("H.");
-    H.ws("  original disp   -"); H.wh(-disp);                H.wsn("H.");
-*)
     INC(disp, modules[modno-1] - modofs + expoffset);
-(*  H.ws("  updated disp    -"); H.wh(-disp);                H.wsn("H.");*)
     SYSTEM.PUT(modadr + offset, disp)
   END
 END LinkImport;
