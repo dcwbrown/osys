@@ -21,7 +21,7 @@ CONST
   ImageBase   = 0FFFF0000H;  (* Image base must be multiple of 64k / 10000H  *)
   ModuleBase  = ImageBase + RvaModules;
 
-  BootstrapVarBytes   = 24;  (* preloaded bootstrap VAR size preceeding imported proc addresses *)
+  BootstrapVarBytes   = 32;  (* preloaded bootstrap VAR size preceeding imported proc addresses *)
   Kernel32ImportCount = 39;
   Gdi32ImportCount    = 12;
   User32ImportCount   = 26;
@@ -32,7 +32,8 @@ TYPE
   ObjectFile = POINTER TO ObjectFileDesc;
   ObjectFileDesc = RECORD
     next: ObjectFile;
-    file: Files.File
+    file: Files.File;
+    name: Modules.ModuleName;
   END;
   Zeroes58 = ARRAY 3AH OF BYTE;
 
@@ -500,20 +501,19 @@ END WritePEHeader;
 (* -------------------------------------------------------------------------- *)
 (* -------------------------------------------------------------------------- *)
 
-(*
+PROCEDURE ReadVar(VAR r: Files.Rider;  VAR var: ARRAY OF BYTE);
+BEGIN Files.ReadBytes(r, var, LEN(var)) END ReadVar;
+
+
 PROCEDURE AddModule*(f: Files.File);
-VAR obj: ObjectFile;
+VAR obj: ObjectFile;  r: Files.Rider;  mod: Modules.Module;
 BEGIN
   ASSERT(f # NIL);
   NEW(obj); obj.file := f;
   IF Objects = NIL THEN Objects := obj ELSE LastObject.next := obj END;
-  LastObject := obj
+  LastObject := obj;
+  NEW(mod);  Files.Set(r, f, 0);  ReadVar(r, mod^);  obj.name := mod.name;
 END AddModule;
-*)
-
-
-PROCEDURE ReadVar(VAR r: Files.Rider;  VAR var: ARRAY OF BYTE);
-BEGIN Files.ReadBytes(r, var, LEN(var)) END ReadVar;
 
 
 PROCEDURE ExportedOffset(modhdr: INTEGER; index: INTEGER): INTEGER;
@@ -699,6 +699,11 @@ BEGIN
   SYSTEM.PUT(SYSTEM.ADR(Mem[varpos]), ImageBase);       INC(varpos, 8);
   SYSTEM.PUT(SYSTEM.ADR(Mem[varpos]), ModuleBase);      INC(varpos, 8);
   SYSTEM.PUT(SYSTEM.ADR(Mem[varpos]), {63, H.Verbose}); INC(varpos, 8);
+  IF Objects = NIL THEN
+    SYSTEM.PUT(SYSTEM.ADR(Mem[varpos]), 0);             INC(varpos, 8)
+  ELSE
+    SYSTEM.PUT(SYSTEM.ADR(Mem[varpos]), FadrModules + Align(ModuleSize, FileAlignment));
+  END;
   ASSERT(varpos - mod.vars = BootstrapVarBytes);
 
   H.ws("Before IDT lookups write, varpos "); H.wh(varpos); H.wsn("H.");
@@ -735,7 +740,7 @@ BEGIN
 END CallJumpIndirect;
 
 
-PROCEDURE do*;
+PROCEDURE Generate*;
 VAR
   WinHostHdr: Modules.Module;
   KernelHdr:  Modules.Module;
@@ -777,13 +782,12 @@ BEGIN
   spos(FadrModules);
   Files.WriteBytes(Exe, Mem, 0, ModuleSize);
   FileAlign(Exe, FileAlignment);
-  ModuleSize := Files.Pos(Exe) - FadrModules;
 
   WritePEHeader;
   Files.Register(ExeFile);
 
   H.wsn("Link generated innercore.exe.")
-END do;
+END Generate;
 
-BEGIN Init; do
+BEGIN Init; Generate;
 END Link.

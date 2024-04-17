@@ -57,9 +57,7 @@
 @rd /s /q buildtest 2>NUL
 ::
 :: If WinPE has changed a prebuild will be required
-@sed -n '/Start of/,/End of/p' knowngood\WinHost.mod >t1
-@sed -n '/Start of/,/End of/p' WinHost.mod >t2
-@fc t1 t2 >NUL
+@fc knowngood\WinPE.mod WinPE.mod
 @if not errorlevel 1 goto firstbuild
 ::
 @echo.
@@ -180,6 +178,8 @@ System
 @cd buildlink
 @copy ..\build2\*.x64 >NUL
 @copy ..\build2\*.smb >NUL
+::@copy ..\buildsys\*.x64 >NUL
+::@copy ..\buildsys\*.smb >NUL
 @copy ..\*.mod >NUL
 ..\build2\obuild %VERBOSE% /s ./ Link
 @if errorlevel 1 goto linkbuildfailed

@@ -441,7 +441,6 @@ BEGIN
   ActCnt := 0; CurTask := NewTask(GC, 1000); Install(CurTask);
 
   IF 63 IN H.LoadFlags THEN
-    H.wsn("Reached Oberon.");
     Modules.Load("System", Mod); Mod := NIL; (*Loop*)
   END
 

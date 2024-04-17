@@ -12,27 +12,13 @@ CONST
   FadrImport  = 0400H;  RvaImport  = 1000H;  (* Import directory table *)
   FadrModules = 0E00H;  RvaModules = 2000H;  (* Oberon modules *)
 
-  BootstrapVarBytes   = 24;  (* preloaded bootstrap VAR size preceeding imported proc addresses *)
+  BootstrapVarBytes   = 32;  (* preloaded bootstrap VAR size preceeding imported proc addresses *)
   Kernel32ImportCount = 39;
   Gdi32ImportCount    = 12;
   User32ImportCount   = 26;
 
 TYPE
   ModuleDesc = H.ModuleDesc;
-
-  (* Temporary new code header
-  ModuleDesc* = RECORD-
-    length*:   SYSTEM.CARD32;  (* File length *)
-    initcode*: SYSTEM.CARD32;
-    pointers*: SYSTEM.CARD32;
-    commands*: SYSTEM.CARD32;
-    exports*:  SYSTEM.CARD32;
-    imports*:  SYSTEM.CARD32;  (* VARs start here following import resolution *)
-    varsize*:  SYSTEM.CARD32;
-    key*:      INTEGER;
-  END;
-  *)
-
 
   ObjectFile = POINTER TO ObjectFileDesc;
   ObjectFileDesc = RECORD
@@ -560,6 +546,7 @@ BEGIN
   Files.WriteInt(Exe, ImageBase);                                 (* EXE load address  *)
   Files.WriteInt(Exe, ImageBase + RvaModules);                    (* Header address    *)
   Files.WriteSet(Exe, LoadFlags);
+  Files.WriteInt(Exe, 0);
   ASSERT(Files.Pos(Exe) -  (FadrModules + Bootstrap.Header.vars) = BootstrapVarBytes);
 
   (* Preset bootstrap VARs with WIndows proc addresses *)

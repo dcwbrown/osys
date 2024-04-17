@@ -86,11 +86,13 @@ TYPE
   END;
 
 
+(* Start of pre-loaded variables (preset by WinPE.mod or Link.mod) *)
+
 VAR
-  (* Start of pre-loaded variables (preset by WinPE.mod) *)
   Exeadr:     INTEGER;  (* Image PE header loaded address *)
   ImgHeader*: Module;   (* Image Oberon section loaded address *)
   LoadFlags*: SET;
+  Dummy:      INTEGER;
 
   (* Pre-loaded Kernel32 imports *)
   AddVectoredExceptionHandler*:    PROCEDURE-(first, filter: INTEGER): INTEGER;
@@ -178,7 +180,8 @@ VAR
   ShowWindow*:                     PROCEDURE-(wn, cm: INTEGER);
   TranslateMessage*:               PROCEDURE-(ms: INTEGER): INTEGER;
   InvalidateRect*:                 PROCEDURE-(wn, rc, er: INTEGER): INTEGER;
-  (* End of pre-loaded variables *)
+
+(* End of pre-loaded variables *)
 
   (* Linker expects handlers to follow immediately after pre-loaded vars *)
   Handlers*: ARRAY HandlerCount OF PROCEDURE;
@@ -1062,11 +1065,12 @@ END SetRoot;
 PROCEDURE Allocate*(size: INTEGER; VAR p, alloc: INTEGER);
 VAR adr, newcommitlen: INTEGER;
 BEGIN
+  (*
   ws("WinHost.Allocate(size "); wh(size);        wsn("H).");
   ws("  ModuleSpace: ");        wh(ModuleSpace); wsn("H.");
   ws("  AllocPtr:    ");        wh(AllocPtr);    wsn("H.");
   ws("  CommitLen:   ");        wh(CommitLen);   wsn("H.");
-
+  *)
   p     := 0;
   alloc := 0;
   size  := (size + 15) DIV 16 * 16;
