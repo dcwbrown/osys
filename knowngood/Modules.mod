@@ -183,6 +183,7 @@ BEGIN
       H.ws("H, code ");              H.wh(header.vars);
       H.ws("H bytes, data ");        H.wh(header.varsize);
       H.ws("H bytes, loaded size "); H.wh(mod.size);
+      H.ws("H, lines at ");          H.wh(mod.lines);
       H.wsn("H.");
 
       (* Link imports *)

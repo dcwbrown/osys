@@ -99,16 +99,13 @@ PROCEDURE New*(VAR ptr: INTEGER;  tag: INTEGER);
 (* called by NEW via H.NewPointer;  ptr and tag are pointers*)
 VAR p, size, lim: INTEGER;
 BEGIN
-  (*
+(*
   H.ws("NewPtr. ptr @");  H.wh(SYSTEM.ADR(ptr));
   H.ws("H, tag ");  H.wh(tag);  H.wc("H");
   H.WriteModuleOffset(tag);
-  *)
+*)
   SYSTEM.GET(tag, size);  (* Size includes header *)
-  (*
-  H.ws(", tag.size "); H.wh(size);
-  H.ws("H.");
-  *)
+(*H.ws(", tag.size ");  H.wh(size);  H.ws("H.");*)
   IF    size = 64  THEN GetBlock64(p)
   ELSIF size = 128 THEN GetBlock128(p)
   ELSIF size = 256 THEN GetBlock256(p)
@@ -123,7 +120,7 @@ BEGIN
     INC(Allocated, size);
     WHILE p < lim DO SYSTEM.PUT(p, 0);  INC(p, 8) END
   END;
-  (*H.ws(" Allocated at "); H.wh(ptr); H.wsn("H.");*)
+(*H.ws(" Allocated at "); H.wh(ptr); H.wsn("H.");*)
 END New;
 
 

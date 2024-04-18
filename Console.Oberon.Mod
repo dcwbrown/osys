@@ -1,6 +1,6 @@
 MODULE Oberon; (* DCWB 06.04.2024  Minimal Oberon.Mod for console applications *)
 
-IMPORT SYSTEM, H := WinHost, Texts, Modules;
+IMPORT SYSTEM, H := WinHost, Files, Texts, Modules;
 
 VAR
   Log*: Texts.Text;
@@ -33,10 +33,41 @@ BEGIN
   (*Texts.Delete(T, 0, end, b)*)
 END LogNotify;
 
+
+PROCEDURE LoadExeObjects;
+VAR
+  fn16: ARRAY H.MaxPath OF SYSTEM.CARD16;
+  fn8:  ARRAY H.MaxPath OF CHAR;
+  res:  INTEGER;
+  f:    Files.File;
+  r:    Files.Rider;
+  pos:  INTEGER;
+  mod:  Modules.ModDesc;
+BEGIN
+  res := H.GetModuleFileNameW(0, SYSTEM.ADR(fn16), H.MaxPath);
+  ASSERT(res # 0);
+  res := H.Utf16ToUtf8(fn16, fn8);
+  f := Files.Old(fn8);
+  ASSERT(f # NIL);
+  pos := H.ObjectOfs;
+  Files.Set(r, f, pos);
+  REPEAT
+    Files.ReadBytes(r, mod, SYSTEM.SIZE(Modules.ModDesc));
+    IF ~r.eof THEN
+      H.ws(".. module '"); H.ws(mod.name); H.wsn("'.");
+      INC(pos, mod.size);
+      Files.Set(r, f, pos)
+    END
+  UNTIL r.eof
+END LoadExeObjects;
+
+
 BEGIN
   IF 63 IN H.LoadFlags THEN H.wsn("Reached Console.Oberon.") END;
 
   NEW(Log);
   Texts.Open(Log, "");
   Log.notify := LogNotify;
+
+  IF H.ObjectOfs # 0 THEN LoadExeObjects END
 END Oberon.

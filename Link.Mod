@@ -506,13 +506,13 @@ BEGIN Files.ReadBytes(r, var, LEN(var)) END ReadVar;
 
 
 PROCEDURE AddModule*(f: Files.File);
-VAR obj: ObjectFile;  r: Files.Rider;  mod: Modules.Module;
+VAR obj: ObjectFile;  r: Files.Rider;  mod: Modules.ModDesc;
 BEGIN
   ASSERT(f # NIL);
   NEW(obj); obj.file := f;
   IF Objects = NIL THEN Objects := obj ELSE LastObject.next := obj END;
   LastObject := obj;
-  NEW(mod);  Files.Set(r, f, 0);  ReadVar(r, mod^);  obj.name := mod.name;
+  Files.Set(r, f, 0);  ReadVar(r, mod);  obj.name := mod.name;
 END AddModule;
 
 
@@ -700,10 +700,11 @@ BEGIN
   SYSTEM.PUT(SYSTEM.ADR(Mem[varpos]), ModuleBase);      INC(varpos, 8);
   SYSTEM.PUT(SYSTEM.ADR(Mem[varpos]), {63, H.Verbose}); INC(varpos, 8);
   IF Objects = NIL THEN
-    SYSTEM.PUT(SYSTEM.ADR(Mem[varpos]), 0);             INC(varpos, 8)
+    SYSTEM.PUT(SYSTEM.ADR(Mem[varpos]), 0);
   ELSE
     SYSTEM.PUT(SYSTEM.ADR(Mem[varpos]), FadrModules + Align(ModuleSize, FileAlignment));
   END;
+  INC(varpos, 8);
   ASSERT(varpos - mod.vars = BootstrapVarBytes);
 
   H.ws("Before IDT lookups write, varpos "); H.wh(varpos); H.wsn("H.");
@@ -746,6 +747,9 @@ VAR
   KernelHdr:  Modules.Module;
   FilesHdr:   Modules.Module;
   ModulesHdr: Modules.Module;
+  obj:        ObjectFile;
+  r:          Files.Rider;
+  buf:        ARRAY 1024 OF BYTE;
 BEGIN
   H.wsn("Linking.");
   ModuleSize := 0;
@@ -783,11 +787,39 @@ BEGIN
   Files.WriteBytes(Exe, Mem, 0, ModuleSize);
   FileAlign(Exe, FileAlignment);
 
+  (* Add any rquested object files *)
+  obj := Objects;
+  WHILE obj # NIL DO
+    H.ws("* add "); H.ws(obj.name); H.wsn(".");
+    Files.Set(r, obj.file, 0);
+    WHILE ~r.eof DO
+      Files.ReadBytes(r, buf, LEN(buf));
+      Files.WriteBytes(Exe, buf, 0, LEN(buf) - r.res);
+    END;
+    FileAlign(Exe, 16);
+    obj := obj.next
+  END;
+
   WritePEHeader;
   Files.Register(ExeFile);
 
   H.wsn("Link generated innercore.exe.")
 END Generate;
 
-BEGIN Init; Generate;
+PROCEDURE AddBin(fn: ARRAY OF CHAR);
+VAR f: Files.File;
+BEGIN
+  f := Files.Old(fn);  ASSERT(f # NIL);
+  AddModule(f);
+END AddBin;
+
+PROCEDURE Test();
+BEGIN
+  H.wsn("Testing link.");
+  AddBin("Fonts.x64");
+  AddBin("Texts.x64");
+  Generate;
+END Test;
+
+BEGIN Init; Test
 END Link.

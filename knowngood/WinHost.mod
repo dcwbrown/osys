@@ -92,7 +92,7 @@ VAR
   Exeadr:     INTEGER;  (* Image PE header loaded address *)
   ImgHeader*: Module;   (* Image Oberon section loaded address *)
   LoadFlags*: SET;
-  Dummy:      INTEGER;
+  ObjectOfs*: INTEGER;  (* Offset into exe file of first object to load *)
 
   (* Pre-loaded Kernel32 imports *)
   AddVectoredExceptionHandler*:    PROCEDURE-(first, filter: INTEGER): INTEGER;
@@ -632,36 +632,35 @@ END ExceptionHandler;
 
 (* ----------------------------- Trap handlers ------------------------------ *)
 
-PROCEDURE Trap*(desc: ARRAY OF CHAR);
+PROCEDURE Trap*(retoffset: INTEGER; desc: ARRAY OF CHAR);
 VAR adr, modadr: INTEGER;
-BEGIN
+BEGIN  (* retoffset is callers local var size *)
   ws(desc);
-  (* Get caller address of trap caller - Note: assume caller has no local vars *)
-  SYSTEM.GET(SYSTEM.ADR(LEN(desc)) + 8, adr);
+  SYSTEM.GET(SYSTEM.ADR(LEN(desc)) + 16 + retoffset, adr);
   LocateAddress(adr, NIL);
   ExitProcess(99)
 END Trap;
 
 PROCEDURE NewPointerHandler();
-BEGIN wcn; Trap("** New pointer handler not istalled") END NewPointerHandler;
+BEGIN wcn; Trap(0, "** New pointer handler not istalled") END NewPointerHandler;
 
 PROCEDURE AssertionFailureHandler();
-BEGIN wcn; Trap("** Assertion failure")      END AssertionFailureHandler;
+BEGIN wcn; Trap(0, "** Assertion failure")      END AssertionFailureHandler;
 
 PROCEDURE ArraySizeMismatchHandler();
-BEGIN wcn; Trap("** Array size mismatch")     END ArraySizeMismatchHandler;
+BEGIN wcn; Trap(0, "** Array size mismatch")     END ArraySizeMismatchHandler;
 
 PROCEDURE UnterminatedStringHandler();
-BEGIN wcn; Trap("** Unterminated string")     END UnterminatedStringHandler;
+BEGIN wcn; Trap(0, "** Unterminated string")     END UnterminatedStringHandler;
 
 PROCEDURE IndexOutOfRangeHandler();
-BEGIN wcn; Trap("** Index out of range")      END IndexOutOfRangeHandler;
+BEGIN wcn; Trap(0, "** Index out of range")      END IndexOutOfRangeHandler;
 
 PROCEDURE NilPointerDereferenceHandler();
-BEGIN wcn; Trap("** NIL pointer dereference") END NilPointerDereferenceHandler;
+BEGIN wcn; Trap(0, "** NIL pointer dereference") END NilPointerDereferenceHandler;
 
 PROCEDURE TypeGuardFailureHandler();
-BEGIN wcn; Trap("** Type guard failure")      END TypeGuardFailureHandler;
+BEGIN wcn; Trap(0, "** Type guard failure")      END TypeGuardFailureHandler;
 
 PROCEDURE InitSysHandlers;
 BEGIN
@@ -689,7 +688,7 @@ BEGIN
 END assertmsg;
 
 PROCEDURE assert(expectation: BOOLEAN);
-BEGIN IF ~expectation THEN Trap("** WinHost assertion failure **") END
+BEGIN IF ~expectation THEN Trap(0, "** WinHost assertion failure **") END
 END assert;
 
 
@@ -798,7 +797,7 @@ RETURN j END Utf16ToUtf8;
 
 (* -------------------------------------------------------------------------- *)
 
-PROCEDURE WriteWindowsErrorMessage(err: INTEGER);
+PROCEDURE WriteWindowsErrorMessage*(err: INTEGER);
 VAR
   msgW:    ARRAY 1024 OF SYSTEM.CARD16;
   msg:     ARRAY 1024 OF CHAR;
@@ -815,7 +814,7 @@ END WriteWindowsErrorMessage;
 PROCEDURE AssertWinErr*(err: INTEGER);
 BEGIN
   IF err # 0 THEN
-    wn; ws("** "); WriteWindowsErrorMessage(err); Trap(" **")
+    wn; ws("** "); WriteWindowsErrorMessage(err); Trap(0, " **")
   END
 END AssertWinErr;
 
@@ -849,7 +848,7 @@ VAR
   mode:        INTEGER;
   res:         INTEGER;
 BEGIN
-  disposition := 3;         (* Open existing *)
+  disposition := 3;        (* Open existing *)
   flags       := 0;
   IF openkind = OpenRO THEN
     access := 080000000H;  (* GenericRead *)
@@ -860,6 +859,11 @@ BEGIN
   END;
   res := Utf8ToUtf16(name, name16);
   res := CreateFileW(SYSTEM.ADR(name16), access, mode, 0, disposition, flags, 0);
+  IF (res < 0) & (openkind # OpenRO) THEN  (* Try again readonly *)
+    access := 080000000H;  (* GenericRead *)
+    mode   := 1;           (* FileShareRead *)
+    res    := CreateFileW(SYSTEM.ADR(name16), access, mode, 0, disposition, flags, 0);
+  END;
   IF res < 0 THEN
     handle := 0;  res := GetLastError()
   ELSE
@@ -996,7 +1000,7 @@ BEGIN
   SYSTEM.COPY(ORD(imagehdr), AllocPtr, imagehdr.vars);  (* Copy up to but excluding import table *)
   loadedhdr := SYSTEM.VAL(Module, AllocPtr);
 
-  (* Update length in header to loaded size *)
+  (* Update length in header from object binary size to loaded size *)
   loadedhdr.size   := (loadedhdr.vars + loadedhdr.varsize + 15) DIV 16 * 16;
 
   IF Verbose IN LoadFlags THEN
@@ -1005,7 +1009,9 @@ BEGIN
     ws("H, code ");               wh(loadedhdr.vars);
     ws("H bytes, data ");         wh(loadedhdr.varsize);
     ws("H bytes, loaded size ");  wh(loadedhdr.size);
-    ws("H bytes, limit ");        wh(AllocPtr + loadedhdr.size);  wsn("H.")
+    ws("H bytes, limit ");        wh(AllocPtr + loadedhdr.size);
+    ws("H, lines at ");           wh(loadedhdr.lines);
+    wsn("H.")
   END;
 
   (* Build list of imported module header addresses *)

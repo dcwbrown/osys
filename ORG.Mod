@@ -201,9 +201,9 @@ BEGIN
     l.s(", Free: ", Tr); l.Set(Free, Tr);
     l.s(", SPO ",   Tr); l.i(X64.SPO, Tr); l.sn(".", Tr)
   END;
-  IF Free # AllFree           THEN ORS.Mark("Reg Stack"); ClearRegs;      H.wn; H.Trap("** Free # AllFree")           END;
-  IF X64.PC >= X64.MaxPC - 40 THEN ORS.Mark("program too long");          H.wn; H.Trap("** X64.PC >= X64.MaxPC - 40") END;
-  IF X64.SPO # 0              THEN ORS.Mark("SPO error"); X64.ClearStack; H.wn; H.Trap("** X64.SPO # 0")              END
+  IF Free # AllFree           THEN ORS.Mark("Reg Stack"); ClearRegs;      H.wn; H.Trap(0, "** Free # AllFree")           END;
+  IF X64.PC >= X64.MaxPC - 40 THEN ORS.Mark("program too long");          H.wn; H.Trap(0, "** X64.PC >= X64.MaxPC - 40") END;
+  IF X64.SPO # 0              THEN ORS.Mark("SPO error"); X64.ClearStack; H.wn; H.Trap(0, "** X64.SPO # 0")              END
 END CheckRegs;
 
 PROCEDURE FreeRegs(VAR x: Item);

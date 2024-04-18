@@ -38,19 +38,27 @@ VAR
   res:  INTEGER;
   f:    File;
 BEGIN
-  f := first;
-  WHILE (f # NIL) & ~(f.registered & (f.name = name)) DO f := f.next END;
-  IF f = NIL THEN
-    res := H.FileOpen(name, H.OpenRW, h);
-    IF res > 0 THEN (* error encountered *)
-      f := NIL
-    ELSE
-      NEW(f);
-      f.tempname   := "";
-      f.registered := TRUE;
-      f.name       := name;
-      f.handle     := h;
-      f.next       := first;  first := f;
+  IF name[0] = 0X THEN
+    f := NIL  (* E.g. commonly when Texts.Open passed "" as fiename *)
+  ELSE
+    f := first;
+    WHILE (f # NIL) & ~(f.registered & (f.name = name)) DO f := f.next END;
+    IF f = NIL THEN
+      res := H.FileOpen(name, H.OpenRW, h);
+      IF res > 0 THEN (* error encountered *)
+        (*
+        H.ws("Couldn't open '"); H.ws(name);
+        H.ws("': "); H.WriteWindowsErrorMessage(res); H.wn;
+        *)
+        f := NIL
+      ELSE
+        NEW(f);
+        f.tempname   := "";
+        f.registered := TRUE;
+        f.name       := name;
+        f.handle     := h;
+        f.next       := first;  first := f;
+      END
     END
   END;
 RETURN f END Old;
