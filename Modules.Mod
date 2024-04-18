@@ -14,6 +14,7 @@ VAR
   res*:       INTEGER;
   importing*: ModuleName;
   imported*:  ModuleName;
+  LoadFwd:    PROCEDURE(name: ARRAY OF CHAR;  VAR newmod: Module);
 
 
 PROCEDURE ThisFile(name: ARRAY OF CHAR): Files.File;
@@ -47,27 +48,10 @@ PROCEDURE ReadVar(VAR r: Files.Rider;  VAR var: ARRAY OF BYTE);
 BEGIN Files.ReadBytes(r, var, LEN(var)) END ReadVar;
 
 
-(*
-PROCEDURE LoadFrom(F: Files.File; pos: INTEGER;  VAR newmod: Module);
-BEGIN
-
-END LoadFrom;
-*)
-
-
-PROCEDURE Load*(name: ARRAY OF CHAR;  VAR newmod: Module);
-  (*search module in list;  if not found, load module.
-    res = 0: already present or loaded;
-    res = 1: file not available;
-    res = 2: file has wrong versionkey
-    res = 3: key conflict;
-    res = 4: bad file version;
-    res = 5: corrupted file;
-    res = 7: no space*)
+PROCEDURE LoadFromFile*(F: Files.File; pos: INTEGER;  VAR newmod: Module);
 VAR
   mod:       Module;
   nofimps:   INTEGER;
-  F:         Files.File;
   R:         Files.Rider;
   header:    ModDesc;
   name1:     ModuleName;
@@ -88,52 +72,42 @@ VAR
   modno:     SYSTEM.CARD16;
   body:      Command;
 BEGIN
-  mod := H.Root;  error(0, name);  nofimps := 0;
-  res := 0;
-  (*nofimps := 0;*)
-  WHILE (mod # NIL) & (name # mod.name) DO mod := mod.next END;
-
-  IF mod = NIL THEN (*load*)
-    Check(name);
-    IF res = 0 THEN F := ThisFile(name) ELSE F := NIL END;
-    IF F # NIL THEN
-      (*
-      H.ws("* Loading "); H.ws(name);
-      H.ws(" from file "); H.ws(F.name);  H.wsn(" *");
-      *)
-      Files.Set(R, F, 0);
-      Files.ReadBytes(R, header, SYSTEM.SIZE(ModDesc));
-      name1     := header.name;
-      key       := header.key;
-      size      := (header.vars + header.varsize + 15) DIV 16 * 16;
+  ASSERT(F # NIL);
+  mod := H.Root;  nofimps := 0;  res := 0;
+  Files.Set(R, F, pos);
+  ReadVar(R, header);
+  name1     := header.name;
+  key       := header.key;
+  size      := (header.vars + header.varsize + 15) DIV 16 * 16;
+  importing := name1;
+  error(0, name1);
+  WHILE (mod # NIL) & (name1 # mod.name) DO mod := mod.next END;
+  IF mod # NIL THEN
+    res := 8
+  ELSE
+    (*
+    H.wsn("File header:");
+    H.ws("  name: "); H.ws(name1); H.wsn(".");
+    H.ws("  key:  "); H.wh(key);   H.wsn("H.");
+    H.ws("  size: "); H.wh(size);  H.wsn("H.");
+    *)
+    (* Load list of imported modules *)
+    Files.Set(R, F, pos + header.vars);
+    Files.ReadString(R, impname);
+    WHILE (impname[0] # 0X) & (res = 0) DO
+      Files.ReadInt(R, impkey);
+      (*H.ws(name); H.ws(" importing "); H.ws(impname); H.wsn(".");*)
+      LoadFwd(impname, impmod);
+      import[nofimps] := impmod;
       importing := name1;
-      (*
-      H.wsn("File header:");
-      H.ws("  name: "); H.ws(name1); H.wsn(".");
-      H.ws("  key:  "); H.wh(key);   H.wsn("H.");
-      H.ws("  size: "); H.wh(size);  H.wsn("H.");
-      *)
-      (* Load list of imported modules *)
-      Files.Set(R, F, header.vars);
-      Files.ReadString(R, impname);
-      WHILE (impname[0] # 0X) & (res = 0) DO
-        Files.ReadInt(R, impkey);
-        (*H.ws(name); H.ws(" importing "); H.ws(impname); H.wsn(".");*)
-        Load(impname, impmod);
-        import[nofimps] := impmod;
-        importing := name1;
-        IF res = 0 THEN
-          IF impmod.key = impkey THEN INC(impmod.refcnt);  INC(nofimps)
-          ELSE error(3, name1);  imported := impname
-          END
-        END;
-        Files.ReadString(R, impname)
+      IF res = 0 THEN
+        IF impmod.key = impkey THEN INC(impmod.refcnt);  INC(nofimps)
+        ELSE error(3, name1);  imported := impname
+        END
       END;
-      imptabpos := (Files.Pos(R) + 15) DIV 16 * 16;
-    ELSE
-      H.ws("Couldn't find compiled binary .X64 file for module "); H.ws(name); H.wsn(".");
-      error(1, name)
+      Files.ReadString(R, impname)
     END;
+    imptabpos := (Files.Pos(R) + 15) DIV 16 * 16;
 
     IF res = 0 THEN (*search for a hole in the list allocate and link*)
       mod := H.Root;
@@ -163,14 +137,14 @@ BEGIN
       (* Read static memory, including code, type descriptors, strings and pointers *)
       IF res = 0 THEN (*read file*)
         INC(p, SYSTEM.SIZE(ModDesc));  (* Skip header *)
-        Files.Set(R, F, SYSTEM.SIZE(ModDesc));
+        Files.Set(R, F, pos + SYSTEM.SIZE(ModDesc));
         loadlen := header.vars - SYSTEM.SIZE(ModDesc);
         ASSERT(loadlen MOD 8 = 0);
         WHILE loadlen > 0 DO
           Files.ReadInt(R, i);  DEC(loadlen, 8);
           SYSTEM.PUT(p, i);     INC(p, 8)
         END;
-        mod.name := name;  mod.key := key;  mod.refcnt := 0;
+        mod.name := header.name;  mod.key := key;  mod.refcnt := 0;
       END;
 
       mod.vars    := ORD(mod) + header.vars;
@@ -187,7 +161,7 @@ BEGIN
       H.wsn("H.");
 
       (* Link imports *)
-      Files.Set(R, F, imptabpos);
+      Files.Set(R, F, pos + imptabpos);
       Files.ReadBytes(R, impcount, 4);
       (*H.ws("Import count: "); H.wi(impcount); H.wsn(".");*)
       FOR i := 1 TO impcount DO
@@ -205,6 +179,37 @@ BEGIN
     ELSIF res >= 3 THEN importing := name;
       WHILE nofimps > 0 DO DEC(nofimps);  DEC(import[nofimps].refcnt) END
 *)
+    END
+  END;
+  newmod := mod
+END LoadFromFile;
+
+
+PROCEDURE Load*(name: ARRAY OF CHAR;  VAR newmod: Module);
+  (*search module in list;  if not found, load module.
+    res = 0: already present or loaded;
+    res = 1: file not available;
+    res = 2: file has wrong versionkey
+    res = 3: key conflict;
+    res = 4: bad file version;
+    res = 5: corrupted file;
+    res = 7: no space*)
+VAR
+  mod:       Module;
+  nofimps:   INTEGER;
+  F:         Files.File;
+BEGIN
+  mod := H.Root;  error(0, name);  nofimps := 0;
+  res := 0;
+  WHILE (mod # NIL) & (name # mod.name) DO mod := mod.next END;
+  IF mod = NIL THEN (*load*)
+    Check(name);
+    IF res = 0 THEN F := ThisFile(name) ELSE F := NIL END;
+    IF F # NIL THEN
+      LoadFromFile(F, 0, mod)
+    ELSE
+      H.ws("Couldn't find compiled binary .X64 file for module "); H.ws(name); H.wsn(".");
+      error(1, name)
     END
   END;
   newmod := mod
@@ -261,7 +266,9 @@ BEGIN
 *)
 END Init;
 
-BEGIN Init;
+BEGIN
+  LoadFwd := Load;
+  Init;
   IF 63 IN H.LoadFlags THEN
     H.wsn("Reached Modules.");
     Load("Oberon", M);
