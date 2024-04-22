@@ -618,6 +618,8 @@ BEGIN
   ELSIF excpcode = 0C000001DH THEN ws("** Illegal instruction");
   ELSIF excpcode = 0C000008EH THEN ws("** Divide by zero");
   ELSIF excpcode = 0C0000094H THEN ws("** Integer divide by zero");
+  ELSIF excpcode = 0C0000096H THEN ws("** Privileged instruction");
+  ELSIF excpcode = 0C00000FDH THEN ws("** Stack Overflow");
   ELSE ws("** Exception ");  wh(excpcode);  wc("H")
   END;
 

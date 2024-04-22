@@ -7,8 +7,14 @@ IMPORT SYSTEM, Kernel, H := WinHost;
 CONST MaxPath = H.MaxPath;
 
 TYPE
-  FileName = ARRAY MaxPath OF CHAR;
+  FileName* = ARRAY MaxPath OF CHAR;
+
   File*    = POINTER TO FileDesc;
+  FileDesc = RECORD
+    next:       POINTER- TO FileDesc;  (* Non-collecting list of open files *)
+    name*:      FileName;
+    registered: BOOLEAN;
+  END;
 
   Rider* = RECORD
     eof*:  BOOLEAN;
@@ -17,50 +23,80 @@ TYPE
     file:  File;
   END;
 
-  FileDesc = RECORD
-    next:       POINTER- TO FileDesc;  (* Non-collecting list of open files *)
-    tempname:   FileName;
-    registered: BOOLEAN;
-    name*:      FileName;
-    handle:     INTEGER;
+  WinFile     = POINTER TO WinFileDesc;
+  WinFileDesc = RECORD (FileDesc)
     pos:        INTEGER;
+    tempname:   FileName;
+    handle:     INTEGER;
+  END;
+
+  ExeFile     = POINTER TO ExeFileDesc;
+  ExeFileDesc = RECORD (FileDesc)
+    pos:     INTEGER;
+    size:    INTEGER;
+  END;
+
+  ExeDirEnt     = POINTER TO ExeDirEntDesc;
+  ExeDirEntDesc = RECORD
+    next: ExeDirEnt;
+    name: FileName;
+    pos:  INTEGER;
+    size: INTEGER;
   END;
 
 VAR
-  first: POINTER- TO FileDesc;  (* uncollected list of open files *)
+  first:  POINTER- TO FileDesc;  (* uncollected list of open files *)
+  Exe:    WinFile;
+  ExeDir: ExeDirEnt;
 
 
 (* --------------------------------- Files ---------------------------------- *)
 
+PROCEDURE OpenWinFile(name: ARRAY OF CHAR): File;
+VAR res, hnd: INTEGER; f: WinFile;
+BEGIN
+  res := H.FileOpen(name, H.OpenRW, hnd);
+  IF res > 0 THEN (* error encountered *)
+    f := NIL
+  ELSE
+    NEW(f);
+    f.next       := first;
+    f.registered := TRUE;
+    f.name       := name;
+    f.tempname   := "";
+    f.handle     := hnd;
+    first        := f;
+  END
+RETURN f END OpenWinFile;
+
+PROCEDURE OpenExeFile(name: ARRAY OF CHAR): File;
+VAR f: ExeFile;  entry: ExeDirEnt;
+BEGIN
+  entry := ExeDir;
+  WHILE (entry # NIL) & (name # entry.name) DO entry := entry.next END;
+  IF entry # NIL THEN
+    H.ws("Openeing EXE file "); H.ws(name); H.wsn(".");
+    NEW(f);
+    f.next       := first;
+    f.registered := TRUE;
+    f.name       := name;
+    f.pos        := entry.pos;
+    f.size       := entry.size;
+    first        := f;
+  END
+RETURN f END OpenExeFile;
+
 PROCEDURE Old*(name: ARRAY OF CHAR): File;
-VAR
-  h:    INTEGER;
-  res:  INTEGER;
-  f:    File;
+VAR f: File;
 BEGIN
   IF name[0] = 0X THEN
     f := NIL  (* E.g. commonly when Texts.Open passed "" as fiename *)
   ELSE
     f := first;
     WHILE (f # NIL) & ~(f.registered & (f.name = name)) DO f := f.next END;
-    IF f = NIL THEN
-      res := H.FileOpen(name, H.OpenRW, h);
-      IF res > 0 THEN (* error encountered *)
-        (*
-        H.ws("Couldn't open '"); H.ws(name);
-        H.ws("': "); H.WriteWindowsErrorMessage(res); H.wn;
-        *)
-        f := NIL
-      ELSE
-        NEW(f);
-        f.tempname   := "";
-        f.registered := TRUE;
-        f.name       := name;
-        f.handle     := h;
-        f.next       := first;  first := f;
-      END
-    END
-  END;
+    IF f = NIL THEN f := OpenWinFile(name) END;
+    IF f = NIL THEN f := OpenExeFile(name) END;
+  END
 RETURN f END Old;
 
 PROCEDURE MakeTempFile(VAR name: ARRAY OF CHAR);
@@ -76,7 +112,7 @@ PROCEDURE New*(name: ARRAY OF CHAR): File;
 VAR
   res:         INTEGER;
   h:           INTEGER;
-  f:           File;
+  f:           WinFile;
   tempname:    FileName;
   disposition: INTEGER;
 BEGIN
@@ -96,15 +132,21 @@ RETURN f END New;
 
 PROCEDURE Close*(f: File);
 VAR res: INTEGER;
-BEGIN IF f # NIL THEN res := H.FlushFileBuffers(f.handle) END END Close;
+BEGIN
+  IF f # NIL THEN
+    CASE f OF WinFile: res := H.FlushFileBuffers(f.handle) END
+  END
+END Close;
 
 PROCEDURE Unregister(f: File);
 BEGIN
-  ASSERT(H.CloseHandle(f.handle) # 0);
-  MakeTempFile(f.tempname);
-  ASSERT(H.MoveFile(f.name, f.tempname) = 0);
-  ASSERT(H.FileOpen(f.tempname, H.OpenRW, f.handle) = 0);
-  f.registered := FALSE;
+  CASE f OF WinFile:
+    ASSERT(H.CloseHandle(f.handle) # 0);
+    MakeTempFile(f.tempname);
+    ASSERT(H.MoveFile(f.name, f.tempname) = 0);
+    ASSERT(H.FileOpen(f.tempname, H.OpenRW, f.handle) = 0);
+    f.registered := FALSE
+  END
 END Unregister;
 
 PROCEDURE UnregisterByName(name: ARRAY OF CHAR);
@@ -127,21 +169,23 @@ VAR
   disposition: INTEGER;
 BEGIN
   (*H.wn; H.ws("* Register('"); H.ws(f.name); H.wsn("') *");*)
-  IF (f # NIL) & (f.name[0] # 0X) & ~f.registered THEN
-    disposition := 0;  (* Remove delete on close flag *)
-    res := H.SetFileInformationByHandle(f.handle, 4, SYSTEM.ADR(disposition), 8);
-    ASSERT(res # 0);
-    ASSERT(H.CloseHandle(f.handle) # 0);
-    UnregisterByName(f.name);
-    IF H.MoveFile(f.tempname, f.name) # 0 THEN
-      err := H.GetLastError();
-      res := H.Utf8ToUtf16(f.tempname, nameW);  (* Couldn't move temp file, so delete it *)
-      res := H.DeleteFileW(SYSTEM.ADR(nameW));
-      H.wn; H.ws("** Cannot register "); H.ws(f.name); H.ws(" as it is already in use: **");
-      H.AssertWinErr(err);
-    END;
-    ASSERT(H.FileOpen(f.name, H.OpenRW, f.handle) = 0);
-    f.registered := TRUE;
+  CASE f OF WinFile:
+    IF (f # NIL) & (f.name[0] # 0X) & ~f.registered THEN
+      disposition := 0;  (* Remove delete on close flag *)
+      res := H.SetFileInformationByHandle(f.handle, 4, SYSTEM.ADR(disposition), 8);
+      ASSERT(res # 0);
+      ASSERT(H.CloseHandle(f.handle) # 0);
+      UnregisterByName(f.name);
+      IF H.MoveFile(f.tempname, f.name) # 0 THEN
+        err := H.GetLastError();
+        res := H.Utf8ToUtf16(f.tempname, nameW);  (* Couldn't move temp file, so delete it *)
+        res := H.DeleteFileW(SYSTEM.ADR(nameW));
+        H.wn; H.ws("** Cannot register "); H.ws(f.name); H.ws(" as it is already in use: **");
+        H.AssertWinErr(err);
+      END;
+      ASSERT(H.FileOpen(f.name, H.OpenRW, f.handle) = 0);
+      f.registered := TRUE;
+    END
   END
 END Register;
 
@@ -179,12 +223,20 @@ END Rename;
 PROCEDURE Length*(f: File): INTEGER;
 VAR res, size: INTEGER;
 BEGIN
-  res := H.GetFileSizeEx(f.handle, SYSTEM.ADR(size));
-  ASSERT(res # 0);
+  CASE f OF
+    WinFile: res := H.GetFileSizeEx(f.handle, SYSTEM.ADR(size));
+             ASSERT(res # 0)
+  | ExeFile: size := f.size
+  END
 RETURN size END Length;
 
 PROCEDURE Date*(f: File): INTEGER;  (* In 100 nanosecond ticks since 1601 UTC *)
-BEGIN RETURN H.FileTime(f.handle) END Date;
+VAR res: INTEGER;
+BEGIN
+  IF    f IS WinFile THEN res := H.FileTime(f(WinFile).handle)
+  ELSIF f IS ExeFile THEN res := Date(Exe)
+  END
+RETURN res END Date;
 
 
 (* --------------------------------- Riders --------------------------------- *)
@@ -205,63 +257,87 @@ BEGIN RETURN r.pos END Pos;
 PROCEDURE Base*(VAR r: Rider): File;
 BEGIN RETURN r.file END Base;
 
-PROCEDURE SyncFilePos(VAR r: Rider);
+PROCEDURE SetFilePos(f: WinFile; pos: INTEGER);
 VAR res: INTEGER;
 BEGIN
-  IF r.pos # r.file.pos THEN
-    res := H.SetFilePointerEx(r.file.handle, r.pos, 0, 0);
+  IF pos # f.pos THEN
+    res := H.SetFilePointerEx(f.handle, pos, 0, 0);
     IF res = 0 THEN
-      H.ws("SyncFilePos failed. File handle "); H.wh(r.file.handle);
-      H.ws("H, pos "); H.wi(r.pos); H.wsn(".");
+      H.ws("SetFilePos failed. File handle "); H.wh(f.handle);
+      H.ws("H, pos "); H.wi(pos); H.wsn(".");
       H.AssertWinErr(H.GetLastError())
     END;
     ASSERT(res # 0);
-    r.file.pos := r.pos
-  END;
-END SyncFilePos;
-
+    f.pos := pos
+  END
+END SetFilePos;
 
 (* ---------------------------------- Read ---------------------------------- *)
 
-PROCEDURE ReadByte*(VAR r: Rider; VAR x: BYTE);
-VAR res, bytesread: INTEGER;
+
+PROCEDURE ReadRange(VAR r: Rider; n: INTEGER; VAR x: ARRAY OF BYTE; VAR bytesread: INTEGER);
+VAR fw: WinFile; fx: ExeFile; res, pos, len: INTEGER;
 BEGIN
-  SyncFilePos(r);
-  res := H.ReadFile(r.file.handle, SYSTEM.ADR(x), 1, SYSTEM.ADR(bytesread), 0);
-  IF bytesread < 1 THEN
-    r.eof := TRUE;  r.res := 1;  x := 0
+  IF r.file IS WinFile THEN
+    fw  := r.file(WinFile);
+    pos := r.pos;
+    len := n;
   ELSE
-    ASSERT(bytesread = 1);
-    INC(r.pos);  r.file.pos := r.pos
-  END
-END ReadByte;
+    fx  := r.file(ExeFile);
+    fw  := Exe;
+    pos := r.pos + fx.pos;
+    len := n;
+    IF    r.pos >= fx.size      THEN len := 0
+    ELSIF len > r.pos + fx.size THEN len := fx.size - r.pos
+    END
+  END;
+  IF len > 0 THEN
+    SetFilePos(fw, pos);
+    res := H.ReadFile(fw.handle, SYSTEM.ADR(x), len, SYSTEM.ADR(bytesread), 0);
+    INC(fw.pos, bytesread)
+  ELSE
+    bytesread := 0;
+  END;
+  INC(r.pos, bytesread)
+END ReadRange;
+
 
 PROCEDURE ReadBytes*(VAR r: Rider; VAR x: ARRAY OF BYTE; n: INTEGER);
-VAR res, bytesread: INTEGER;
+VAR bytesread: INTEGER;
 BEGIN
   ASSERT(n <= LEN(x));
-  SyncFilePos(r);
-  res := H.ReadFile(r.file.handle, SYSTEM.ADR(x), n, SYSTEM.ADR(bytesread), 0);
+  ReadRange(r, n, x, bytesread);
   IF bytesread < n THEN
-    r.eof := TRUE;
-    r.res := n - bytesread;
+    r.eof := TRUE;  r.res := n - bytesread;
     REPEAT DEC(n); x[n] := 0 UNTIL n <= bytesread;
   ELSE
     ASSERT(bytesread = n)
   END;
-  INC(r.pos, bytesread);  r.file.pos := r.pos
 END ReadBytes;
 
-PROCEDURE Read*(VAR r: Rider; VAR ch: CHAR);
-VAR res, bytesread: INTEGER;
+
+PROCEDURE ReadByte*(VAR r: Rider; VAR x: BYTE);
+VAR bytesread: INTEGER;
 BEGIN
-  SyncFilePos(r);
-  res := H.ReadFile(r.file.handle, SYSTEM.ADR(ch), 1, SYSTEM.ADR(bytesread), 0);
+  ReadRange(r, 1, x, bytesread);
   IF bytesread < 1 THEN
-    r.eof := TRUE;  r.res := 1;  ch := 0X
+    r.eof := TRUE;  r.res := 1;
+    x     := 0;
   ELSE
-    ASSERT(bytesread = 1);
-    INC(r.pos);  r.file.pos := r.pos
+    ASSERT(bytesread = 1)
+  END
+END ReadByte;
+
+
+PROCEDURE Read*(VAR r: Rider; VAR ch: CHAR);
+VAR bytesread: INTEGER;
+BEGIN
+  ReadRange(r, 1, ch, bytesread);
+  IF bytesread < 1 THEN
+    r.eof := TRUE;  r.res := 1;
+    ch    := 0X;
+  ELSE
+    ASSERT(bytesread = 1)
   END
 END Read;
 
@@ -306,36 +382,39 @@ END ReadNum;
 (* ---------------------------------- Write --------------------------------- *)
 
 PROCEDURE WriteByte*(VAR r: Rider; x: BYTE);
-VAR res, byteswritten: INTEGER;
+VAR res, byteswritten: INTEGER;  f: WinFile;
 BEGIN
-  SyncFilePos(r);
-  res := H.WriteFile(r.file.handle, SYSTEM.ADR(x), 1, SYSTEM.ADR(byteswritten), 0);
+  f := r.file(WinFile);
+  SetFilePos(f, r.pos);
+  res := H.WriteFile(f.handle, SYSTEM.ADR(x), 1, SYSTEM.ADR(byteswritten), 0);
   ASSERT(byteswritten = 1);
-  INC(r.pos);  r.file.pos := r.pos
+  INC(r.pos);  f.pos := r.pos
 END WriteByte;
 
 PROCEDURE WriteBytes*(VAR r: Rider; x: ARRAY OF BYTE;  offset, length: INTEGER);
-VAR res, byteswritten: INTEGER;
+VAR res, byteswritten: INTEGER;  f: WinFile;
 BEGIN
   IF length > 0 THEN
     ASSERT(offset + length <= LEN(x));
-    SyncFilePos(r);
+    f := r.file(WinFile);
+    SetFilePos(f, r.pos);
     (*H.ws("WriteBytes. offset "); H.wh(offset); H.ws("H, length "); H.wh(length); H.wsn("H.");*)
-    res := H.WriteFile(r.file.handle, SYSTEM.ADR(x) + offset, length, SYSTEM.ADR(byteswritten), 0);
+    res := H.WriteFile(f.handle, SYSTEM.ADR(x) + offset, length, SYSTEM.ADR(byteswritten), 0);
     (*H.ws("  byteswritten "); H.wh(byteswritten); H.wsn("H.");*)
     ASSERT(byteswritten = length);
-    INC(r.pos, length);  r.file.pos := r.pos
+    INC(r.pos, length);  f.pos := r.pos
   END
 END WriteBytes;
 
 PROCEDURE Write*(VAR r: Rider; ch: CHAR);
-VAR res, byteswritten: INTEGER;
+VAR res, byteswritten: INTEGER;  f: WinFile;
 BEGIN
   (*H.ws("Files.Write('"); H.wc(ch); H.wsn("'.");*)
-  SyncFilePos(r);
-  res := H.WriteFile(r.file.handle, SYSTEM.ADR(ch), 1, SYSTEM.ADR(byteswritten), 0);
+  f := r.file(WinFile);
+  SetFilePos(f, r.pos);
+  res := H.WriteFile(f.handle, SYSTEM.ADR(ch), 1, SYSTEM.ADR(byteswritten), 0);
   ASSERT(byteswritten = 1);
-  INC(r.pos);  r.file.pos := r.pos
+  INC(r.pos);  f.pos := r.pos
 END Write;
 
 PROCEDURE WriteInt*(VAR r: Rider; x: INTEGER);
@@ -369,10 +448,10 @@ VAR f: File;
 BEGIN
   f:= first;
   WHILE f # NIL DO
-    H.ws("File '"); H.ws(f.name);  H.ws("' ");  H.wh(f.handle);
-    H.ws("H ");
+    H.ws("File '"); H.ws(f.name);  H.ws("' ");
+    CASE f OF WinFile: H.wh(f.handle); H.ws("H ") END;
     IF ~f.registered THEN
-      H.ws("temp name "); H.ws(f.tempname); H.wsn(".")
+      H.ws("temp name "); H.ws(f(WinFile).tempname); H.wsn(".")
     ELSE
       H.wsn("registered.");
     END;
@@ -400,10 +479,12 @@ VAR f, g: File;
   VAR res: INTEGER;
   BEGIN
     ASSERT(getmark(f) = 0);
-    IF f.registered THEN
-      res := H.CloseHandle(f.handle);
-      (*H.ws("Collection closed file "); H.ws(f.name); H.wn*)
-    END;
+    CASE f OF
+    WinFile: IF f.registered THEN
+               res := H.CloseHandle(f.handle);
+               (*H.ws("Collection closed file "); H.ws(f.name); H.wn*)
+             END
+    END
   END finalise;
 
 BEGIN
@@ -419,5 +500,36 @@ BEGIN
   END
 END CloseCollectableFiles;
 
-BEGIN first := NIL
+
+PROCEDURE LoadExeDir;
+VAR
+  fn16:  ARRAY H.MaxPath OF SYSTEM.CARD16;
+  fn8:   ARRAY H.MaxPath OF CHAR;
+  res:   INTEGER;
+  f:     File;
+  r:     Rider;
+  entry: ExeDirEnt;
+BEGIN
+  res := H.GetModuleFileNameW(0, SYSTEM.ADR(fn16), H.MaxPath);  ASSERT(res # 0);
+  res := H.Utf16ToUtf8(fn16, fn8);
+  f   := OpenWinFile(fn8);  ASSERT(f # NIL);
+  Exe := f(WinFile);
+  Set(r, f, H.ObjectOfs);
+  REPEAT
+    NEW(entry);
+    ReadString(r, entry.name);
+    ReadNum(r, entry.size);
+    IF ~r.eof THEN
+      entry.pos  := Pos(r);
+      entry.next := ExeDir;
+      ExeDir     := entry;
+      Set(r, f, Pos(r) + entry.size);
+    END
+  UNTIL r.eof
+END LoadExeDir;
+
+
+BEGIN
+  first := NIL;
+  IF H.ObjectOfs # 0 THEN LoadExeDir END
 END Files.

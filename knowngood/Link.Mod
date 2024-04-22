@@ -29,11 +29,10 @@ CONST
 TYPE
   ModuleDesc = H.ModuleDesc;
 
-  ObjectFile = POINTER TO ObjectFileDesc;
-  ObjectFileDesc = RECORD
-    next: ObjectFile;
-    file: Files.File;
-    name: Modules.ModuleName;
+  EmbeddedFile     = POINTER TO EmbeddedFileDesc;
+  EmbeddedFileDesc = RECORD
+    next: EmbeddedFile;
+    name: Files.FileName;
   END;
   Zeroes58 = ARRAY 3AH OF BYTE;
 
@@ -146,8 +145,8 @@ VAR
   ModuleSize:   INTEGER;
   ModuleVSize:  INTEGER;
   ImportMSize:  INTEGER;  (* Import section size in memory (multiple of 16 bytes) *)
-  Objects:      ObjectFile;
-  LastObject:   ObjectFile;
+  Embedded:     EmbeddedFile;
+  LastEmbedded: EmbeddedFile;
   Verbose:      BOOLEAN;
   EntryPoint:   INTEGER;
 
@@ -505,15 +504,14 @@ PROCEDURE ReadVar(VAR r: Files.Rider;  VAR var: ARRAY OF BYTE);
 BEGIN Files.ReadBytes(r, var, LEN(var)) END ReadVar;
 
 
-PROCEDURE AddModule*(f: Files.File);
-VAR obj: ObjectFile;  r: Files.Rider;  mod: Modules.ModDesc;
+PROCEDURE AddEmbeddedFile*(name: ARRAY OF CHAR);
+VAR emf: EmbeddedFile;  r: Files.Rider;  mod: Modules.ModDesc;
 BEGIN
-  ASSERT(f # NIL);
-  NEW(obj); obj.file := f;
-  IF Objects = NIL THEN Objects := obj ELSE LastObject.next := obj END;
-  LastObject := obj;
-  Files.Set(r, f, 0);  ReadVar(r, mod);  obj.name := mod.name;
-END AddModule;
+  NEW(emf);
+  emf.name := name;
+  IF Embedded = NIL THEN Embedded := emf ELSE LastEmbedded.next := emf END;
+  LastEmbedded := emf;
+END AddEmbeddedFile;
 
 
 PROCEDURE ExportedOffset(modhdr: INTEGER; index: INTEGER): INTEGER;
@@ -546,7 +544,7 @@ BEGIN
     (* qword at offset contains 32/0,32/module offset or 32/1,16/mod,16/imp *)
     SYSTEM.GET(modadr + offset, absreloc);
     IF absreloc DIV 100000000H = 0 THEN  (* offset in this module *)
-      SYSTEM.PUT(modadr + offset, modofs + absreloc)
+      SYSTEM.PUT(modadr + offset, ModuleBase + modofs + absreloc)
     ELSE  (* import reference from another module *)
       modno := absreloc DIV 10000H MOD 10000H;  ASSERT(modno > 0);
       impno := absreloc MOD 10000H;
@@ -699,9 +697,11 @@ BEGIN
   SYSTEM.PUT(SYSTEM.ADR(Mem[varpos]), ImageBase);       INC(varpos, 8);
   SYSTEM.PUT(SYSTEM.ADR(Mem[varpos]), ModuleBase);      INC(varpos, 8);
   SYSTEM.PUT(SYSTEM.ADR(Mem[varpos]), {63, H.Verbose}); INC(varpos, 8);
-  IF Objects = NIL THEN
+  IF Embedded = NIL THEN
     SYSTEM.PUT(SYSTEM.ADR(Mem[varpos]), 0);
   ELSE
+    H.ws("Embedded files will be written at "); H.wh(FadrModules + Align(ModuleSize, FileAlignment));
+    H.wsn("H.");
     SYSTEM.PUT(SYSTEM.ADR(Mem[varpos]), FadrModules + Align(ModuleSize, FileAlignment));
   END;
   INC(varpos, 8);
@@ -725,7 +725,7 @@ END PresetWinHost;
 
 
 PROCEDURE Init*;
-BEGIN Objects := NIL;  LastObject := NIL  END Init;
+BEGIN Embedded := NIL;  LastEmbedded := NIL  END Init;
 
 
 PROCEDURE CallJumpIndirect(opcode: INTEGER; mod: Modules.Module);
@@ -747,9 +747,11 @@ VAR
   KernelHdr:  Modules.Module;
   FilesHdr:   Modules.Module;
   ModulesHdr: Modules.Module;
-  obj:        ObjectFile;
+  emf:        EmbeddedFile;
+  f:          Files.File;
   r:          Files.Rider;
   buf:        ARRAY 1024 OF BYTE;
+  i, size:    INTEGER;
 BEGIN
   H.wsn("Linking.");
   ModuleSize := 0;
@@ -783,43 +785,46 @@ BEGIN
   WriteImports;
   PresetWinHost;
 
+  WritePEHeader;
+
   spos(FadrModules);
   Files.WriteBytes(Exe, Mem, 0, ModuleSize);
   FileAlign(Exe, FileAlignment);
 
   (* Add any rquested object files *)
-  obj := Objects;
-  WHILE obj # NIL DO
-    H.ws("* add "); H.ws(obj.name); H.wsn(".");
-    Files.Set(r, obj.file, 0);
-    WHILE ~r.eof DO
-      Files.ReadBytes(r, buf, LEN(buf));
-      Files.WriteBytes(Exe, buf, 0, LEN(buf) - r.res);
+  emf := Embedded;
+  WHILE emf # NIL DO
+    H.ws("* embed "); H.ws(emf.name);
+    H.ws(" at "); H.wh(Files.Pos(Exe)); H.wsn("H.");
+    f := Files.Old(emf.name);  ASSERT(f # NIL);
+    IF f # NIL THEN
+      Files.WriteString(Exe, emf.name);
+      size := Files.Length(f);
+      Files.WriteNum(Exe, size);
+      Files.Set(r, f, 0);
+      i := size DIV LEN(buf);
+      WHILE i > 0 DO
+        Files.ReadBytes(r, buf, LEN(buf));
+        Files.WriteBytes(Exe, buf, 0, LEN(buf));
+        DEC(i)
+      END;
+      i := size MOD LEN(buf);
+      IF i > 0 THEN
+        Files.ReadBytes(r, buf, i);
+        Files.WriteBytes(Exe, buf, 0, i)
+      END
     END;
-    FileAlign(Exe, 16);
-    obj := obj.next
+    emf := emf.next
   END;
 
-  WritePEHeader;
   Files.Register(ExeFile);
 
   H.wsn("Link generated innercore.exe.")
 END Generate;
 
-PROCEDURE AddBin(fn: ARRAY OF CHAR);
-VAR f: Files.File;
-BEGIN
-  f := Files.Old(fn);  ASSERT(f # NIL);
-  AddModule(f);
-END AddBin;
 
-PROCEDURE Test();
 BEGIN
-  H.wsn("Testing link.");
-  AddBin("Fonts.x64");
-  AddBin("Texts.x64");
-  Generate;
-END Test;
-
-BEGIN Init; Test
+  Init;
+  AddEmbeddedFile("WinGui.x64");
+  Generate
 END Link.

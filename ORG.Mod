@@ -791,10 +791,10 @@ BEGIN
     PushReg(reg);
     Release(reg)
   ELSE
-    Prefices(mode, -1, 8, n, index);
-    X64.Emit(0FFH);  ModRegRm(mode, 6, n, index, scale, offset, 0)
+    OpModRegRm(0FFH, mode, 6, 8, n, index, scale, offset, 0)
   END
 END PushMem;
+
 
 PROCEDURE PushAdr*(VAR x: Item);
 VAR reg: INTEGER;

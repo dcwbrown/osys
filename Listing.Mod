@@ -10,7 +10,7 @@ CONST
 
 TYPE
   Buffer* = RECORD
-    c*: ARRAY 1024 OF CHAR;
+    c*: ARRAY 2048 OF CHAR;
     p*: INTEGER
   END;
 
@@ -176,9 +176,10 @@ RETURN ch END hexdigit;
 PROCEDURE h*(v: INTEGER; VAR b: Buffer);  (* Hex in as many columns as it takes *)
 VAR upper: INTEGER;
 BEGIN
+  ASSERT(b.p >= 0);
+  upper := v DIV 16 MOD 1000000000000000H;
+  IF upper # 0 THEN h(upper, b); v := v MOD 16 END;
   IF b.p < LEN(b.c) THEN
-    upper := v DIV 16 MOD 1000000000000000H;
-    IF upper # 0 THEN h(upper, b); v := v MOD 16 END;
     b.c[b.p] := hexdigit(v);
     INC(b.p)
   END

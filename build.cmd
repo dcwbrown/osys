@@ -35,7 +35,7 @@
 ::
 @if not exist build2\obuild.exe goto buildcompiler
 ::
-@goto skipcompiler
+:: @goto skipcompiler
 ::
 ::
 :buildcompiler
@@ -128,8 +128,13 @@ Test
 :skipcompiler
 ::
 ::
-@goto buildsystem
-::@goto buildlinker
+::
+::
+::@goto buildsystem
+@goto buildlinker
+::
+::
+::
 ::
 :testfailed
 @echo.
@@ -176,18 +181,23 @@ System
 @rd /s /q buildlink 2>nul
 @md buildlink
 @cd buildlink
-@copy ..\build2\*.x64 >NUL
-@copy ..\build2\*.smb >NUL
-::@copy ..\buildsys\*.x64 >NUL
-::@copy ..\buildsys\*.smb >NUL
-@copy ..\*.mod >NUL
-..\build2\obuild %VERBOSE% /s ./ Link
+:: ..\build2\obuild /s ../Console.;../ Oberon
+:: ..\build2\obuild /s ../Console.;../ Fonts
+@if errorlevel 1 goto linkbuildfailed
+..\build2\obuild %VERBOSE% /s ../Console.;../ Link
 @if errorlevel 1 goto linkbuildfailed
 ::
+rm *.smb *.x64
+..\build2\obuild /s ../ ORP
+..\build2\obuild /s ../ System
 Link
 @if errorlevel 1 goto linkrunfailed
 ::
 ::
+copy ..\*.mod
+copy ..\*.fnt
+copy ..\*.tool
+del WinGui.x64
 innercore
 @cd ..
 @goto end

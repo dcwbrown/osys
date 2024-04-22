@@ -114,6 +114,17 @@ BEGIN
   END
 END CheckNative;
 
+
+PROCEDURE dbgtype(t: ORB.Type);
+BEGIN
+  (*l.h(ORD(t), Tr); l.s("H/", Tr);*)
+  IF t = NIL           THEN l.s("NIL", Tr)
+  ELSIF t.typobj = NIL THEN l.s(".NIL", Tr)
+  ELSE l.s(t.typobj.name, Tr)
+  END
+END dbgtype;
+
+
 PROCEDURE IsExtension(t0, t1: ORB.Type): BOOLEAN;
 BEGIN (*t1 is an extension of t0*)
   RETURN (t0 = t1) OR (t1 # NIL) & IsExtension(t0, t1.base)
@@ -258,10 +269,12 @@ BEGIN
       ORG.ArrayOfByteParam(x, stkoff)  (* Can pass anything to a dynamic array of byte *)
     ELSE ORS.Mark("incompatible parameters");
       l.n(Tr);
-      l.s("par.type ", Tr);         l.Type(par.type, Tr);
-      l.s(", par.type.base ", Tr);  l.Type(par.type.base, Tr);
-      l.s(", x.type ", Tr);         l.Type(x.type, Tr);
-      l.s(", x.type.base ", Tr);    l.Type(x.type.base, Tr);
+      l.s("par.type ", Tr);           dbgtype(par.type);
+      l.s(", par.type.base ", Tr);    dbgtype(par.type.base);  l.n(Tr);
+      l.s("x.type   ", Tr);           dbgtype(x.type);
+      l.s(", x.type.base   ", Tr);    dbgtype(x.type.base);   l.n(Tr);
+      l.s("IsExtension(par.type.base, x.type.base) ", Tr);
+      IF IsExtension(par.type.base, x.type.base) THEN l.s("TRUE", Tr) ELSE l.s("FALSE", Tr) END;
       l.n(Tr);
     END
   END
@@ -542,6 +555,7 @@ VAR obj:         ORB.Object;
     IF sym = ORS.ident THEN
       qualident(typobj);  ORG.MakeItem(x, obj, level);
       IF typobj.class # ORB.Typ THEN ORS.Mark("not a type") END;
+      (*l.s(" <<TypeCase: type ", Tr); l.Type(typobj.type, Tr); l.s(">> ", Tr);*)
       (* H.wsn("  calling TypeTest"); *)
       TypeTest(x, typobj.type, FALSE);
       (* H.wcn; H.wsn("  TypeTest returned."); *)
@@ -680,7 +694,8 @@ BEGIN (* StatSequence *)
       IF sym = ORS.ident THEN
         qualident(obj);  orgtype := obj.type;
         IF (orgtype.form = ORB.Pointer) OR (orgtype.form = ORB.Record) & (obj.class = ORB.Par) THEN
-          Check(ORS.of, "OF expected");  TypeCase(obj, x, ann);  L0 := 0;
+          Check(ORS.of, "OF expected");
+          TypeCase(obj, x, ann);  L0 := 0;
           WHILE sym = ORS.bar DO
             ORS.Get(sym);  ORG.FJump(L0);  ORG.FixLink(x.offset);
             obj.type := orgtype;  TypeCase(obj, x, ann)
