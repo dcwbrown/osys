@@ -21,7 +21,7 @@ CONST
   ImageBase   = 0FFFF0000H;  (* Image base must be multiple of 64k / 10000H  *)
   ModuleBase  = ImageBase + RvaModules;
 
-  BootstrapVarBytes   = 32;  (* preloaded bootstrap VAR size preceeding imported proc addresses *)
+  BootstrapVarBytes   = 64;  (* preloaded bootstrap VAR size preceeding imported proc addresses *)
   Kernel32ImportCount = 39;
   Gdi32ImportCount    = 12;
   User32ImportCount   = 26;
@@ -144,11 +144,12 @@ VAR
   Exe:          Files.Rider;
   ModuleSize:   INTEGER;
   ModuleVSize:  INTEGER;
-  ImportMSize:  INTEGER;  (* Import section size in memory (multiple of 16 bytes) *)
+  ImportMSize:  INTEGER;       (* Import section size in memory (multiple of 16 bytes) *)
   Embedded:     EmbeddedFile;
   LastEmbedded: EmbeddedFile;
   Verbose:      BOOLEAN;
   EntryPoint:   INTEGER;
+  LoadMod:      H.ModuleName;  (* Module to be loaded by Oberon.Mod at startup *)
 
   (*Bootstrap:  BootstrapBuffer;*)
 
@@ -705,6 +706,8 @@ BEGIN
     SYSTEM.PUT(SYSTEM.ADR(Mem[varpos]), FadrModules + Align(ModuleSize, FileAlignment));
   END;
   INC(varpos, 8);
+  SYSTEM.COPY(SYSTEM.ADR(LoadMod), SYSTEM.ADR(Mem[varpos]), SYSTEM.SIZE(H.ModuleName));
+  INC(varpos, SYSTEM.SIZE(H.ModuleName));
   ASSERT(varpos - mod.vars = BootstrapVarBytes);
 
   H.ws("Before IDT lookups write, varpos "); H.wh(varpos); H.wsn("H.");
@@ -826,5 +829,6 @@ END Generate;
 BEGIN
   Init;
   AddEmbeddedFile("WinGui.x64");
+  LoadMod := "System";
   Generate
 END Link.

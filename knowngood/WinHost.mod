@@ -89,10 +89,11 @@ TYPE
 (* Start of pre-loaded variables (preset by WinPE.mod or Link.mod) *)
 
 VAR
-  Exeadr:     INTEGER;  (* Image PE header loaded address *)
-  ImgHeader*: Module;   (* Image Oberon section loaded address *)
+  Exeadr:     INTEGER;    (* Image PE header loaded address *)
+  ImgHeader*: Module;     (* Image Oberon section loaded address *)
   LoadFlags*: SET;
-  ObjectOfs*: INTEGER;  (* Offset into exe file of first object to load *)
+  FileOfs*:   INTEGER;    (* Offset into exe file of first embedded file *)
+  LoadMod*:   ModuleName; (* Module for Oberon.Mod to load at startup *)
 
   (* Pre-loaded Kernel32 imports *)
   AddVectoredExceptionHandler*:    PROCEDURE-(first, filter: INTEGER): INTEGER;

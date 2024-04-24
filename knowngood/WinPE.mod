@@ -12,7 +12,7 @@ CONST
   FadrImport  = 0400H;  RvaImport  = 1000H;  (* Import directory table *)
   FadrModules = 0E00H;  RvaModules = 2000H;  (* Oberon modules *)
 
-  BootstrapVarBytes   = 32;  (* preloaded bootstrap VAR size preceeding imported proc addresses *)
+  BootstrapVarBytes   = 64;  (* preloaded bootstrap VAR size preceeding imported proc addresses *)
   Kernel32ImportCount = 39;
   Gdi32ImportCount    = 12;
   User32ImportCount   = 26;
@@ -528,7 +528,9 @@ BEGIN
   Files.Close(f)
 END GetBootstrap;
 
+
 PROCEDURE WriteBootstrap(LoadFlags: SET);
+VAR fn: H.ModuleName;
 BEGIN
   (* Fixup bootstrap image size in header *)
   Bootstrap.Header.size := (Bootstrap.Header.vars + Bootstrap.Header.varsize + 15) DIV 16 * 16;
@@ -543,10 +545,13 @@ BEGIN
   Files.WriteBytes(Exe, Bootstrap, 0, Bootstrap.Header.vars);  (* Code and tables   *)
 
   (* Preset bootstrap modules global VARs *)
-  Files.WriteInt(Exe, ImageBase);                                 (* EXE load address  *)
-  Files.WriteInt(Exe, ImageBase + RvaModules);                    (* Header address    *)
+  Files.WriteInt(Exe, ImageBase);               (* EXE load address  *)
+  Files.WriteInt(Exe, ImageBase + RvaModules);  (* Header address    *)
   Files.WriteSet(Exe, LoadFlags);
-  Files.WriteInt(Exe, 0);
+  Files.WriteInt(Exe, 0);                       (* Exe offset of first embedded file *)
+  H.ZeroFill(fn);
+  Files.WriteBytes(Exe, fn, 0, SYSTEM.SIZE(H.ModuleName));
+
   ASSERT(Files.Pos(Exe) -  (FadrModules + Bootstrap.Header.vars) = BootstrapVarBytes);
 
   (* Preset bootstrap VARs with WIndows proc addresses *)
