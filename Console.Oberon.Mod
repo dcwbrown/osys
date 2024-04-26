@@ -33,10 +33,55 @@ BEGIN
   (*Texts.Delete(T, 0, end, b)*)
 END LogNotify;
 
+PROCEDURE Getch32*(VAR adr, ch32: INTEGER);  (* Pull 32 bit Unicode from command line *)
+VAR
+  ch16:   SYSTEM.CARD16;
+BEGIN
+  SYSTEM.GET(adr, ch16);  INC(adr, 2);
+  IF ch16 DIV 400H # 36H THEN
+    ch32 := ch16 (* Not a high surrogate *)
+  ELSE
+    ch32 := LSL(ch16 MOD 400H, 10) + 10000H;
+    SYSTEM.GET(adr, ch16);
+    IF ch16 DIV 400H = 37H THEN
+      INC(adr, 2);  (* Add low surrogate part *)
+      INC(ch32, ch16 MOD 400H)
+    END
+  END
+END Getch32;
+
+PROCEDURE GetCommandLineParameters;
+VAR
+  w:        Texts.Writer;
+  adr:      INTEGER;
+  quoted:   BOOLEAN;
+  ch:       INTEGER;
+  utf8:     ARRAY 5 OF CHAR;
+  i:        INTEGER;
+BEGIN
+  Texts.OpenWriter(w);
+  adr := H.GetCommandLineW();
+  Getch32(adr, ch);
+  quoted  := FALSE;
+  WHILE (ch # 0) & ((ch # 32) OR quoted) DO  (* Skip to first unquoted space *)
+    IF ch = 22H THEN quoted  := ~quoted END;  Getch32(adr, ch)
+  END;
+  WHILE ch = 32 DO Getch32(adr, ch) END;  (* Skip to first non-blank *)
+  (* Copy remainder of command line to Par.text *)
+  WHILE ch # 0 DO
+    i := 0;  H.PutUtf8(ch, utf8, i);  utf8[i] := 0X;
+    Texts.WriteString(w, utf8);
+    Getch32(adr, ch);
+  END;
+  NEW(Par.text);  Texts.Open(Par.text, "");
+  Texts.Append(Par.text, w.buf);
+  Par.pos := 0
+END GetCommandLineParameters;
 
 BEGIN
-  IF 63 IN H.LoadFlags THEN H.wsn("Reached Console.Oberon.") END;
+  IF 63 IN H.Preload.LoadFlags THEN H.wsn("Reached Console.Oberon.") END;
   NEW(Log);
   Texts.Open(Log, "");
   Log.notify := LogNotify;
+  GetCommandLineParameters;
 END Oberon.

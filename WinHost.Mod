@@ -85,15 +85,19 @@ TYPE
     context:   Context
   END;
 
+  PreLoadVars = RECORD-
+    Exeadr:     INTEGER;    (* Image PE header loaded address *)
+    ImgHeader*: Module;     (* Image Oberon section loaded address *)
+    LoadFlags*: SET;
+    FileOfs*:   INTEGER;    (* Offset into exe file of first embedded file *)
+    LoadMod*:   ModuleName; (* Module for Oberon.Mod to load at startup *)
+  END;
+
 
 (* Start of pre-loaded variables (preset by WinPE.mod or Link.mod) *)
 
 VAR
-  Exeadr:     INTEGER;    (* Image PE header loaded address *)
-  ImgHeader*: Module;     (* Image Oberon section loaded address *)
-  LoadFlags*: SET;
-  FileOfs*:   INTEGER;    (* Offset into exe file of first embedded file *)
-  LoadMod*:   ModuleName; (* Module for Oberon.Mod to load at startup *)
+  Preload*: PreLoadVars;
 
   (* Pre-loaded Kernel32 imports *)
   AddVectoredExceptionHandler*:    PROCEDURE-(first, filter: INTEGER): INTEGER;
@@ -498,12 +502,12 @@ BEGIN
   reserveadr := VirtualAlloc(100000000H, 100000000H, MEMRESERVE, PAGEEXECUTEREADWRITE);
   IF reserveadr = 0 THEN
     wsn("** Could not reserve Oberon machine memory **");  ExitProcess(9);
-  ELSIF Verbose IN LoadFlags THEN
+  ELSIF Verbose IN Preload.LoadFlags THEN
     ws("* Reserved 2GB Oberon machine memory at ");  wh(reserveadr);  wsn("H.")
   END;
 
   (* Determine loaded size of all modules *)
-  hdr  := ImgHeader;
+  hdr  := Preload.ImgHeader;
   size := 0;
   WHILE hdr.size # 0 DO
     INC(size, (hdr.vars + hdr.varsize + 15) DIV 16 * 16);
@@ -513,7 +517,7 @@ BEGIN
   (* Commit enough for the modules being loaded plus a sentinel ModuleDesc. *)
   CommitLen := (size + SYSTEM.SIZE(ModuleDesc) + 4095) DIV 4096 * 4096;
   ModuleSpace := VirtualAlloc(reserveadr, CommitLen, MEMCOMMIT, PAGEEXECUTEREADWRITE);
-  IF Verbose IN LoadFlags THEN
+  IF Verbose IN Preload.LoadFlags THEN
     ws("* Committed ");  wh(CommitLen);  ws("H bytes at ");  wh(ModuleSpace);  wsn("H.")
   END
 END PrepareOberonMachine;
@@ -1006,7 +1010,7 @@ BEGIN
   (* Update length in header from object binary size to loaded size *)
   loadedhdr.size   := (loadedhdr.vars + loadedhdr.varsize + 15) DIV 16 * 16;
 
-  IF Verbose IN LoadFlags THEN
+  IF Verbose IN Preload.LoadFlags THEN
     ws("* Loaded ");              ws(loadedhdr.name);
     ws(" at ");                   wh(AllocPtr);
     ws("H, code ");               wh(loadedhdr.vars);
@@ -1132,8 +1136,8 @@ VAR
   loadedhdr: Module;
 BEGIN
   (* Load and link remaining code modules from EXE file image *)
-  IF Verbose IN LoadFlags THEN
-    ws("* Load remaining modules starting from "); wh(ORD(ImgHeader)); wsn("H.");
+  IF Verbose IN Preload.LoadFlags THEN
+    ws("* Load remaining modules starting from "); wh(ORD(Preload.ImgHeader)); wsn("H.");
   END;
   WHILE imagehdr.size # 0 DO
     LoadModule(imagehdr);
@@ -1188,7 +1192,7 @@ BEGIN
     ws("  Protect:           "); wh(mbi.Protect);           wsn("H.");
     ws("  Type:              "); wh(mbi.Type);              wsn("H.");
     DumpMem(0, SYSTEM.ADR(mbi), 0, res);
-    IF adr < ORD(ImgHeader) + 180000000H THEN
+    IF adr < ORD(Preload.ImgHeader) + 180000000H THEN
       size := mbi.RegionSize
     END
   END
@@ -1199,18 +1203,18 @@ VAR
   res, loadedlen, reserveadr, reservelen, lastbyte, adr, size: INTEGER;
   mod: Module;
 BEGIN
-  ModuleSpace := ORD(ImgHeader);
-  Root        := ImgHeader;
+  ModuleSpace := ORD(Preload.ImgHeader);
+  Root        := Preload.ImgHeader;
   InitSysHandlers;
 
   wsn("* WinHost starting *");
-  ws("* Exeadr:       "); wh(Exeadr);         wsn("H *");
-  ws("* ImgHeader at: "); wh(ORD(ImgHeader)); wsn("H *");
-  ws("* LoadFlags:    "); wh(ORD(LoadFlags)); wsn("H *");
+  ws("* Exeadr:       "); wh(Preload.Exeadr);         wsn("H *");
+  ws("* ImgHeader at: "); wh(ORD(Preload.ImgHeader)); wsn("H *");
+  ws("* LoadFlags:    "); wh(ORD(Preload.LoadFlags)); wsn("H *");
 
   (* Show loaded modules *)
   wsn("* Modules: *");
-  mod := ImgHeader;
+  mod := Preload.ImgHeader;
   WHILE mod # NIL DO
     ws("  "); ws(mod.name);
     ws(" at "); wh(ORD(mod));
@@ -1228,13 +1232,13 @@ BEGIN
   ws("  CommitLen:   "); wh(CommitLen);   wsn("H.");
 
   ws("* lastbyte "); wh(lastbyte);
-  ws("H => loaded length "); wh(lastbyte + 1 - ORD(ImgHeader));
-  loadedlen := (lastbyte + 1 - ORD(ImgHeader) + 65535) DIV 65536 * 65536;
+  ws("H => loaded length "); wh(lastbyte + 1 - ORD(Preload.ImgHeader));
+  loadedlen := (lastbyte + 1 - ORD(Preload.ImgHeader) + 65535) DIV 65536 * 65536;
   ws("H, rounded up to allocation granularity "); wh(loadedlen);
   wsn("H.");
 
   (* Extend memory to 2GB reserve *)
-  reserveadr := ORD(ImgHeader) + loadedlen;
+  reserveadr := ORD(Preload.ImgHeader) + loadedlen;
   reservelen := 80000000H - loadedlen;
   ws("Reserving memory from "); wh(reserveadr);
   ws("H up to "); wh(reserveadr + reservelen); wsn("H.");
@@ -1262,31 +1266,31 @@ BEGIN
 
   Log := WriteStdout;
 
-  IF 63 IN LoadFlags THEN  (* New non-copying startup variant *)
+  IF 63 IN Preload.LoadFlags THEN  (* New non-copying startup variant *)
 
     NewStartup
 
   ELSE
 
-    IF Verbose IN LoadFlags THEN
-      ws("* WinHost starting, ImgHeader at "); wh(ORD(ImgHeader)); wsn("H.");
+    IF Verbose IN Preload.LoadFlags THEN
+      ws("* WinHost starting, Preload.ImgHeader at "); wh(ORD(Preload.ImgHeader)); wsn("H.");
       ws("* Initial RSP "); wh(GetRSP()); wsn("H.");
     END;
 
     PrepareOberonMachine;
 
-    IF ImgHeader.size # (ImgHeader.vars + ImgHeader.varsize + 15) DIV 16 * 16 THEN
+    IF Preload.ImgHeader.size # (Preload.ImgHeader.vars + Preload.ImgHeader.varsize + 15) DIV 16 * 16 THEN
       assertmsg(FALSE, "Invalid image size in bootstrap image (WinHost) header")
     END;
 
     (* Copy boot module into newly committed memory and switch PC to the new code. *)
-    SYSTEM.COPY(ORD(ImgHeader), ModuleSpace, ImgHeader.size);
+    SYSTEM.COPY(ORD(Preload.ImgHeader), ModuleSpace, Preload.ImgHeader.size);
 
     (***** Transfer program counter to copied code *****)
-    IncPC(ModuleSpace - ORD(ImgHeader));
+    IncPC(ModuleSpace - ORD(Preload.ImgHeader));
 
     Log := WriteStdout;  (* Correct Log fn address following move *)
-    IF Verbose IN LoadFlags THEN
+    IF Verbose IN Preload.LoadFlags THEN
       ws("* Transferred PC to code copied to Oberon memory at ");  wh(GetPC());  wsn("H.")
     END;
 
@@ -1296,7 +1300,7 @@ BEGIN
     RelocatePointerAddresses(Root.ptr, ModuleSpace + Root.vars);
 
     Root.next := NIL;
-    AllocPtr := ModuleSpace + ImgHeader.size;
+    AllocPtr := ModuleSpace + Preload.ImgHeader.size;
 
     InitSysHandlers;
 
@@ -1305,7 +1309,7 @@ BEGIN
       AssertWinErr(GetLastError())
     END;
 
-    LoadRemainingModules(SYSTEM.VAL(Module, ORD(ImgHeader) + ImgHeader.size));
+    LoadRemainingModules(SYSTEM.VAL(Module, ORD(Preload.ImgHeader) + Preload.ImgHeader.size));
     ExitProcess(0)
   END
 END WinHost.

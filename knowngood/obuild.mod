@@ -6,7 +6,7 @@ MODULE obuild;
 (* imports, compiles them, and combines all objects into a single executable. *)
 
 IMPORT
-  SYSTEM, H := WinHost, K := Kernel, Files, Texts, ORS, ORB, X64, ORG, ORP, WinPE, WinArgs;
+  SYSTEM, H := WinHost, K := Kernel, Files, Texts, Oberon, ORS, ORB, X64, ORG, ORP, WinPE;
 
 TYPE
   PathName   = ARRAY H.MaxPath OF CHAR;
@@ -456,6 +456,7 @@ BEGIN
   END;
 END Build;
 
+
 PROCEDURE wsl(s: ARRAY OF CHAR; w: INTEGER);
 VAR l: INTEGER;
 BEGIN
@@ -544,22 +545,42 @@ BEGIN
   H.ExitProcess(99);
 END ArgError;
 
+PROCEDURE GetArg(VAR r: Texts.Reader; VAR ch: CHAR; VAR arg: ARRAY OF CHAR);
+VAR i: INTEGER;
+BEGIN
+  i := 0;
+  WHILE ch = " " DO Texts.Read(r, ch) END;
+  IF ch # 22X THEN  (* Unquoted parameter *)
+    WHILE (ch # 0X) & (ch # " ") & (ch # 22X) DO
+      arg[i] := ch;  INC(i);  Texts.Read(r, ch)
+    END
+  ELSE  (* Quoted parameter *)
+    Texts.Read(r, ch);  (* Skip leading quote *)
+    WHILE (ch # 0X) & (ch # 22X) DO
+      arg[i] := ch;  INC(i);  Texts.Read(r, ch)
+    END;
+    IF ch = 22X THEN Texts.Read(r, ch) END  (* Skip trailing quote *)
+  END;
+  arg[i] := 0X;
+END GetArg;
+
 
 PROCEDURE ScanArguments;
-VAR i: INTEGER;  arg: ARRAY 1024 OF CHAR;
+VAR i: INTEGER;  arg: ARRAY 1024 OF CHAR;  r: Texts.Reader;  ch: CHAR;
 BEGIN
   SourcePrefix   := "";
   BinariesPrefix := "";
   OutputPrefix   := "";
   Modulename     := "";
 
-  i := 1;
-  WHILE i < WinArgs.Argcount DO
-    WinArgs.GetArg(i, arg);
+  Texts.OpenReader(r, Oberon.Par.text, Oberon.Par.pos);
+  Texts.Read(r, ch);
+  GetArg(r, ch, arg);
+  WHILE arg[0] # 0X DO
     IF arg[0] = "/" THEN
-      IF    (arg = "/sources")  OR (arg = "/s") THEN INC(i);  WinArgs.GetArg(i, SourcePrefix)
-      ELSIF (arg = "/binaries") OR (arg = "/b") THEN INC(i);  WinArgs.GetArg(i, BinariesPrefix)
-      ELSIF (arg = "/output")   OR (arg = "/o") THEN INC(i);  WinArgs.GetArg(i, OutputPrefix)
+      IF    (arg = "/sources")  OR (arg = "/s") THEN GetArg(r, ch, SourcePrefix)
+      ELSIF (arg = "/binaries") OR (arg = "/b") THEN GetArg(r, ch, BinariesPrefix)
+      ELSIF (arg = "/output")   OR (arg = "/o") THEN GetArg(r, ch, OutputPrefix)
       ELSIF (arg = "/verbose")  OR (arg = "/v") THEN INCL(LoadFlags, H.Verbose)
       ELSE
         ArgError(i, arg, "unrecognised option.")
@@ -571,7 +592,7 @@ BEGIN
         ArgError(i, arg, "filename already specified.")
       END
     END;
-    INC(i)
+    GetArg(r, ch, arg);
   END;
 
   H.ws("");

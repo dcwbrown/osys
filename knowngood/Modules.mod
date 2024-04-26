@@ -266,7 +266,7 @@ END Init;
 
 BEGIN
   Init;
-  IF 63 IN H.LoadFlags THEN
+  IF 63 IN H.Preload.LoadFlags THEN
     H.wsn("Reached Modules.");
     Load("Oberon", M);
   END;

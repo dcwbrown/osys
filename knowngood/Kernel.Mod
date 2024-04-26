@@ -264,7 +264,7 @@ BEGIN
 
   SYSTEM.PUT(SYSTEM.ADR(H.Handlers[H.NewProc]), SYSTEM.ADR(New));
 
-  IF H.Verbose IN H.LoadFlags THEN
+  IF H.Verbose IN H.Preload.LoadFlags THEN
     H.ws("* Heap allocated at ");  H.wh(HeapOrg);
     H.ws("H, commited to ");       H.wh(HeapOrg + commit);
     H.ws("H, reserved to ");       H.wh(HeapOrg + reserve);  H.wsn("H.")
@@ -272,6 +272,6 @@ BEGIN
 END Init;
 
 BEGIN
-  IF 63 IN H.LoadFlags THEN H.wsn("Reached kernel.") END;
+  IF 63 IN H.Preload.LoadFlags THEN H.wsn("Reached kernel.") END;
   Init;
 END Kernel.

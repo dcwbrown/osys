@@ -514,7 +514,7 @@ BEGIN
   res := H.Utf16ToUtf8(fn16, fn8);
   f   := OpenWinFile(fn8);  ASSERT(f # NIL);
   Exe := f(WinFile);
-  Set(r, f, H.FileOfs);
+  Set(r, f, H.Preload.FileOfs);
   REPEAT
     NEW(entry);
     ReadString(r, entry.name);
@@ -531,5 +531,5 @@ END LoadExeDir;
 
 BEGIN
   first := NIL;
-  IF H.FileOfs # 0 THEN LoadExeDir END
+  IF H.Preload.FileOfs # 0 THEN LoadExeDir END
 END Files.

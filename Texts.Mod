@@ -15,6 +15,7 @@ CONST (*scanner symbol classes*)
 
   TAB      = 9X;
   CR       = 0DX;
+  LF       = 0AX;
   TextTag  = 0F1X;
   replace* = 0; (*op-codes*)
   insert*  = 1;
@@ -406,7 +407,7 @@ VAR
   i, j, h, d, e, n, s: INTEGER;
   (*x: REAL;*)
 BEGIN ch := S.nextCh; i := 0;
-  WHILE (ch = " ") OR (ch = TAB) OR (ch = CR) DO  (*TODO - include 0AX ? *)
+  WHILE (ch = " ") OR (ch = TAB) OR (ch = CR) OR (ch = LF) DO
     IF ch = CR THEN INC(S.line) END;
     Read(S, ch)
   END;

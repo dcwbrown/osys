@@ -425,7 +425,7 @@ BEGIN
 END Reset;
 
 BEGIN
-  IF 63 IN H.LoadFlags THEN H.wsn("Reached Oberon.") END;
+  IF 63 IN H.Preload.LoadFlags THEN H.wsn("Reached Oberon.") END;
 
   User[0] := 0X;
   Arrow.Fade := FlipArrow; Arrow.Draw := FlipArrow;
@@ -440,8 +440,8 @@ BEGIN
   CurTask := NIL;
   ActCnt := 0; CurTask := NewTask(GC, 1000); Install(CurTask);
 
-  IF 63 IN H.LoadFlags THEN
-    Modules.Load(H.LoadMod, Mod); Mod := NIL; (*Loop*)
+  IF 63 IN H.Preload.LoadFlags THEN
+    Modules.Load(H.Preload.LoadMod, Mod); Mod := NIL; (*Loop*)
   END
 
 END Oberon.
