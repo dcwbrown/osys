@@ -35,7 +35,7 @@ END LogNotify;
 
 PROCEDURE Getch32*(VAR adr, ch32: INTEGER);  (* Pull 32 bit Unicode from command line *)
 VAR
-  ch16:   SYSTEM.CARD16;
+  ch16: SYSTEM.CARD16;
 BEGIN
   SYSTEM.GET(adr, ch16);  INC(adr, 2);
   IF ch16 DIV 400H # 36H THEN
@@ -79,9 +79,12 @@ BEGIN
 END GetCommandLineParameters;
 
 BEGIN
-  IF 63 IN H.Preload.LoadFlags THEN H.wsn("Reached Console.Oberon.") END;
   NEW(Log);
   Texts.Open(Log, "");
   Log.notify := LogNotify;
   GetCommandLineParameters;
+  IF 63 IN H.Preload.LoadFlags THEN
+    H.ws("Console.Oberon loading "); H.ws(H.Preload.LoadMod); H.wsn(".");
+    Modules.Load(H.Preload.LoadMod, Mod);  Mod := NIL;
+  END;
 END Oberon.

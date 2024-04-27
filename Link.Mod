@@ -1,7 +1,7 @@
 MODULE Link;  (* Create exe from a list of compiled Oberon modules *)
 (* DCWB 14.04.2023..10.02.2024 *)
 
-IMPORT SYSTEM, H := WinHost, Kernel, X64, Files, Modules;
+IMPORT SYSTEM, H := WinHost, Kernel, X64, Files, Texts, Modules, Oberon;
 
 CONST
   HeaderSize      =  200H;
@@ -33,6 +33,7 @@ TYPE
   EmbeddedFileDesc = RECORD
     next: EmbeddedFile;
     name: Files.FileName;
+    file: Files.File;
   END;
   Zeroes58 = ARRAY 3AH OF BYTE;
 
@@ -149,9 +150,6 @@ VAR
   LastEmbedded: EmbeddedFile;
   Verbose:      BOOLEAN;
   EntryPoint:   INTEGER;
-  LoadMod:      H.ModuleName;  (* Module to be loaded by Oberon.Mod at startup *)
-
-  (*Bootstrap:  BootstrapBuffer;*)
 
   Idt:        ImportDirectoryTable;
 
@@ -505,11 +503,12 @@ PROCEDURE ReadVar(VAR r: Files.Rider;  VAR var: ARRAY OF BYTE);
 BEGIN Files.ReadBytes(r, var, LEN(var)) END ReadVar;
 
 
-PROCEDURE AddEmbeddedFile*(name: ARRAY OF CHAR);
+PROCEDURE AddEmbeddedFile*(name: ARRAY OF CHAR; file: Files.File);
 VAR emf: EmbeddedFile;  r: Files.Rider;  mod: Modules.ModDesc;
 BEGIN
   NEW(emf);
   emf.name := name;
+  emf.file := file;
   IF Embedded = NIL THEN Embedded := emf ELSE LastEmbedded.next := emf END;
   LastEmbedded := emf;
 END AddEmbeddedFile;
@@ -689,15 +688,15 @@ BEGIN
 RETURN mod END LoadModule;
 
 
-PROCEDURE PresetWinHost;
+PROCEDURE PresetWinHost(loadflags: SET;  loadmod: ARRAY OF CHAR);
 VAR mod: Modules.Module;  varpos, i: INTEGER;
 BEGIN
   mod    := SYSTEM.VAL(Modules.Module, SYSTEM.ADR(Mem));
   H.ws("PresetWinHost. mod.name "); H.ws(mod.name); H.ws(", nimports "); H.wh(mod.vars); H.wsn("H.");
   varpos := mod.vars;
-  SYSTEM.PUT(SYSTEM.ADR(Mem[varpos]), ImageBase);       INC(varpos, 8);
-  SYSTEM.PUT(SYSTEM.ADR(Mem[varpos]), ModuleBase);      INC(varpos, 8);
-  SYSTEM.PUT(SYSTEM.ADR(Mem[varpos]), {63, H.Verbose}); INC(varpos, 8);
+  SYSTEM.PUT(SYSTEM.ADR(Mem[varpos]), ImageBase);         INC(varpos, 8);
+  SYSTEM.PUT(SYSTEM.ADR(Mem[varpos]), ModuleBase);        INC(varpos, 8);
+  SYSTEM.PUT(SYSTEM.ADR(Mem[varpos]), loadflags + {63});  INC(varpos, 8);
   IF Embedded = NIL THEN
     SYSTEM.PUT(SYSTEM.ADR(Mem[varpos]), 0);
   ELSE
@@ -706,7 +705,7 @@ BEGIN
     SYSTEM.PUT(SYSTEM.ADR(Mem[varpos]), FadrModules + Align(ModuleSize, FileAlignment));
   END;
   INC(varpos, 8);
-  SYSTEM.COPY(SYSTEM.ADR(LoadMod), SYSTEM.ADR(Mem[varpos]), SYSTEM.SIZE(H.ModuleName));
+  SYSTEM.COPY(SYSTEM.ADR(loadmod), SYSTEM.ADR(Mem[varpos]), SYSTEM.SIZE(H.ModuleName));
   INC(varpos, SYSTEM.SIZE(H.ModuleName));
   ASSERT(varpos - mod.vars = BootstrapVarBytes);
 
@@ -727,10 +726,6 @@ BEGIN
 END PresetWinHost;
 
 
-PROCEDURE Init*;
-BEGIN Embedded := NIL;  LastEmbedded := NIL  END Init;
-
-
 PROCEDURE CallJumpIndirect(opcode: INTEGER; mod: Modules.Module);
 VAR target: INTEGER;  disp: SYSTEM.INT32;
 BEGIN
@@ -744,7 +739,7 @@ BEGIN
 END CallJumpIndirect;
 
 
-PROCEDURE Generate*;
+PROCEDURE Generate*(PEname: ARRAY OF CHAR; loadflags: SET; loadmod: ARRAY OF CHAR);
 VAR
   WinHostHdr: Modules.Module;
   KernelHdr:  Modules.Module;
@@ -782,11 +777,11 @@ BEGIN
   H.ws("H ModuleVSize "); H.wh(ModuleVSize);
   H.ws("H entry point "); H.wh(EntryPoint); H.wsn("H.");
 
-  ExeFile := Files.New("innercore.exe");
+  ExeFile := Files.New(PEname);
 
   Files.Set(Exe, ExeFile, 0);
   WriteImports;
-  PresetWinHost;
+  PresetWinHost(loadflags, loadmod);
 
   WritePEHeader;
 
@@ -799,7 +794,7 @@ BEGIN
   WHILE emf # NIL DO
     H.ws("* embed "); H.ws(emf.name);
     H.ws(" at "); H.wh(Files.Pos(Exe)); H.wsn("H.");
-    f := Files.Old(emf.name);  ASSERT(f # NIL);
+    f := emf.file;  ASSERT(f # NIL);
     IF f # NIL THEN
       Files.WriteString(Exe, emf.name);
       size := Files.Length(f);
@@ -826,9 +821,19 @@ BEGIN
 END Generate;
 
 
+PROCEDURE Test;
+VAR r: Texts.Reader;  ch: CHAR;
 BEGIN
-  Init;
-  AddEmbeddedFile("WinGui.x64");
-  LoadMod := "System";
-  Generate
+  Texts.OpenReader(r, Oberon.Par.text, Oberon.Par.pos);  Texts.Read(r, ch);
+  IF ch = "!" THEN
+    AddEmbeddedFile("WinGui.x64", Files.Old("WinGui.x64"));
+    Generate("innercore.exe", {63, H.Verbose}, "System");
+  END
+END Test;
+
+
+BEGIN
+  Embedded := NIL;
+  LastEmbedded := NIL;
+  Test
 END Link.

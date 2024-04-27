@@ -190,7 +190,7 @@ System
 rm *.smb *.x64
 ..\build2\obuild /s ../ ORP
 ..\build2\obuild /s ../ System
-Link
+Link !
 @if errorlevel 1 goto linkrunfailed
 ::
 ::

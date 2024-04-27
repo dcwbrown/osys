@@ -6,7 +6,7 @@ MODULE obuild;
 (* imports, compiles them, and combines all objects into a single executable. *)
 
 IMPORT
-  SYSTEM, H := WinHost, K := Kernel, Files, Texts, Oberon, ORS, ORB, X64, ORG, ORP, WinPE;
+  SYSTEM, H := WinHost, K := Kernel, Files, Texts, Oberon, ORS, ORB, X64, ORG, ORP, WinPE, Link;
 
 TYPE
   PathName   = ARRAY H.MaxPath OF CHAR;
@@ -58,6 +58,7 @@ VAR
 
   SourcePrefices: Prefix;
   BinaryPrefices: Prefix;
+  UseLink:        BOOLEAN;
 
   (* Log output control *)
   LongestModname:  INTEGER;
@@ -482,7 +483,14 @@ BEGIN
   WriteHuman(hdr.vars    - hdr.exports, 8);
   WriteHuman(hdr.size    - hdr.vars,    8);
   H.wn;
-  WinPE.AddModule(mod.code.file);
+  IF UseLink THEN
+    IF (mod.name # "WinHost") & (mod.name # "Kernel")
+     & (mod.name # "Files")   & (mod.name # "Modules") THEN
+      Link.AddEmbeddedFile(mod.code.fn, mod.code.file)
+    END
+  ELSE
+    WinPE.AddModule(mod.code.file)
+  END;
   mod.addedToPE := TRUE
 END AddModule;
 
@@ -509,8 +517,10 @@ BEGIN
   FOR i := 1 TO LongestModname DO H.wc("-") END;
   H.wsn(" ------------ ----------- ------- ----- ------- ------- -------");
 
-  mod := GetModule("WinHost");  AddModule(mod);
-  mod := GetModule("Kernel");   AddModule(mod);
+  IF ~UseLink THEN
+    mod := GetModule("WinHost");  AddModule(mod);
+    mod := GetModule("Kernel");   AddModule(mod)
+  END;
   AddImports(GetModule(Modulename));
 
   H.wb(LongestModname);  H.wsn(" ============ ===========");
@@ -519,7 +529,11 @@ BEGIN
   WriteHuman(TotalGlobals, 12);
   H.wn;
 
-  WinPE.Generate(PEname, LoadFlags);
+  IF UseLink THEN
+    Link.Generate(PEname, LoadFlags, Modulename)
+  ELSE
+    WinPE.Generate(PEname, LoadFlags)
+  END;
 
   H.wn;
   H.ws("Generated "); H.ws(PEname);
@@ -545,22 +559,17 @@ BEGIN
   H.ExitProcess(99);
 END ArgError;
 
+
 PROCEDURE GetArg(VAR r: Texts.Reader; VAR ch: CHAR; VAR arg: ARRAY OF CHAR);
-VAR i: INTEGER;
+VAR i: INTEGER;  quoted: BOOLEAN;
 BEGIN
   i := 0;
   WHILE ch = " " DO Texts.Read(r, ch) END;
-  IF ch # 22X THEN  (* Unquoted parameter *)
-    WHILE (ch # 0X) & (ch # " ") & (ch # 22X) DO
-      arg[i] := ch;  INC(i);  Texts.Read(r, ch)
-    END
-  ELSE  (* Quoted parameter *)
-    Texts.Read(r, ch);  (* Skip leading quote *)
-    WHILE (ch # 0X) & (ch # 22X) DO
-      arg[i] := ch;  INC(i);  Texts.Read(r, ch)
-    END;
-    IF ch = 22X THEN Texts.Read(r, ch) END  (* Skip trailing quote *)
+  quoted := ch = 22X;  IF quoted THEN Texts.Read(r, ch) END; (* Skip leading quote *)
+  WHILE (ch # 0X) & (quoted OR (ch # " ")) & (ch # 22X) DO
+    arg[i] := ch;  INC(i);  Texts.Read(r, ch)
   END;
+  IF quoted & (ch = 22X) THEN Texts.Read(r, ch) END;  (* Skip trailing quote *)
   arg[i] := 0X;
 END GetArg;
 
@@ -572,6 +581,7 @@ BEGIN
   BinariesPrefix := "";
   OutputPrefix   := "";
   Modulename     := "";
+  UseLink        := FALSE;
 
   Texts.OpenReader(r, Oberon.Par.text, Oberon.Par.pos);
   Texts.Read(r, ch);
@@ -582,6 +592,7 @@ BEGIN
       ELSIF (arg = "/binaries") OR (arg = "/b") THEN GetArg(r, ch, BinariesPrefix)
       ELSIF (arg = "/output")   OR (arg = "/o") THEN GetArg(r, ch, OutputPrefix)
       ELSIF (arg = "/verbose")  OR (arg = "/v") THEN INCL(LoadFlags, H.Verbose)
+      ELSIF (arg = "/l")                        THEN UseLink := TRUE
       ELSE
         ArgError(i, arg, "unrecognised option.")
       END
