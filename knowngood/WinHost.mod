@@ -1,5 +1,4 @@
 MODULE WinHost;  IMPORT SYSTEM;
-
 CONST
   (* Platform independent file open kinds *)
   OpenRO* = 0;  (* Open r/o, fail if doesn't exist *)
@@ -18,7 +17,10 @@ CONST
 
   MaxPath* = 780;  (* Enough UTF-8 bytes for for 260 wide chars *)
 
-  Verbose* = 0;  (* flag in LoadFlags *)
+  (* LoadFlags *)
+  Verbose*    = 0;
+  LoadOberon* = 62;
+  NewLoad*    = 63;
 
   (* Windows VirtualAlloc flags *)
   MEMRESERVE           = 2000H;
@@ -549,7 +551,7 @@ PROCEDURE LocateModule(adr: INTEGER): Module;
 VAR  (*modadr: INTEGER;*)  hdr: Module;
 BEGIN
   hdr := Root;
-  WHILE (hdr # NIL) & ((adr < ORD(hdr)) OR (adr >= ORD(hdr)+hdr.vars)) DO
+  WHILE (hdr # NIL) & ((adr < ORD(hdr)) OR (adr >= (*ORD(hdr)+*)hdr.vars)) DO
     hdr := hdr.next
   END;
 RETURN hdr END LocateModule;
@@ -987,6 +989,40 @@ BEGIN
 END RelocatePointerAddresses;
 
 
+PROCEDURE WriteModuleHeader*(mod: Module);
+BEGIN
+  ws("  Module "); ws(mod.name); ws(" at "); wh(ORD(mod)); wsn("H:");
+  ws("    key:     "); whr(mod.key,      16);  wsn("H  28H.");
+  ws("    num:     "); whr(mod.num,      16);  wsn("H  30H Module num, set on load.");
+  ws("    size:    "); whr(mod.size,     16);  wsn("H  38H Allocated memory, set on load (image size in file).");
+  ws("    refcnt:  "); whr(mod.refcnt,   16);  wsn("H  40H Managed by module loader.");
+  ws("    vars:    "); whr(mod.vars,     16);  wsn("H  48H Start of global VARs / in code file start of import ref table.");
+  ws("    init:    "); whr(mod.init,     16);  wsn("H  50H Module initialisation entry point.");
+  ws("    imprefs: "); whr(mod.imprefs,  16);  wsn("H  58H Imports references.");
+  ws("    cmd:     "); whr(mod.cmd,      16);  wsn("H  60H PO2013 Commands: address of seq of command strings and code offsets.");
+  ws("    exports: "); whr(mod.exports,  16);  wsn("H  68H PO2013 Entries: address of array of exported offsets.");
+  ws("    ptr:     "); whr(mod.ptr,      16);  wsn("H  70H PO2013 Pointers: address of array of pointer var addresses.");
+  ws("    lines:   "); whr(mod.lines,    16);  wsn("H  78H Line numbers etc. to address mapping.");
+  ws("    varsize: "); whr(mod.varsize,  16);  wsn("H  80H Size of module VARs.");
+END WriteModuleHeader;
+
+
+PROCEDURE WriteModuleHeaders*;
+VAR mod: Module;
+BEGIN
+  wsn("Module headers:");
+  mod := Root;
+  WHILE mod # NIL DO
+    IF mod.name[0] = 0X THEN
+      ws("Free block at ");  wh(ORD(mod)); ws("H size "); wh(mod.size); wsn("H:");
+    ELSE
+      WriteModuleHeader(mod)
+    END;
+    mod := mod.next
+  END
+END WriteModuleHeaders;
+
+
 PROCEDURE LoadModule(imagehdr: Module);
 (* Load module whose code image is at modadr *)
 (* Module is loaded at AllocPtr which is then updated *)
@@ -1207,7 +1243,6 @@ BEGIN
   Root        := Preload.ImgHeader;
   InitSysHandlers;
 
-  wsn("* WinHost starting *");
   ws("* Exeadr:       "); wh(Preload.Exeadr);         wsn("H *");
   ws("* ImgHeader at: "); wh(ORD(Preload.ImgHeader)); wsn("H *");
   ws("* LoadFlags:    "); wh(ORD(Preload.LoadFlags)); wsn("H *");
@@ -1223,6 +1258,8 @@ BEGIN
     lastbyte := ORD(mod) + mod.size - 1;
     mod := mod.next;
   END;
+
+  WriteModuleHeaders;
 
   AllocPtr    := lastbyte + 1;
   CommitLen   := (AllocPtr + 0FFFFH) DIV 10000H * 10000H - ModuleSpace;
@@ -1248,7 +1285,7 @@ BEGIN
 
   IF AddVectoredExceptionHandler(1, SYSTEM.ADR(ExceptionHandler)) = 0 THEN
     AssertWinErr(GetLastError())
-  END
+  END;
 END NewStartup;
 
 
@@ -1266,14 +1303,15 @@ BEGIN
 
   Log := WriteStdout;
 
-  IF 63 IN Preload.LoadFlags THEN  (* New non-copying startup variant *)
+  IF NewLoad IN Preload.LoadFlags THEN  (* New non-copying startup variant *)
 
+    wsn("* WinHost starting, new style binary.");
     NewStartup
 
   ELSE
 
     IF Verbose IN Preload.LoadFlags THEN
-      ws("* WinHost starting, Preload.ImgHeader at "); wh(ORD(Preload.ImgHeader)); wsn("H.");
+      ws("* WinHost starting, old style binary, Preload.ImgHeader at "); wh(ORD(Preload.ImgHeader)); wsn("H.");
       ws("* Initial RSP "); wh(GetRSP()); wsn("H.");
     END;
 

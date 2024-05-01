@@ -132,6 +132,7 @@ VAR pvadr, offadr, offset, tag, p, q, r: INTEGER;
 BEGIN
   SYSTEM.GET(pref, pvadr);  (* pointers < HeapOrg considered NIL *)
   WHILE pvadr >= 0 DO
+    IF pvadr < 100000000H THEN H.Trap(56, "Mark: pref -> too low address") END;
     SYSTEM.GET(pvadr, p);
     (*
     H.ws("    pref ");   H.wh(pref);
@@ -272,6 +273,6 @@ BEGIN
 END Init;
 
 BEGIN
-  IF 63 IN H.Preload.LoadFlags THEN H.wsn("Reached kernel.") END;
+  IF H.NewLoad IN H.Preload.LoadFlags THEN H.wsn("Reached kernel.") END;
   Init;
 END Kernel.

@@ -86,6 +86,7 @@ BEGIN
   WHILE (mod # NIL) & (name # mod.name) DO mod := mod.next END;
 
   IF mod = NIL THEN (*load*)
+    H.ws("Modules.Load: loading "); H.ws(name); H.wsn(".");
     Check(name);
     IF res = 0 THEN F := ThisFile(name) ELSE F := NIL END;
     IF F # NIL THEN
@@ -116,8 +117,14 @@ BEGIN
         importing := name1;
         IF res = 0 THEN
           IF impmod.key = impkey THEN INC(impmod.refcnt);  INC(nofimps)
-          ELSE error(3, name1);  imported := impname
+          ELSE
+            H.ws("Modules.Load recursive load of imported module ");
+            H.ws(impname); H.wsn(" has mismatched key.");
+            error(3, name1);  imported := impname
           END
+        ELSE
+          H.ws("Modules.Load recursive load of imported module ");
+          H.ws(impname); H.wsn(" failed.");
         END;
         Files.ReadString(R, impname)
       END;
@@ -152,18 +159,26 @@ BEGIN
     END;
 
     IF res = 0 THEN
+      H.ws("Modules.Load "); H.ws(name); H.wsn(" reading static memory.");
       (* Read static memory, including code, type descriptors, strings and pointers *)
-      IF res = 0 THEN (*read file*)
-        INC(p, SYSTEM.SIZE(ModDesc));  (* Skip header *)
-        Files.Set(R, F, SYSTEM.SIZE(ModDesc));
-        loadlen := header.vars - SYSTEM.SIZE(ModDesc);
-        ASSERT(loadlen MOD 8 = 0);
-        WHILE loadlen > 0 DO
-          Files.ReadInt(R, i);  DEC(loadlen, 8);
-          SYSTEM.PUT(p, i);     INC(p, 8)
-        END;
-        mod.name := header.name;  mod.key := key;  mod.refcnt := 0;
+      INC(p, SYSTEM.SIZE(ModDesc));  (* Skip header *)
+      Files.Set(R, F, SYSTEM.SIZE(ModDesc));
+      loadlen := header.vars - SYSTEM.SIZE(ModDesc);
+      ASSERT(loadlen MOD 8 = 0);
+      WHILE loadlen > 0 DO
+        Files.ReadInt(R, i);  DEC(loadlen, 8);
+        SYSTEM.PUT(p, i);     INC(p, 8)
       END;
+      mod.refcnt  := 0;
+      mod.name    := header.name;
+      mod.key     := header.key;
+      mod.init    := header.init;
+      mod.exports := header.exports;
+      mod.lines   := header.lines;
+      mod.varsize := header.varsize;
+      mod.vars    := ORD(mod) + header.vars;
+      mod.cmd     := ORD(mod) + header.cmd;
+      mod.ptr     := ORD(mod) + header.ptr;
 
       (* Link imports *)
       Files.Set(R, F, imptabpos);
@@ -175,17 +190,7 @@ BEGIN
       END;
 
       (* Relocate pointer addresses *)
-      mod.ptr  := ORD(mod) + header.ptr;
       H.RelocatePointerAddresses(mod.ptr, mod.vars);
-
-      mod.name    := header.name;
-      mod.key     := header.key;
-      mod.vars    := ORD(mod) + header.vars;
-      mod.init    := header.init;
-      mod.cmd     := ORD(mod) + header.cmd;
-      mod.exports := header.exports;
-      mod.lines   := header.lines;
-      mod.varsize := header.varsize;
 
       H.ws("* Loaded ");             H.ws(mod.name);
       H.ws(" at ");                  H.wh(ORD(mod));
@@ -206,8 +211,11 @@ BEGIN
     ELSIF res >= 3 THEN importing := name;
       WHILE nofimps > 0 DO DEC(nofimps);  DEC(import[nofimps].refcnt) END
 *)
-    END
+    END;
+    H.ws("Modules.Load "); H.ws(name);
+    IF mod = NIL THEN H.wsn(" failed.") ELSE H.wsn(" succeeded.") END;
   END;
+
   newmod := mod
 END Load;
 
@@ -266,9 +274,29 @@ END Init;
 
 BEGIN
   Init;
-  IF 63 IN H.Preload.LoadFlags THEN
-    H.wsn("Reached Modules.");
-    Load("Oberon", M);
+  IF H.NewLoad IN H.Preload.LoadFlags THEN
+    H.ws("Modules initialisation, LoadFlags: "); H.wh(ORD(H.Preload.LoadFlags)); H.wsn("H.");
+    IF H.LoadOberon IN H.Preload.LoadFlags THEN
+      H.wsn("**** Modules loading Oberon ****");
+      Load("Oberon", M)
+    ELSE
+      H.ws("**** Modules loading "); H.ws(H.Preload.LoadMod); H.wsn(" ****");
+      Load(H.Preload.LoadMod, M)
+    END;
+    IF M = NIL THEN
+      H.wsn("**** Load failed. ****");
+      H.ws("**** Modules init load error: "); H.ws(importing);
+      IF    res = 1 THEN H.wsn(" module not found")
+      ELSIF res = 2 THEN H.wsn(" bad version")
+      ELSIF res = 3 THEN H.wsn(" imports ");
+        H.ws(imported); H.wsn(" with bad key");
+      ELSIF res = 4 THEN H.wsn(" corrupted obj file")
+      ELSIF res = 5 THEN H.wsn(" command not found")
+      ELSIF res = 7 THEN H.wsn(" insufficient space")
+      END
+    END;
+    H.wsn("**** Modules ExitProcess(0) ****");
+    H.ExitProcess(0);
   END;
 (*
   Load("Oberon", M);

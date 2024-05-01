@@ -210,6 +210,7 @@ END WriteModule;
 PROCEDURE MakeFileDesc(name, ext: ARRAY OF CHAR; prefices: Prefix; VAR desc: FileDesc);
 BEGIN
   Copy(name, desc.fn); H.Append(".", desc.fn); H.Append(ext, desc.fn);
+  H.ws("* obuild.MakeFileDesc("); H.ws(name); H.ws(", "); H.ws(ext); H.wsn(").");
   Find(desc.fn, prefices, desc.file, desc.prefix);
   IF desc.file = NIL THEN
     ClearFileDesc(desc)
@@ -431,13 +432,23 @@ END CompileModule;
 PROCEDURE CollectGarbage;
 VAR hdr: H.Module;
 BEGIN
+(*
+  H.wsn("obuild.CollectGarbage.");
+  H.WriteModuleHeaders
   hdr := H.Root;
   WHILE hdr # NIL DO
-    IF hdr.name[0] # 0X THEN K.Mark(hdr.ptr) END;
+    IF hdr.name[0] # 0X THEN
+      H.ws("* Collect garbage for "); H.ws(hdr.name); H.wsn(".");
+      H.ws("  ORD(hdr): "); H.wh(ORD(hdr)); H.wsn("H.");
+      H.ws("  hdr.vars: "); H.wh(hdr.vars); H.wsn("H.");
+      H.ws("  hdr.ptr:  "); H.wh(hdr.ptr);  H.wsn("H.");
+      K.Mark(hdr.ptr)
+    END;
     hdr := hdr.next
   END;
   Files.CloseCollectableFiles;
   K.Scan;
+*)
 END CollectGarbage;
 
 
@@ -484,10 +495,7 @@ BEGIN
   WriteHuman(hdr.size    - hdr.vars,    8);
   H.wn;
   IF UseLink THEN
-    IF (mod.name # "WinHost") & (mod.name # "Kernel")
-     & (mod.name # "Files")   & (mod.name # "Modules") THEN
-      Link.AddEmbeddedFile(mod.code.fn, mod.code.file)
-    END
+    Link.AddEmbeddedFile(mod.code.fn, mod.code.file)
   ELSE
     WinPE.AddModule(mod.code.file)
   END;
@@ -517,9 +525,17 @@ BEGIN
   FOR i := 1 TO LongestModname DO H.wc("-") END;
   H.wsn(" ------------ ----------- ------- ----- ------- ------- -------");
 
+(*
   IF ~UseLink THEN
     mod := GetModule("WinHost");  AddModule(mod);
     mod := GetModule("Kernel");   AddModule(mod)
+  END;
+*)
+  mod := GetModule("WinHost");  AddModule(mod);
+  mod := GetModule("Kernel");   AddModule(mod);
+  IF UseLink THEN
+    mod := GetModule("Files");    AddModule(mod);
+    mod := GetModule("Modules");  AddModule(mod)
   END;
   AddImports(GetModule(Modulename));
 
@@ -530,8 +546,10 @@ BEGIN
   H.wn;
 
   IF UseLink THEN
+    H.wsn("obuild.Generate calling Link.Generate.");
     Link.Generate(PEname, LoadFlags, Modulename)
   ELSE
+    H.wsn("obuild.Generate calling WinPE.Generate.");
     WinPE.Generate(PEname, LoadFlags)
   END;
 
@@ -636,6 +654,8 @@ BEGIN
   Modules         := NIL;
   TotalCode       := 0;
   TotalGlobals    := 0;
+
+  Files.DisconnectEmbeddedFiles;
 
   ScanArguments;
 

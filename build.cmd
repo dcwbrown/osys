@@ -1,6 +1,7 @@
 :: build.cmd - build Oberon comiler and system
 ;;
 @SET VERBOSE=/v
+@SET KNOWNGOODBUILD=..\knowngood\obuild.exe
 ::
 :: The compiler is built if any files affecting the compiler have changed
 ::
@@ -64,8 +65,9 @@
 @echo ------------- Build prebuild compiler from knowngood and new WinPE -------------
 @mkdir buildpre >NUL
 @copy WinPE.mod buildpre >NUL
+@copy Link.mod buildpre >NUL
 @cd buildpre >NUL
-..\knowngood\obuild %VERBOSE% /s ./;../knowngood/Console.;../knowngood/ obuild
+%KNOWNGOODBUILD% %VERBOSE% /l /s ./;../knowngood/Console.;../knowngood/ obuild
 @if errorlevel 1 goto end
 @cd ..
 ::
@@ -77,9 +79,9 @@
 @mkdir build1 >NUL 2>NUL
 @cd build1
 if exist ..\buildpre\obuild.exe (
-  ..\buildpre\obuild %VERBOSE% /s ../Console.;../ obuild
+  ..\buildpre\obuild %VERBOSE% /l /s ../Console.;../ obuild
 ) else (
-  ..\knowngood\obuild %VERBOSE% /s ../Console.;../ obuild
+  %KNOWNGOODBUILD% %VERBOSE% /s ../Console.;../ obuild
 )
 @if errorlevel 1 goto end
 @cd ..
@@ -89,10 +91,15 @@ if exist ..\buildpre\obuild.exe (
 @echo ---------------- Build new compiler using newly built compiler -----------------
 @mkdir build2 >NUL 2>NUL
 @cd build2
-..\build1\obuild %VERBOSE% /s ../Console.;../ obuild
-@if errorlevel 1 goto end
+..\build1\obuild %VERBOSE% /l /s ../Console.;../ obuild
+@if not errorlevel 1 goto obuildok
+@echo.
+@echo obuild returned non-zero.
+@goto end
+:obuildok
 @if exist obuild.exe goto obexists
 ::
+:obfailed
 @echo.
 @echo Build failed. obuild.exe not created.
 @goto end
@@ -104,7 +111,7 @@ if exist ..\buildpre\obuild.exe (
 @echo --------------------------------- Build tests ----------------------------------
 @mkdir buildtest >NUL 2>NUL
 @cd buildtest
-..\build2\obuild %VERBOSE% /s ../Console.;../ /b ../build2/ Test
+..\build2\obuild %VERBOSE% /l /s ../Console.;../ /b ../build2/ Test
 @if errorlevel 1 goto testbuildfailed
 @if exist Test.exe goto testexists
 @echo.
@@ -156,8 +163,8 @@ copy ..\*.mod >NUL
 copy ..\*.Tool >NUL
 copy ..\*.Fnt >NUL
 copy ..\*.Lib >NUL
-..\build2\obuild %VERBOSE% /s ./ ORP
-..\build2\obuild %VERBOSE% /s ./ System
+..\build2\obuild %VERBOSE% /l /s ./ ORP
+..\build2\obuild %VERBOSE% /l /s ./ System
 @if errorlevel 1 goto osysbuildfailed
 ::
 System
@@ -178,26 +185,33 @@ System
 ::
 ::  Build linker
 ::
-@rd /s /q buildlink 2>nul
+@rd /s /q buildlink
 @md buildlink
 @cd buildlink
+
 :: ..\build2\obuild /s ../Console.;../ Oberon
 :: ..\build2\obuild /s ../Console.;../ Fonts
 @if errorlevel 1 goto linkbuildfailed
-..\build2\obuild %VERBOSE% /s ../Console.;../ Link
+..\build2\obuild %VERBOSE% /l /s ../Console.;../ Link
 @if errorlevel 1 goto linkbuildfailed
 ::
+@echo.
+@echo Link build succesful.
+::
+
 rm *.smb *.x64
-..\build2\obuild /s ../ ORP
-..\build2\obuild /s ../ System
+..\build2\obuild /l /s ../ ORP
+@if errorlevel 1 goto linkrunfailed
+..\build2\obuild /l /s ../ System
+@if errorlevel 1 goto linkrunfailed
 Link !
 @if errorlevel 1 goto linkrunfailed
 ::
 ::
-copy ..\*.mod
-copy ..\*.fnt
-copy ..\*.tool
-del WinGui.x64
+copy ..\*.mod >NUL
+copy ..\*.fnt >NUL
+copy ..\*.tool >NUL
+::del WinGui.x64
 innercore
 @cd ..
 @goto end

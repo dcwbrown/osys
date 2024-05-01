@@ -75,7 +75,7 @@ BEGIN
   entry := ExeDir;
   WHILE (entry # NIL) & (name # entry.name) DO entry := entry.next END;
   IF entry # NIL THEN
-    H.ws("Openeing EXE file "); H.ws(name); H.wsn(".");
+    H.ws("Opening EXE file "); H.ws(name); H.wsn(".");
     NEW(f);
     f.next       := first;
     f.registered := TRUE;
@@ -90,12 +90,16 @@ PROCEDURE Old*(name: ARRAY OF CHAR): File;
 VAR f: File;
 BEGIN
   IF name[0] = 0X THEN
-    f := NIL  (* E.g. commonly when Texts.Open passed "" as fiename *)
+    f := NIL  (* E.g. commonly when Texts.Open passed "" as filename *)
   ELSE
+    H.ws("* Old("); H.ws(name); H.wsn("):");
     f := first;
-    WHILE (f # NIL) & ~(f.registered & (f.name = name)) DO f := f.next END;
-    IF f = NIL THEN f := OpenWinFile(name) END;
+    WHILE (f # NIL) & ~(f.registered & (f.name = name)) DO
+      (*H.ws("  consider "); H.ws(f.name);  H.wsn("."); *)
+      f := f.next
+    END;
     IF f = NIL THEN f := OpenExeFile(name) END;
+    IF f = NIL THEN f := OpenWinFile(name) END;
   END
 RETURN f END Old;
 
@@ -237,6 +241,29 @@ BEGIN
   ELSIF f IS ExeFile THEN res := Date(Exe)
   END
 RETURN res END Date;
+
+
+PROCEDURE DisconnectEmbeddedFiles*;
+VAR f, g: File;
+BEGIN
+  (* Remove embedded files from the actve file list *)
+  WHILE (first # NIL) & (first IS ExeFile) DO first := first.next END;
+
+  WHILE (first # NIL) & (first.next # NIL) DO
+    IF first.next IS ExeFile THEN
+      first.next := first.next.next
+    ELSE
+      first := first.next
+    END
+  END;
+
+  (* Check there are no embedded files left *)
+  f := first; WHILE f # NIL DO ASSERT(~(f IS ExeFile));  f := f.next END;
+
+
+  (* Remove directory of embedded files *)
+  ExeDir := NIL
+END DisconnectEmbeddedFiles;
 
 
 (* --------------------------------- Riders --------------------------------- *)
@@ -478,6 +505,10 @@ VAR f, g: File;
   PROCEDURE finalise(f: File);
   VAR res: INTEGER;
   BEGIN
+    H.ws("* Finalising ");
+    CASE f OF WinFile: H.ws("Win file ") | ExeFile: H.ws("embedded file ") END;
+    H.ws(f.name); H.ws(" ("); IF ~f.registered THEN H.ws("un") END;
+    H.wsn("registered).");
     ASSERT(getmark(f) = 0);
     CASE f OF
     WinFile: IF f.registered THEN

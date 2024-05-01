@@ -149,7 +149,7 @@ END Patch;
 PROCEDURE Init*;
 BEGIN
   PC := 0;  SPO := 0;
-(*Header := SYSTEM.VAL(CodeHeaderPtr, SYSTEM.ADR(Text))*)
+  H.wsn("* X64 loaded.");
 END Init;
 
 BEGIN  Init
