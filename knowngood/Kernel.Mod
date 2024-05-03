@@ -273,6 +273,6 @@ BEGIN
 END Init;
 
 BEGIN
-  IF H.NewLoad IN H.Preload.LoadFlags THEN H.wsn("Reached kernel.") END;
+  (*IF H.NewLoad IN H.Preload.LoadFlags THEN H.wsn("Reached kernel.") END;*)
   Init;
 END Kernel.

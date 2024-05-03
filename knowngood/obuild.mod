@@ -210,7 +210,7 @@ END WriteModule;
 PROCEDURE MakeFileDesc(name, ext: ARRAY OF CHAR; prefices: Prefix; VAR desc: FileDesc);
 BEGIN
   Copy(name, desc.fn); H.Append(".", desc.fn); H.Append(ext, desc.fn);
-  H.ws("* obuild.MakeFileDesc("); H.ws(name); H.ws(", "); H.ws(ext); H.wsn(").");
+  (*H.ws("* obuild.MakeFileDesc("); H.ws(name); H.ws(", "); H.ws(ext); H.wsn(").");*)
   Find(desc.fn, prefices, desc.file, desc.prefix);
   IF desc.file = NIL THEN
     ClearFileDesc(desc)

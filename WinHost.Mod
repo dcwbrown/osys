@@ -193,12 +193,12 @@ VAR
   (* Linker expects handlers to follow immediately after pre-loaded vars *)
   Handlers*: ARRAY HandlerCount OF PROCEDURE;
 
-  Stdin:      INTEGER;
-  Stdout:     INTEGER;
-  crlf*:      ARRAY 3 OF CHAR;
-  Log:        PROCEDURE(s: ARRAY OF BYTE);
-  Sol:        BOOLEAN;   (* True only at start of line *)
-  HWnd:       INTEGER;   (* Set if a window has been created *)
+  Stdin:  INTEGER;
+  Stdout: INTEGER;
+  crlf*:  ARRAY 3 OF CHAR;
+  Log:    PROCEDURE(s: ARRAY OF BYTE);
+  Sol:    BOOLEAN;   (* True only at start of line *)
+  HWnd:   INTEGER;   (* Set if a window has been created *)
 
   ModuleSpace*: INTEGER;   (* Start of module space *)
   AllocPtr*:    INTEGER;   (* Start of remaining free module space *)
@@ -1126,14 +1126,19 @@ BEGIN
   IF AllocPtr - ModuleSpace + size < 80000000H THEN  (* Hard limit on reserved size 2GB due to relative addressing *)
     IF AllocPtr + size > ModuleSpace + CommitLen THEN
 
-      ws("* CommitLen increasing from "); wh(CommitLen);
+      (*ws("* CommitLen increasing from "); wh(CommitLen);*)
+
       (* Round up to a multiple of 256K *)
       newcommitlen := (AllocPtr + size + 40000H - 1) DIV 40000H * 40000H - ModuleSpace;
+
+      (*
       ws("H to "); wh(newcommitlen); wsn("H *");
 
       ws("Calling VirtualAlloc(addr "); wh(ModuleSpace+CommitLen);
       ws("H, size "); wh(newcommitlen-CommitLen);
       wsn("H, MEMCOMMIT, PAGEEXECUTEREADWRITE).");
+      *)
+
       adr := VirtualAlloc(ModuleSpace+CommitLen, newcommitlen-CommitLen, MEMCOMMIT, PAGEEXECUTEREADWRITE);
       IF adr = 0 THEN
         ws(": "); WriteWindowsErrorMessage(GetLastError()); wsn(".");
@@ -1243,26 +1248,31 @@ BEGIN
   Root        := Preload.ImgHeader;
   InitSysHandlers;
 
+  (*
   ws("* Exeadr:       "); wh(Preload.Exeadr);         wsn("H *");
   ws("* ImgHeader at: "); wh(ORD(Preload.ImgHeader)); wsn("H *");
   ws("* LoadFlags:    "); wh(ORD(Preload.LoadFlags)); wsn("H *");
+  *)
 
   (* Show loaded modules *)
-  wsn("* Modules: *");
+  (*wsn("* Modules: *");*)
   mod := Preload.ImgHeader;
   WHILE mod # NIL DO
+    (*
     ws("  "); ws(mod.name);
     ws(" at "); wh(ORD(mod));
     ws("H size "); wh(mod.size);
     wsn("H.");
+    *)
     lastbyte := ORD(mod) + mod.size - 1;
     mod := mod.next;
   END;
 
-  WriteModuleHeaders;
+  (*WriteModuleHeaders;*)
 
   AllocPtr    := lastbyte + 1;
   CommitLen   := (AllocPtr + 0FFFFH) DIV 10000H * 10000H - ModuleSpace;
+  (*
   wsn("Derived values: ");
   ws("  ModuleSpace: "); wh(ModuleSpace); wsn("H.");
   ws("  AllocPtr:    "); wh(AllocPtr);    wsn("H.");
@@ -1270,17 +1280,19 @@ BEGIN
 
   ws("* lastbyte "); wh(lastbyte);
   ws("H => loaded length "); wh(lastbyte + 1 - ORD(Preload.ImgHeader));
+  *)
   loadedlen := (lastbyte + 1 - ORD(Preload.ImgHeader) + 65535) DIV 65536 * 65536;
-  ws("H, rounded up to allocation granularity "); wh(loadedlen);
-  wsn("H.");
+  (*ws("H, rounded up to allocation granularity "); wh(loadedlen); wsn("H.");*)
 
   (* Extend memory to 2GB reserve *)
   reserveadr := ORD(Preload.ImgHeader) + loadedlen;
   reservelen := 80000000H - loadedlen;
+  (*
   ws("Reserving memory from "); wh(reserveadr);
   ws("H up to "); wh(reserveadr + reservelen); wsn("H.");
+  *)
   res := VirtualAlloc(reserveadr, reservelen, MEMRESERVE, PAGEEXECUTEREADWRITE);
-  ws("* VirtualAlloc result "); wh(res); wsn("H *");
+  (*ws("* VirtualAlloc result "); wh(res); wsn("H *");*)
   IF res = 0 THEN ws(": "); WriteWindowsErrorMessage(GetLastError()); wsn(".")  END;
 
   IF AddVectoredExceptionHandler(1, SYSTEM.ADR(ExceptionHandler)) = 0 THEN
@@ -1305,7 +1317,7 @@ BEGIN
 
   IF NewLoad IN Preload.LoadFlags THEN  (* New non-copying startup variant *)
 
-    wsn("* WinHost starting, new style binary.");
+    (*wsn("* WinHost starting, new style binary.");*)
     NewStartup
 
   ELSE

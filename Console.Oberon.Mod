@@ -12,6 +12,8 @@ VAR
 
   ActCnt: INTEGER; (*action count for GC*)
   Mod:    Modules.Module;
+  Cmd:    ARRAY 100 OF CHAR;
+  res:    INTEGER;
 
 
 PROCEDURE GetSelection* (VAR text: Texts.Text; VAR beg, end, time: INTEGER);
@@ -63,9 +65,13 @@ BEGIN
   adr := H.GetCommandLineW();
   Getch32(adr, ch);
   quoted  := FALSE;
+  i := 0;
   WHILE (ch # 0) & ((ch # 32) OR quoted) DO  (* Skip to first unquoted space *)
-    IF ch = 22H THEN quoted  := ~quoted END;  Getch32(adr, ch)
+    H.PutUtf8(ch, Cmd, i);
+    IF ch = 22H THEN quoted  := ~quoted END;
+    Getch32(adr, ch)
   END;
+  Cmd[i] := 0X;
   WHILE ch = 32 DO Getch32(adr, ch) END;  (* Skip to first non-blank *)
   (* Copy remainder of command line to Par.text *)
   WHILE ch # 0 DO
@@ -78,26 +84,46 @@ BEGIN
   Par.pos := 0
 END GetCommandLineParameters;
 
+PROCEDURE CallCommand;
+VAR S: Texts.Scanner;  P: Modules.Command;
 BEGIN
-  H.wsn("** Console.Oberon initialising.");
+  Texts.OpenScanner(S, Par.text, Par.pos);  Texts.Scan(S);
+  IF S.class = Texts.Name THEN
+    Par.pos := Texts.Pos(S);
+    (*H.ws("Call command '"); H.ws(S.s); H.wsn("'.");*)
+    P := Modules.ThisCommand(Mod, S.s);
+    IF Modules.res = 0 THEN P END
+  END;
+END CallCommand;
+
+BEGIN
+  (*H.wsn("** Console.Oberon initialising.");*)
   NEW(Log);
   Texts.Open(Log, "");
   Log.notify := LogNotify;
   GetCommandLineParameters;
   IF H.NewLoad IN H.Preload.LoadFlags THEN
-    H.ws("**** Console.Oberon loading "); H.ws(H.Preload.LoadMod); H.wsn(" ****");
+    (*H.ws("**** Console.Oberon loading "); H.ws(H.Preload.LoadMod); H.wsn(" ****");*)
     Modules.Load(H.Preload.LoadMod, Mod);
-    IF Mod = NIL THEN
+    res := Modules.res;
+    IF res = 0 THEN
+      (*
+      H.ws("Console.Oberon. Cmd '"); H.ws(Cmd);
+      H.ws("', H.Preload.LoadMod '"); H.ws(H.Preload.LoadMod); H.wsn("'.");
+      *)
+      IF Cmd = H.Preload.LoadMod THEN CallCommand; res := Modules.res END
+    END;
+    IF res # 0 THEN
       H.wsn("**** Load failed. ****");
       H.ws("**** Console.Oberon init load error: "); H.ws(Modules.importing);
-      IF    Modules.res = 1 THEN H.wsn(" module not found")
-      ELSIF Modules.res = 2 THEN H.wsn(" bad version")
-      ELSIF Modules.res = 3 THEN H.ws(" imports ");
+      IF    res = 1 THEN H.wsn(" module not found")
+      ELSIF res = 2 THEN H.wsn(" bad version")
+      ELSIF res = 3 THEN H.ws(" imports ");
                                  H.ws(Modules.imported);
                                  H.wsn(" with bad key");
-      ELSIF Modules.res = 4 THEN H.wsn(" corrupted obj file")
-      ELSIF Modules.res = 5 THEN H.wsn(" command not found")
-      ELSIF Modules.res = 7 THEN H.wsn(" insufficient space")
+      ELSIF res = 4 THEN H.wsn(" corrupted obj file")
+      ELSIF res = 5 THEN H.wsn(" command not found")
+      ELSIF res = 7 THEN H.wsn(" insufficient space")
       END
     END;
     Mod := NIL;

@@ -425,7 +425,7 @@ BEGIN
 END Reset;
 
 BEGIN
-  H.wsn("** Full Oberon initialising.");
+  (*H.wsn("** Full Oberon initialising.");*)
 
   User[0] := 0X;
   Arrow.Fade := FlipArrow; Arrow.Draw := FlipArrow;
@@ -441,7 +441,7 @@ BEGIN
   ActCnt := 0; CurTask := NewTask(GC, 1000); Install(CurTask);
 
   IF H.NewLoad IN H.Preload.LoadFlags THEN
-    H.ws("**** Full Oberon loading "); H.ws(H.Preload.LoadMod); H.wsn(" ****");
+    (*H.ws("**** Full Oberon loading "); H.ws(H.Preload.LoadMod); H.wsn(" ****");*)
     Modules.Load(H.Preload.LoadMod, Mod);
     IF Mod = NIL THEN
       H.wsn("**** Load failed. ****");

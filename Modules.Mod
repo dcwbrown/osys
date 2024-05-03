@@ -86,7 +86,7 @@ BEGIN
   WHILE (mod # NIL) & (name # mod.name) DO mod := mod.next END;
 
   IF mod = NIL THEN (*load*)
-    H.ws("Modules.Load: loading "); H.ws(name); H.wsn(".");
+    (*H.ws("Modules.Load: loading "); H.ws(name); H.wsn(".");*)
     Check(name);
     IF res = 0 THEN F := ThisFile(name) ELSE F := NIL END;
     IF F # NIL THEN
@@ -159,7 +159,7 @@ BEGIN
     END;
 
     IF res = 0 THEN
-      H.ws("Modules.Load "); H.ws(name); H.wsn(" reading static memory.");
+      (*H.ws("Modules.Load "); H.ws(name); H.wsn(" reading static memory.");*)
       (* Read static memory, including code, type descriptors, strings and pointers *)
       INC(p, SYSTEM.SIZE(ModDesc));  (* Skip header *)
       Files.Set(R, F, SYSTEM.SIZE(ModDesc));
@@ -192,6 +192,7 @@ BEGIN
       (* Relocate pointer addresses *)
       H.RelocatePointerAddresses(mod.ptr, mod.vars);
 
+      (*
       H.ws("* Loaded ");             H.ws(mod.name);
       H.ws(" at ");                  H.wh(ORD(mod));
       H.ws("H, code ");              H.wh(header.vars);
@@ -199,6 +200,7 @@ BEGIN
       H.ws("H bytes, loaded size "); H.wh(mod.size);
       H.ws("H, lines at ");          H.wh(mod.lines);
       H.wsn("H.");
+      *)
 
       body := SYSTEM.VAL(Command, ORD(mod) + mod.init);
       (*
@@ -212,8 +214,10 @@ BEGIN
       WHILE nofimps > 0 DO DEC(nofimps);  DEC(import[nofimps].refcnt) END
 *)
     END;
+    (*
     H.ws("Modules.Load "); H.ws(name);
     IF mod = NIL THEN H.wsn(" failed.") ELSE H.wsn(" succeeded.") END;
+    *)
   END;
 
   newmod := mod
@@ -275,12 +279,12 @@ END Init;
 BEGIN
   Init;
   IF H.NewLoad IN H.Preload.LoadFlags THEN
-    H.ws("Modules initialisation, LoadFlags: "); H.wh(ORD(H.Preload.LoadFlags)); H.wsn("H.");
+    (*H.ws("Modules initialisation, LoadFlags: "); H.wh(ORD(H.Preload.LoadFlags)); H.wsn("H.");*)
     IF H.LoadOberon IN H.Preload.LoadFlags THEN
-      H.wsn("**** Modules loading Oberon ****");
+      (*H.wsn("**** Modules loading Oberon ****");*)
       Load("Oberon", M)
     ELSE
-      H.ws("**** Modules loading "); H.ws(H.Preload.LoadMod); H.wsn(" ****");
+      (*H.ws("**** Modules loading "); H.ws(H.Preload.LoadMod); H.wsn(" ****");*)
       Load(H.Preload.LoadMod, M)
     END;
     IF M = NIL THEN
@@ -295,7 +299,7 @@ BEGIN
       ELSIF res = 7 THEN H.wsn(" insufficient space")
       END
     END;
-    H.wsn("**** Modules ExitProcess(0) ****");
+    (*H.wsn("**** Modules ExitProcess(0) ****");*)
     H.ExitProcess(0);
   END;
 (*

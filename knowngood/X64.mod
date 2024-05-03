@@ -149,7 +149,7 @@ END Patch;
 PROCEDURE Init*;
 BEGIN
   PC := 0;  SPO := 0;
-  H.wsn("* X64 loaded.");
+  (*H.wsn("* X64 loaded.");*)
 END Init;
 
 BEGIN  Init

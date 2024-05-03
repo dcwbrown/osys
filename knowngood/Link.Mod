@@ -156,12 +156,12 @@ VAR
   FilesFile:    Files.File;
   ModulesFile:  Files.File;
 
-  LinkLoadFlags: SET;
+  OberonEmbedded: BOOLEAN;
 
-  Idt:        ImportDirectoryTable;
+  Idt: ImportDirectoryTable;
 
-  Mem:        ARRAY 10000H OF BYTE;  (* Will be loaded at ImageBase + RvaModules *)
-  ModAdr:     ARRAY 16 OF RECORD  (* Module name to base address map *)
+  Mem:    ARRAY 10000H OF BYTE;  (* Will be loaded at ImageBase + RvaModules *)
+  ModAdr: ARRAY 16 OF RECORD  (* Module name to base address map *)
     name: Modules.ModuleName;
     key:  INTEGER;
     adr:  INTEGER
@@ -495,9 +495,11 @@ BEGIN
                      RvaModules, FadrModules,
                      SReadable + SWriteable + SExecutable + SCode);
 
+  (*
   H.ws("After PE header, Pos(Exe) ");                H.wh(Files.Pos(Exe));
   H.ws("H, Align(Files.Pos(Exe), FileAlignment) ");  H.wh(Align(Files.Pos(Exe), FileAlignment));
   H.ws("H, HeaderSize "); H.wh(HeaderSize); H.wsn("H.");
+  *)
 
   ASSERT(Align(Files.Pos(Exe), FileAlignment) = HeaderSize);
 
@@ -523,9 +525,11 @@ PROCEDURE IsNamedModule(f: Files.File; name: ARRAY OF CHAR): BOOLEAN;
 VAR mod: H.ModuleDesc;  r: Files.Rider;
 BEGIN
   Files.Set(r, f, 0);  ReadVar(r, mod);
+  (*
   IF mod.name = name THEN
     H.ws("Link.IsNamedModule found module "); H.ws(mod.name); H.wsn(".")
   END;
+  *)
 RETURN mod.name = name END IsNamedModule;
 
 
@@ -537,7 +541,7 @@ BEGIN
   ELSIF IsNamedModule(file, "Files")   THEN FilesFile   := file
   ELSIF IsNamedModule(file, "Modules") THEN ModulesFile := file
   ELSE
-    IF IsNamedModule(file, "Oberon") THEN INCL(LinkLoadFlags, H.LoadOberon) END;
+    IF IsNamedModule(file, "Oberon") THEN OberonEmbedded := TRUE END;
     NEW(emf);
     emf.name := name;
     emf.file := file;
@@ -627,14 +631,18 @@ VAR
 BEGIN
   ASSERT(f # NIL);
   Files.Set(R, f, 0);
-  H.wsn("Link.LoadModule: module opened.");
+  (*H.wsn("Link.LoadModule: module opened.");*)
   mod := SYSTEM.VAL(Modules.Module, SYSTEM.ADR(Mem[ModuleSize]));
+  (*
   H.wsn("Link.LoadModule: Loading raw module header:");
   H.ws("  ModuleSize:                  "); H.wh(ModuleSize); H.wsn("H.");
   H.ws("  SYSTEM.ADR(Mem[ModuleSize]): "); H.wh(SYSTEM.ADR(Mem[ModuleSize])); H.wsn("H.");
+  *)
   ReadVar(R, mod^);
+  (*
   H.wsn("Link.LoadModule: raw module header loaded:");
   H.WriteModuleHeader(mod);
+  *)
   ModAdr[ModCount].name := mod.name;
   ModAdr[ModCount].key  := mod.key;
   ModAdr[ModCount].adr  := ModuleSize;  (* Offset into Mem = relative to ModuleBase *)
@@ -651,7 +659,7 @@ BEGIN
     REPEAT impname[i] := CHR(Mem[m]); INC(i); INC(m) UNTIL impname[i-1] = 0X;
     IF impname[0] # 0X THEN
       SYSTEM.GET(SYSTEM.ADR(Mem[m]), impkey); INC(m, 8);
-      H.ws(f.name); H.ws(" importing "); H.ws(impname); H.ws(" key "); H.wh(impkey); H.wsn("H.");
+      (*H.ws(f.name); H.ws(" importing "); H.ws(impname); H.ws(" key "); H.wh(impkey); H.wsn("H.");*)
     END;
   UNTIL impname[0] = 0X;
 
@@ -680,6 +688,7 @@ BEGIN
   END;
   Files.Set(R, f, (Files.Pos(R) + 15) DIV 16 * 16);
 
+  (*
   IF impcnt > 0 THEN
     H.ws("* "); H.ws(mod.name); H.ws(" importing from");
     FOR i := 0 TO impcnt-1 DO
@@ -689,13 +698,16 @@ BEGIN
     END;
     H.wsn(".");
   END;
+  *)
 
   (* Link imports *)
   Files.ReadBytes(R, impcnt, 4);
+  (*
   IF impcnt > 0 THEN
     H.ws("Linking "); H.wi(impcnt);
     H.ws(" imports to module "); H.ws(mod.name); H.wsn(".");
   END;
+  *)
   FOR i := 1 TO impcnt DO
     ReadVar(R, offset);  ReadVar(R, impno);  ReadVar(R, modno);
     LinkImport(ModuleSize, offset, impno, modno, modules)
@@ -713,11 +725,13 @@ BEGIN
   INC(mod.ptr, ModuleBase + ModuleSize);
   INC(mod.cmd, ModuleBase + ModuleSize);
 
+  (*
   H.ws("Loaded module "); H.wi(ModCount);
   H.ws(" '");             H.ws(ModAdr[ModCount].name);
   H.ws("' at ");          H.wh(ModAdr[ModCount].adr);
   H.ws("H nimports ");    H.wh(mod.vars);
   H.ws("H varsize ");     H.wh(mod.varsize);  H.wsn("H.");
+  *)
 
   mod.size := (mod.vars + mod.varsize + 16) DIV 16 * 16;
 
@@ -732,12 +746,13 @@ PROCEDURE PresetWinHost(loadflags: SET;  loadmod: ARRAY OF CHAR);
 VAR mod: Modules.Module;  varpos, i: INTEGER;
 BEGIN
   mod := SYSTEM.VAL(Modules.Module, SYSTEM.ADR(Mem));
-  H.ws("* PresetWinHost. mod.name "); H.ws(mod.name); H.ws(", nimports "); H.wh(mod.vars); H.wsn("H.");
+  (*H.ws("* PresetWinHost. mod.name "); H.ws(mod.name); H.ws(", nimports "); H.wh(mod.vars); H.wsn("H.");*)
   varpos := mod.vars - ModuleBase;
 
+  (*
   H.WriteModuleHeader(mod);
   H.ws("  varpos "); H.wh(varpos); H.wsn("H.");
-  loadflags := loadflags + LinkLoadFlags;
+  *)
 
   SYSTEM.PUT(SYSTEM.ADR(Mem[varpos]), ImageBase);   INC(varpos, 8);
   SYSTEM.PUT(SYSTEM.ADR(Mem[varpos]), ModuleBase);  INC(varpos, 8);
@@ -745,8 +760,10 @@ BEGIN
   IF Embedded = NIL THEN
     SYSTEM.PUT(SYSTEM.ADR(Mem[varpos]), 0);
   ELSE
+    (*
     H.ws("Embedded files will be written at "); H.wh(FadrModules + Align(ModuleSize, FileAlignment));
     H.wsn("H.");
+    *)
     SYSTEM.PUT(SYSTEM.ADR(Mem[varpos]), FadrModules + Align(ModuleSize, FileAlignment));
   END;
   INC(varpos, 8);
@@ -754,11 +771,13 @@ BEGIN
   INC(varpos, SYSTEM.SIZE(H.ModuleName));
   ASSERT(ModuleBase + varpos = mod.vars + BootstrapVarBytes);
 
+  (*
   H.ws("Before IDT lookups write, varpos "); H.wh(varpos); H.wsn("H.");
 
   H.ws("SYSTEM.ADR(Idt.Kernel32Lookups) "); H.wh(SYSTEM.ADR(Idt.Kernel32Lookups)); H.wsn("H.");
   H.ws("SYSTEM.ADR(Mem[varpos])         "); H.wh(SYSTEM.ADR(Mem[varpos]));         H.wsn("H.");
   H.ws("Kernel32ImportCount * 8         "); H.wh(Kernel32ImportCount * 8);         H.wsn("H.");
+  *)
 
   SYSTEM.COPY(SYSTEM.ADR(Idt.Kernel32Lookups), SYSTEM.ADR(Mem[varpos]), Kernel32ImportCount * 8);
   INC(varpos, Kernel32ImportCount * 8);
@@ -795,8 +814,16 @@ VAR
   r:          Files.Rider;
   buf:        ARRAY 1024 OF BYTE;
   i, size:    INTEGER;
+  prev1:      Files.FileName;
+  prev2:      Files.FileName;
+  prev3:      Files.FileName;
+  res:        INTEGER;
 BEGIN
-  H.wsn("Link.Generate: Linking.");
+  ModCount      := 0;
+  ModuleSize    := 0;
+  EntryPoint    := 0;
+  INCL(loadflags, H.NewLoad);
+  (*H.wsn("Link.Generate: Linking.");*)
 
   (* Hopefully temporary code *)
   IF WinHostFile = NIL THEN WinHostFile := Files.Old("WinHost.x64") END;
@@ -804,7 +831,6 @@ BEGIN
   IF FilesFile   = NIL THEN FilesFile   := Files.Old("Files.x64")   END;
   IF ModulesFile = NIL THEN ModulesFile := Files.Old("Modules.x64") END;
 
-  ModuleSize := 0;
   WinHostHdr := LoadModule(WinHostFile);
   KernelHdr  := LoadModule(KernelFile);
   FilesHdr   := LoadModule(FilesFile);
@@ -825,15 +851,19 @@ BEGIN
 
   ModuleVSize := Align(ModuleSize, 10000H);  (* Tell loader to allocate whole multiple of alloc size *)
 
+  (*
   H.ws("ModuleSize ");    H.wh(ModuleSize);
   H.ws("H ModuleVSize "); H.wh(ModuleVSize);
   H.ws("H entry point "); H.wh(EntryPoint); H.wsn("H.");
+  *)
 
   ExeFile := Files.New(PEname);
 
   Files.Set(Exe, ExeFile, 0);
   WriteImports;
+  IF OberonEmbedded THEN INCL(loadflags, H.LoadOberon) END;
   PresetWinHost(loadflags, loadmod);
+  OberonEmbedded := FALSE;
 
   WritePEHeader;
 
@@ -845,7 +875,7 @@ BEGIN
   emf := Embedded;
   WHILE emf # NIL DO
     H.ws("* embed "); H.ws(emf.name);
-    H.ws(" at "); H.wh(Files.Pos(Exe)); H.wsn("H.");
+    H.ws(" at "); H.wh(Files.Pos(Exe)); H.wsn("H *");
     f := emf.file;  ASSERT(f # NIL);
     IF f # NIL THEN
       Files.WriteString(Exe, emf.name);
@@ -866,11 +896,28 @@ BEGIN
     END;
     emf := emf.next
   END;
+  Embedded     := NIL;
+  LastEmbedded := NIL;
+
+  (* Shuffle previous versions *)
+  prev1 := ExeFile.name; H.Append(".-1", prev1);
+  prev2 := ExeFile.name; H.Append(".-2", prev2);
+  prev3 := ExeFile.name; H.Append(".-3", prev3);
+  res   := H.MoveFile(prev2, prev3);
+  res   := H.MoveFile(prev1, prev2);
+  res   := H.MoveFile(ExeFile.name, prev1);
+  IF (res # 0) & (res # 2) THEN H.AssertWinErr(res) END;
 
   Files.Register(ExeFile);
 
   H.ws("Link generated "); H.ws(PEname); H.wsn(".")
 END Generate;
+
+PROCEDURE Link*;
+BEGIN
+  Files.DisconnectEmbeddedFiles;
+  Generate("innercore.exe", {H.NewLoad, H.LoadOberon, H.Verbose}, "System")
+END Link;
 
 
 PROCEDURE Test;
@@ -879,6 +926,8 @@ BEGIN
   Texts.OpenReader(r, Oberon.Par.text, Oberon.Par.pos);  Texts.Read(r, ch);
   IF ch = "!" THEN
     H.wsn("* Link !");
+    Files.DisconnectEmbeddedFiles;
+    Generate("innercore.exe", {H.NewLoad, H.LoadOberon(*, H.Verbose*)}, "System")
 (*
     AddEmbeddedFile("FileDir.x64",     Files.Old("./FileDir.x64"));
     AddEmbeddedFile("Input.x64",       Files.Old("./Input.x64"));
@@ -900,16 +949,12 @@ BEGIN
   (*AddEmbeddedFile("Link.x64",        Files.Old("./Link.x64"));*)
     AddEmbeddedFile("WinGui.x64", Files.Old("WinGui.x64"));
 *)
-
-    Generate("innercore.exe", {H.NewLoad, H.LoadOberon, H.Verbose}, "System");
   END
 END Test;
 
 
 BEGIN
-  H.wsn("* Link loaded.");
-  Embedded      := NIL;
-  LastEmbedded  := NIL;
-  LinkLoadFlags := {H.NewLoad};
+  (*H.wsn("* Link loaded.");*)
+  OberonEmbedded := FALSE;
   Test
 END Link.

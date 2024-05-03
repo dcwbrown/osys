@@ -75,7 +75,7 @@ BEGIN
   entry := ExeDir;
   WHILE (entry # NIL) & (name # entry.name) DO entry := entry.next END;
   IF entry # NIL THEN
-    H.ws("Opening EXE file "); H.ws(name); H.wsn(".");
+    (*H.ws("Opening EXE file "); H.ws(name); H.wsn(".");*)
     NEW(f);
     f.next       := first;
     f.registered := TRUE;
@@ -92,7 +92,7 @@ BEGIN
   IF name[0] = 0X THEN
     f := NIL  (* E.g. commonly when Texts.Open passed "" as filename *)
   ELSE
-    H.ws("* Old("); H.ws(name); H.wsn("):");
+    (*H.ws("* Old("); H.ws(name); H.wsn("):");*)
     f := first;
     WHILE (f # NIL) & ~(f.registered & (f.name = name)) DO
       (*H.ws("  consider "); H.ws(f.name);  H.wsn("."); *)
@@ -143,12 +143,19 @@ BEGIN
 END Close;
 
 PROCEDURE Unregister(f: File);
+VAR disposition, res: INTEGER;
 BEGIN
   CASE f OF WinFile:
     ASSERT(H.CloseHandle(f.handle) # 0);
     MakeTempFile(f.tempname);
-    ASSERT(H.MoveFile(f.name, f.tempname) = 0);
+    res := H.MoveFile(f.name, f.tempname);
+    IF (res # 0) & (res # 2) THEN  (* any failure other than 'not found' *)
+      H.ws("** Unregister: Could not move '"); H.ws(f.name); H.ws("' to '");
+      H.ws(f.tempname); H.ws("':"); H.AssertWinErr(res);
+    END;
     ASSERT(H.FileOpen(f.tempname, H.OpenRW, f.handle) = 0);
+    disposition := 1;  (* 1 = DeleteFile on close *)
+    res := H.SetFileInformationByHandle(f.handle, 4, SYSTEM.ADR(disposition), 8);
     f.registered := FALSE
   END
 END Unregister;
@@ -158,8 +165,16 @@ VAR f: File;
 BEGIN f := first;
   (*H.wn; H.ws("* UnregisterByName('"); H.ws(name); H.ws("'");*)
   WHILE f # NIL DO
-    (*H.ws(" consider '"); H.ws(f.name); H.wc("'");*)
-    IF f.registered & (f.name = name) THEN (*H.ws(" unregister");*) Unregister(f) END;
+    (*
+    H.ws(" consider '"); H.ws(f.name); H.wc("'");
+    CASE f OF WinFile: IF ~f.registered THEN
+      H.ws("/'"); H.ws(f.tempname); H.wc("'")
+    END END;
+    *)
+    IF f.registered & (f.name = name) THEN
+      (*H.ws(" unregister");*)
+      Unregister(f)
+    END;
     f := f.next;
   END;
   (*H.wsn(") *")*)
@@ -196,7 +211,7 @@ END Register;
 
 PROCEDURE Rename*(old, new: ARRAY OF CHAR; VAR res: INTEGER);
 VAR
-  wold, wnew: ARRAY 261 OF SYSTEM.CARD16;
+  (*wold, wnew: ARRAY 261 OF SYSTEM.CARD16;*)
   winresult:  INTEGER;
   f:          File;
 BEGIN
@@ -204,9 +219,13 @@ BEGIN
   H.ws("** Files.Rename(old '"); H.ws(old);
   H.ws("', new '"); H.ws(new); H.wsn("') **");
   *)
+
+  (*
   winresult := H.Utf8ToUtf16(old, wold);
   winresult := H.Utf8ToUtf16(new, wnew);
   winresult := H.MoveFileExW(SYSTEM.ADR(wold), SYSTEM.ADR(wnew), 1);
+  *)
+  winresult := H.MoveFile(old, new);
   IF winresult = 0 THEN
     (*
     H.ws("** Files.Rename(old '"); H.ws(old);

@@ -1,6 +1,7 @@
 :: build.cmd - build Oberon comiler and system
-;;
-@SET VERBOSE=/v
+::
+@SET VERBOSE=
+::@SET VERBOSE=/v
 @SET KNOWNGOODBUILD=..\knowngood\obuild.exe
 ::
 :: The compiler is built if any files affecting the compiler have changed

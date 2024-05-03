@@ -22,3 +22,13 @@ Tools.Inspect 0
 Tools.Sector 1
 Tools.ShowFile 
 Tools.Recall  Tools.Clear
+
+ORP.Compile WinHost.Mod/s Kernel.Mod/s Files.Mod/s Modules.Mod/s ~
+ORP.Compile Link.Mod/s ~
+Link.Link
+ORP.Compile WinGui.Mod/s Input.Mod/s Display.Mod/s Viewers.Mod/s ~
+ORP.Compile Fonts.Mod/s Texts.Mod/s Oberon.Mod/s ~
+ORP.Compile MenuViewers.Mod/s TextFrames.Mod/s System.Mod/s Edit.Mod/s ~
+ORP.Compile ORS.Mod/s ORB.Mod/s X64.Mod/s Listing.Mod/s ORG.Mod/s ORP.Mod/s ~
+ORP.Compile Graphics.Mod/s GraphicFrames.Mod/s ~
+ORP.Compile Draw.Mod/s Rectangle.Mod/s Curves.Mod/s ~
