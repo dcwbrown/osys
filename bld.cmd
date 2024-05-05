@@ -1,7 +1,7 @@
 :: bld.cmd - build Oberon comiler and system
 ;;
 @SET VERBOSE=
-@SET KNOWNGOODBUILD=..\knowngood\obuild.exe
+@SET KNOWNGOODBUILD=..\knowngood\obuild
 ::
 :: Build compiler - obuild.exe
 ::
@@ -45,7 +45,7 @@
 if exist ..\buildpre\obuild.exe (
   ..\buildpre\obuild %VERBOSE% /l /s ../Console.;../ obuild
 ) else (
-  %KNOWNGOODBUILD% %VERBOSE% /s ../Console.;../ obuild
+  %KNOWNGOODBUILD% %VERBOSE% /l /s ../Console.;../ obuild
 )
 @if errorlevel 1 goto end
 @cd ..
@@ -92,16 +92,16 @@ copy ..\*.mod >NUL 2>NUL
 copy ..\*.Tool >NUL 2>NUL
 copy ..\*.Fnt >NUL 2>NUL
 copy ..\*.Lib >NUL 2>NUL
-copy ..\buildorp\ORP.exe >NUL 2>NUL
-copy ..\buildLink\Link.exe >NUL 2>NUL
+copy ..\buildorp\ORP.exe ORP.Compile.exe >NUL 2>NUL
+copy ..\buildLink\Link.exe Link.Link.exe >NUL 2>NUL
 ::
-ORP Compile WinHost.Mod/s Kernel.Mod/s FileDir.Mod/s Files.Mod/s Modules.Mod/s ~
-ORP Compile WinGui.Mod/s Input.Mod/s Display.Mod/s Viewers.Mod/s ~
-ORP Compile Fonts.Mod/s Texts.Mod/s Oberon.Mod/s ~
-ORP Compile MenuViewers.Mod/s TextFrames.Mod/s Edit.Mod/s System.Mod/s ~
-ORP Compile ORS.Mod/s ORB.Mod/s X64.Mod/s Listing.Mod/s ORG.Mod/s ORP.Mod/s ~
-ORP Compile Link.Mod/s ~
-Link Link
+ORP.Compile WinHost.Mod/s Kernel.Mod/s FileDir.Mod/s Files.Mod/s Modules.Mod/s ~
+ORP.Compile WinGui.Mod/s Input.Mod/s Display.Mod/s Viewers.Mod/s ~
+ORP.Compile Fonts.Mod/s Texts.Mod/s Oberon.Mod/s ~
+ORP.Compile MenuViewers.Mod/s TextFrames.Mod/s Edit.Mod/s System.Mod/s ~
+ORP.Compile ORS.Mod/s ORB.Mod/s X64.Mod/s Listing.Mod/s ORG.Mod/s ORP.Mod/s ~
+ORP.Compile Link.Mod/s ~
+Link.Link
 
 :end
 @cd ..

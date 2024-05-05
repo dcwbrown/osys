@@ -565,15 +565,22 @@ PROCEDURE LinkImport*(
   modules:      ARRAY OF INTEGER
 );
 VAR
-  disp: SYSTEM.INT32;
-  modadr, expoffset, absreloc: INTEGER;
+  disp:           SYSTEM.INT32;
+  modadr:         INTEGER;
+  expoffset:      INTEGER;
+  absreloc:       INTEGER;
   handlersoffset: INTEGER;
+  winhost:        Modules.Module;
 BEGIN
-  modadr := SYSTEM.ADR(Mem[modofs]);
+  winhost := SYSTEM.VAL(Modules.Module, SYSTEM.ADR(Mem));
+  modadr  := SYSTEM.ADR(Mem[modofs]);
   IF modno = 0 THEN  (* system function *)
     SYSTEM.GET(modadr + offset, disp);
     ASSERT((impno >= 0) & (impno <= H.HandlerCount));
-    handlersoffset := SYSTEM.ADR(H.Handlers) - 100000000H;  (* Handler table offset from start of modules *)
+
+    handlersoffset := SYSTEM.ADR(H.Handlers) - SYSTEM.ADR(H.Preload); (* Relative to start of WinHost vars *)
+    INC(handlersoffset, winhost.vars - 100000000H);  (* relative to start of modules *)
+
     INC(disp, handlersoffset + 8 * impno - modofs);
     SYSTEM.PUT(modadr + offset, disp)
   ELSIF modno = 0FFFFH THEN (* 64 bit absolute address relocation *)
@@ -734,11 +741,9 @@ BEGIN
   *)
 
   mod.size := (mod.vars + mod.varsize + 16) DIV 16 * 16;
-
   INC(mod.vars, ModuleBase + ModuleSize);
-
+  INC(ModuleSize, mod.size);
   INC(ModCount);
-  INC(ModuleSize, mod.size)
 RETURN mod END LoadModule;
 
 
@@ -823,7 +828,11 @@ BEGIN
   ModuleSize    := 0;
   EntryPoint    := 0;
   INCL(loadflags, H.NewLoad);
-  (*H.wsn("Link.Generate: Linking.");*)
+  (*
+  H.ws("Link.Generate: Linking '"); H.ws(PEname); H.wsn("':");
+  H.ws("  loadflags ");  H.wh(ORD(loadflags)); H.wsn("H.");
+  H.ws("  loadmod:  '"); H.ws(loadmod);        H.wsn("'.");
+  *)
 
   (* Hopefully temporary code *)
   IF WinHostFile = NIL THEN WinHostFile := Files.Old("WinHost.x64") END;
@@ -913,10 +922,22 @@ BEGIN
   H.ws("Link generated "); H.ws(PEname); H.wsn(".")
 END Generate;
 
+
 PROCEDURE Link*;
+VAR i: INTEGER;  arg: ARRAY 32 OF CHAR;  r: Texts.Reader;  ch: CHAR;
 BEGIN
   Files.DisconnectEmbeddedFiles;
-  Generate("innercore.exe", {H.NewLoad, H.LoadOberon, H.Verbose}, "System")
+  Texts.OpenReader(r, Texts.Par.text, Texts.Par.pos);
+  Texts.Read(r, ch);
+  WHILE ch = " " DO Texts.Read(r, ch) END;
+  i := 0; WHILE ch > " " DO arg[i] := ch;  INC(i);  Texts.Read(r, ch) END;
+  IF i > 0 THEN
+    arg[i] := 0X;
+    H.Append(".exe", arg);
+    Generate(arg, {H.NewLoad}, "")
+  ELSE
+    Generate("innercore.exe", {H.NewLoad, H.LoadOberon(*, H.Verbose*)}, "System")
+  END
 END Link;
 
 

@@ -11,6 +11,7 @@ TYPE
 
 VAR
   M:          Module;     (* Loaded module 'Oberon' *)
+  P:          Command;
   res*:       INTEGER;
   importing*: ModuleName;
   imported*:  ModuleName;
@@ -86,7 +87,7 @@ BEGIN
   WHILE (mod # NIL) & (name # mod.name) DO mod := mod.next END;
 
   IF mod = NIL THEN (*load*)
-    (*H.ws("Modules.Load: loading "); H.ws(name); H.wsn(".");*)
+    (*H.ws("Modules.Load: loading '"); H.ws(name); H.wsn("'.");*)
     Check(name);
     IF res = 0 THEN F := ThisFile(name) ELSE F := NIL END;
     IF F # NIL THEN
@@ -130,7 +131,7 @@ BEGIN
       END;
       imptabpos := (Files.Pos(R) + 15) DIV 16 * 16;
     ELSE
-      H.ws("Couldn't find compiled binary .X64 file for module "); H.ws(name); H.wsn(".");
+      H.ws("Couldn't find compiled binary .X64 file for module '"); H.ws(name); H.wsn("'.");
       error(1, name)
     END;
 
@@ -280,12 +281,22 @@ BEGIN
   Init;
   IF H.NewLoad IN H.Preload.LoadFlags THEN
     (*H.ws("Modules initialisation, LoadFlags: "); H.wh(ORD(H.Preload.LoadFlags)); H.wsn("H.");*)
-    IF H.LoadOberon IN H.Preload.LoadFlags THEN
-      (*H.wsn("**** Modules loading Oberon ****");*)
-      Load("Oberon", M)
+    IF H.CmdCommand[0] # 0X THEN
+      (*
+      H.ws("Modules initialisation. H.CmdModule '"); H.ws(H.CmdModule);
+      H.ws("', H.CmdCommand '"); H.ws(H.CmdCommand); H.wsn("'.");
+      *)
+      Load(H.CmdModule, M);
+      P := ThisCommand(M, H.CmdCommand);
+      IF res = 0 THEN P END
     ELSE
-      (*H.ws("**** Modules loading "); H.ws(H.Preload.LoadMod); H.wsn(" ****");*)
-      Load(H.Preload.LoadMod, M)
+      IF H.LoadOberon IN H.Preload.LoadFlags THEN
+        (*H.wsn("**** Modules loading Oberon ****");*)
+        Load("Oberon", M)
+      ELSE
+        (*H.ws("**** Modules loading "); H.ws(H.Preload.LoadMod); H.wsn(" ****");*)
+        Load(H.Preload.LoadMod, M)
+      END
     END;
     IF M = NIL THEN
       H.wsn("**** Load failed. ****");

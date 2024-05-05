@@ -1,6 +1,6 @@
 MODULE ORS; (* NW 19.9.93 / 15.3.2017  Scanner in Oberon-07*)
 
-IMPORT SYSTEM, H := WinHost, Files, Texts, Oberon;  (* DB: dependency Oberon removed *)
+IMPORT SYSTEM, H := WinHost, Files, Texts;
 
 (* Oberon Scanner does lexical analysis. Input is Oberon-Text, output is
   sequence of symbols, i.e identifiers, numbers, strings, and special symbols.
@@ -88,7 +88,7 @@ BEGIN p := Pos();
     Texts.WriteString(W, ":");      Texts.WriteInt(W, p - linebeg, 1);
     Texts.WriteString(W, "] pos "); Texts.WriteInt(W, p, 1);
     Texts.Write(W, " ");            Texts.WriteString(W, msg);
-    Texts.Append(Oberon.Log, W.buf)
+    Texts.Append(Texts.Log, W.buf)
   END;
   INC(errcnt); errpos := p + 4
 END Mark;

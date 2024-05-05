@@ -49,6 +49,12 @@ TYPE
     handle: Handler
   END;
 
+  Params = POINTER TO ParamsDesc;
+  ParamsDesc = RECORD (Texts.ParamsDesc)
+    vwr*:   Viewers.Viewer;
+    frame*: Display.Frame
+  END;
+
 VAR
   User*:          ARRAY 8 OF CHAR;
   Password*:      INTEGER;
@@ -56,13 +62,7 @@ VAR
   Mouse, Pointer: Cursor;
   FocusViewer*:   Viewers.Viewer;
   Log*:           Texts.Text;
-
-  Par*: RECORD
-    vwr*:   Viewers.Viewer;
-    frame*: Display.Frame;
-    text*:  Texts.Text;
-    pos*:   INTEGER
-  END;
+  Par*:           Params;
 
   CurFnt*: Fonts.Font;
   CurCol*, CurOff*: INTEGER;
@@ -70,7 +70,6 @@ VAR
 
   CurTask:    Task;
   DW, DH, CL: INTEGER;
-  ActCnt:     INTEGER; (*action count for GC*)
   Mod:        Modules.Module;
 
 (*user identification*)
@@ -275,12 +274,15 @@ BEGIN M.id := defocus; FocusViewer.handle(FocusViewer, M); FocusViewer := V
 END PassFocus;
 
 PROCEDURE OpenLog*(T: Texts.Text);
-BEGIN Log := T
+BEGIN Log := T;  Texts.OpenLog(T);
 END OpenLog;
 
 (*command interpretation*)
 PROCEDURE SetPar*(F: Display.Frame; T: Texts.Text; pos: INTEGER);
-BEGIN Par.vwr := Viewers.This(F.X, F.Y); Par.frame := F; Par.text := T; Par.pos := pos
+BEGIN
+  Par.vwr   := Viewers.This(F.X, F.Y);
+  Par.frame := F; Par.text := T; Par.pos := pos;
+  Texts.SetPar(Par)
 END SetPar;
 
 PROCEDURE Call* (name: ARRAY OF CHAR; VAR res: INTEGER);
@@ -320,7 +322,7 @@ VAR mod: Modules.Module;
 BEGIN
   (*H.wsn("(GC)");*)
   (*
-  IF (ActCnt <= 0) OR (Kernel.allocated >= Kernel.heapLim - Kernel.heapOrg - 10000H) THEN
+  IF (Kernel.ActCnt <= 0) OR (Kernel.allocated >= Kernel.heapLim - Kernel.heapOrg - 10000H) THEN
     mod := Modules.root; LED(21H);
     WHILE mod # NIL DO
       IF mod.name[0] # 0X THEN Kernel.Mark(mod.ptr) END;
@@ -329,7 +331,7 @@ BEGIN
     LED(23H);
     Files.RestoreList; LED(27H);
     Kernel.Scan; LED(20H);
-    ActCnt := BasicCycle
+    Kernel.Collect(BasicCycle)
   END
   *)
 END GC;
@@ -357,7 +359,7 @@ BEGIN
 END Remove;
 
 PROCEDURE Collect* (count: INTEGER);
-BEGIN ActCnt := count
+BEGIN Kernel.Collect(count) (* ActCnt := count *)
 END Collect;
 
 PROCEDURE SetFont* (fnt: Fonts.Font);
@@ -385,13 +387,14 @@ BEGIN
       ELSIF ch = SETSTAR THEN
         N.id := mark; N.X := X; N.Y := Y; V := Viewers.This(X, Y); V.handle(V, N)
       ELSE M.id := consume; M.ch := ch; M.fnt := CurFnt; M.col := CurCol; M.voff := CurOff;
-        FocusViewer.handle(FocusViewer, M); DEC(ActCnt)
+        FocusViewer.handle(FocusViewer, M);
+        Kernel.Collect(Kernel.ActCnt - 1)
       END
     ELSIF keys # {} THEN
       M.id := track; M.X := X; M.Y := Y; M.keys := keys;
       REPEAT V := Viewers.This(M.X, M.Y); V.handle(V, M); Input.Mouse(M.keys, M.X, M.Y)
       UNTIL M.keys = {};
-      DEC(ActCnt)
+      Kernel.Collect(Kernel.ActCnt - 1)
     ELSE
       IF (X # prevX) OR (Y # prevY) OR ~Mouse.on THEN
         M.id := track;
@@ -437,8 +440,11 @@ BEGIN
   FocusViewer := Viewers.This(0, 0);
   CurFnt := Fonts.Default; CurCol := Display.white; CurOff := 0;
 
-  CurTask := NIL;
-  ActCnt := 0; CurTask := NewTask(GC, 1000); Install(CurTask);
+  CurTask := NewTask(GC, 1000); Install(CurTask);
+
+  Texts.SetGetSelection(GetSelection);
+
+  NEW(Par);
 
   IF H.NewLoad IN H.Preload.LoadFlags THEN
     (*H.ws("**** Full Oberon loading "); H.ws(H.Preload.LoadMod); H.wsn(" ****");*)

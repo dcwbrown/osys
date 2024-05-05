@@ -79,8 +79,20 @@ TYPE
     rider:       Files.Rider
   END;
 
+  Params* = POINTER TO ParamsDesc;
+  ParamsDesc* = RECORD
+    text*: Text;
+    pos*:  INTEGER
+  END;
+  GetSelectionProc = PROCEDURE(VAR text: Text; VAR beg, end, time: INTEGER);
+
 VAR
   TrailerFile: Files.File;
+
+  Log*:          Text;
+  Par*:          Params;
+  GetSelection*: GetSelectionProc;
+
 
 
 (* -------------------- Debug ------------------------*)
@@ -307,6 +319,7 @@ BEGIN
   H.ws("H, B.last ");            H.wh(ORD(B.last));
   H.wsn("H.");
   *)
+  (*IF T = NIL THEN H.Trap(0, "** Texts.Append: T = NIL") END;*)
   Insert(T, T.len, B)
 END Append;
 
@@ -639,5 +652,42 @@ BEGIN
 END WriteExtClock;
 ---*)
 
-BEGIN TrailerFile := Files.New("")
+(* -------------------------- Command line access --------------------------- *)
+(* --------- Moved here from Oberon.Mod to support non-gui programs --------- *)
+
+PROCEDURE OpenLog*(T: Text);
+BEGIN Log := T END OpenLog;
+
+PROCEDURE LogNotify(T: Text; op: INTEGER; beg, end: INTEGER);
+VAR ch: CHAR;  r: Reader;
+BEGIN
+  OpenReader(r, Log, beg);
+  WHILE ~r.eot & (beg < end) DO
+    Read(r, ch);  IF ch = 0DX THEN H.wn ELSE H.wc(ch) END;  INC(beg)
+  END;
+END LogNotify;
+
+PROCEDURE SetPar*(par: Params);
+BEGIN Par := par END SetPar;
+
+PROCEDURE GetNoSelection*(VAR text: Text; VAR beg, end, time: INTEGER);
+BEGIN text := NIL;  beg := 0;  end := 0;  time := -1 END GetNoSelection;
+
+PROCEDURE SetGetSelection*(p: GetSelectionProc);
+BEGIN GetSelection := p END SetGetSelection;
+
+PROCEDURE InitTerminal;
+VAR w: Writer;
+BEGIN
+  NEW(Log);  Open(Log, "");  Log.notify := LogNotify;
+
+  NEW(Par);  NEW(Par.text);
+  Open(Par.text, "");  OpenWriter(w);
+  WriteString(w, H.CommandLine);  Append(Par.text, w.buf);
+  Par.pos := H.ArgStart;
+  GetSelection := GetNoSelection;
+END InitTerminal;
+
+
+BEGIN TrailerFile := Files.New(""); InitTerminal;
 END Texts.

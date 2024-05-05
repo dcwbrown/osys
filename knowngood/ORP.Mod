@@ -1,6 +1,6 @@
 MODULE ORP;  (*N. Wirth 1.7.97 / 8.3.2020  Oberon compiler for RISC in Oberon-07*)
 
-IMPORT SYSTEM, H := WinHost, Kernel, Files, Texts, Oberon, ORS, ORB, X64, l := Listing, ORG;
+IMPORT SYSTEM, H := WinHost, Kernel, Files, Texts, ORS, ORB, X64, l := Listing, ORG;
 
   (*Author: Niklaus Wirth, 2014.
     Parser of Oberon-RISC compiler. Uses Scanner ORS to obtain symbols (tokens),
@@ -1256,7 +1256,7 @@ BEGIN
     ORB.Init;  ORB.OpenScope;
     IF sym = ORS.ident THEN
       ORS.CopyId(modid);  ORS.Get(sym);
-      Texts.WriteString(W, modid);  Texts.Append(Oberon.Log, W.buf)
+      Texts.WriteString(W, modid);  Texts.Append(Texts.Log, W.buf)
     ELSE ORS.Mark("identifier expected")
     END;
     Check(ORS.semicolon, "no ;");
@@ -1327,7 +1327,7 @@ BEGIN
     ELSE
       Texts.WriteLn(W);  Texts.WriteString(W, "compilation FAILED");
     END;
-    Texts.WriteLn(W);  Texts.Append(Oberon.Log, W.buf);
+    Texts.WriteLn(W);  Texts.Append(Texts.Log, W.buf);
     ORB.CloseScope;  pbsList := NIL
   END
 END Module;
@@ -1345,13 +1345,13 @@ VAR
   beg, end, time: INTEGER;
   T: Texts.Text;
   S: Texts.Scanner;
-BEGIN Texts.OpenScanner(S, Oberon.Par.text, Oberon.Par.pos); Texts.Scan(S);
+BEGIN Texts.OpenScanner(S, Texts.Par.text, Texts.Par.pos); Texts.Scan(S);
   IF S.class = Texts.Char THEN
     IF S.c = "@" THEN
-      Option(S); Oberon.GetSelection(T, beg, end, time);
+      Option(S); Texts.GetSelection(T, beg, end, time);
       IF time >= 0 THEN ORS.Init(T, beg); Module(NewSF) END
     ELSIF S.c = "^" THEN
-      Option(S); Oberon.GetSelection(T, beg, end, time);
+      Option(S); Texts.GetSelection(T, beg, end, time);
       IF time >= 0 THEN
         Texts.OpenScanner(S, T, beg); Texts.Scan(S);
         IF S.class = Texts.Name THEN
@@ -1365,18 +1365,18 @@ BEGIN Texts.OpenScanner(S, Oberon.Par.text, Oberon.Par.pos); Texts.Scan(S);
       NEW(T); Texts.Open(T, S.s);
       IF T.len > 0 THEN Option(S); ORS.Init(T, 0); Module(NewSF)
       ELSE Texts.WriteString(W, S.s); Texts.WriteString(W, " not found");
-        Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf)
+        Texts.WriteLn(W); Texts.Append(Texts.Log, W.buf)
       END ;
       IF (T.len # 0) & (ORS.errcnt = 0) THEN Texts.Scan(S) ELSE S.class := 0 END
     END
   END ;
-  Oberon.Collect(0)
+  Kernel.Collect(0)
 END Compile;
 
 
 BEGIN
   Texts.OpenWriter(W); Texts.WriteString(W, "OR Compiler  NW 8.3.2020 / DCWB 03.04.2024");
-  Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf);
+  Texts.WriteLn(W); Texts.Append(Texts.Log, W.buf);
   l.InitBuf(Tr);
   NEW(dummy);  dummy.class := ORB.Var;  dummy.type := ORB.intType;
   expression := expression0;  Type := Type0;  FormalType := FormalType0

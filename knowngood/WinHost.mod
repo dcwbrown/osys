@@ -207,6 +207,12 @@ VAR
 
   ExceptionDepth: INTEGER;
 
+  (* Partially parsed command line *)
+  CommandLine*: ARRAY 1024 OF CHAR;
+  CmdModule*:   ARRAY 32 OF CHAR;
+  CmdCommand*:  ARRAY 32 OF CHAR;
+  ArgStart*:    INTEGER;
+
 
 PROCEDURE NoLog(s: ARRAY OF BYTE); BEGIN END NoLog;
 
@@ -1239,10 +1245,110 @@ BEGIN
   END
 RETURN size END QueryMem;
 
+
+(* -------------------------- Command line parsing -------------------------- *)
+
+PROCEDURE Getch32*(VAR adr, ch32: INTEGER);  (* Pull 32 bit Unicode from command line *)
+VAR ch16: SYSTEM.CARD16;
+BEGIN
+  SYSTEM.GET(adr, ch16);  INC(adr, 2);
+  IF ch16 DIV 400H # 36H THEN
+    ch32 := ch16 (* Not a high surrogate *)
+  ELSE
+    ch32 := LSL(ch16 MOD 400H, 10) + 10000H;
+    SYSTEM.GET(adr, ch16);
+    IF ch16 DIV 400H = 37H THEN
+      INC(adr, 2);  (* Add low surrogate part *)
+      INC(ch32, ch16 MOD 400H)
+    END
+  END
+END Getch32;
+
+PROCEDURE ParseCommandLine;
+VAR
+  i, j, k:  INTEGER;
+  adr:      INTEGER;
+  ch:       INTEGER;
+  quoted:   BOOLEAN;
+  modstart: INTEGER;
+  modlimit: INTEGER;
+BEGIN
+  (* Parse command line *)
+  adr           := GetCommandLineW();
+  quoted        := FALSE;
+  i             := 0;
+  modstart      := -1;
+  modlimit      := -1;
+  CmdModule[0]  := 0X;
+  CmdCommand[0] := 0X;
+
+  (* Parse program name, if any. (CreateProcess can miss program name.) *)
+  Getch32(adr, ch);
+  IF ch # 32 THEN
+    modstart := 0;
+    WHILE (i < LEN(CommandLine) - 3) & (ch # 0) & ((ch # 32) OR quoted) DO  (* Skip to first unquoted space *)
+      IF    ch = ORD(".")                 THEN modlimit := i
+      ELSIF (ch = ORD("/")) OR (ch = 5CH) THEN modlimit := -1;  modstart := i + 1
+      END;
+      PutUtf8(ch, CommandLine, i);
+      IF ch = 22H THEN quoted  := ~quoted END;
+      Getch32(adr, ch)
+    END;
+
+    IF modlimit < 0 THEN modlimit := i END;
+    CommandLine[i] := 0X;
+    (*
+    ws("Extract module and command names from '"); ws(CommandLine); wsn("'");
+    ws("  modstart: "); wi(modstart); wsn(".");
+    ws("  modlimit: "); wi(modlimit); wsn(".");
+    *)
+
+    (* Extract module and command names from program name, if any *)
+
+    j := modstart;
+    k := 0;
+    WHILE j < modlimit DO
+      CmdModule[k] := CommandLine[j];
+      INC(k);  INC(j)
+    END;
+    CmdModule[k] := 0X;
+    IF (k > 0) & (CommandLine[j] = ".") THEN
+      INC(j); k := 0;
+      WHILE j < i DO CmdCommand[k] := CommandLine[j];  INC(j);  INC(k) END;
+      CmdCommand[k] := 0X
+    END
+  END;
+
+  (* Skip to arguments *)
+  WHILE (i < LEN(CommandLine) - 3) & (ch = 32) DO
+    CommandLine[i] := " ";  INC(i);
+    Getch32(adr, ch)
+  END;
+  ArgStart := i;  (* Note: may be end of command line *)
+
+  (* Copy remainder of command line *)
+  WHILE (i < LEN(CommandLine) - 3) & (ch # 0) DO PutUtf8(ch, CommandLine, i);  Getch32(adr, ch) END;
+  CommandLine[i] := 0X;
+
+  (*
+  wsn("Winhost command line parsing:");
+  ws("  CommandLine: '"); ws(CommandLine); wsn("'.");
+  ws("  CmdModule:   '"); ws(CmdModule);   wsn("'.");
+  ws("  CmdCommand:  '"); ws(CmdCommand);  wsn("'.");
+  ws("  ArgStart:    ");  wi(ArgStart);    wsn(".");
+  *)
+END ParseCommandLine;
+
 PROCEDURE NewStartup;
 VAR
-  res, loadedlen, reserveadr, reservelen, lastbyte, adr, size: INTEGER;
-  mod: Module;
+  res:        INTEGER;
+  loadedlen:  INTEGER;
+  reserveadr: INTEGER;
+  reservelen: INTEGER;
+  lastbyte:   INTEGER;
+  adr:        INTEGER;
+  size:       INTEGER;
+  mod:        Module;
 BEGIN
   ModuleSpace := ORD(Preload.ImgHeader);
   Root        := Preload.ImgHeader;
@@ -1297,7 +1403,7 @@ BEGIN
 
   IF AddVectoredExceptionHandler(1, SYSTEM.ADR(ExceptionHandler)) = 0 THEN
     AssertWinErr(GetLastError())
-  END;
+  END
 END NewStartup;
 
 
@@ -1361,5 +1467,8 @@ BEGIN
 
     LoadRemainingModules(SYSTEM.VAL(Module, ORD(Preload.ImgHeader) + Preload.ImgHeader.size));
     ExitProcess(0)
-  END
+  END;
+
+  ParseCommandLine
+
 END WinHost.

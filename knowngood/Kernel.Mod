@@ -13,6 +13,7 @@ VAR
   List2:      INTEGER;  (* List of 128 byte free blocks *)
   List3:      INTEGER;  (* List of  64 byte free blocks *)
   Allocated*: INTEGER;
+  ActCnt*:    INTEGER;  (* Action count for scheduling garbage collection *)
 
 
 (* -------------------------- New: heap allocation -------------------------- *)
@@ -126,6 +127,10 @@ END New;
 
 (* --------------------------- Garbage collector ---------------------------- *)
 (* ------------------------- Called from Oberon.GC -------------------------- *)
+
+PROCEDURE Collect*(count: INTEGER);
+BEGIN ActCnt := count
+END Collect;
 
 PROCEDURE Mark*(pref: INTEGER);
 VAR pvadr, offadr, offset, tag, p, q, r: INTEGER;
@@ -274,5 +279,6 @@ END Init;
 
 BEGIN
   (*IF H.NewLoad IN H.Preload.LoadFlags THEN H.wsn("Reached kernel.") END;*)
+  ActCnt := 0;
   Init;
 END Kernel.

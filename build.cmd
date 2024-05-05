@@ -2,7 +2,7 @@
 ::
 @SET VERBOSE=
 ::@SET VERBOSE=/v
-@SET KNOWNGOODBUILD=..\knowngood\obuild.exe
+@SET KNOWNGOODBUILD=..\knowngood\obuild
 ::
 :: The compiler is built if any files affecting the compiler have changed
 ::
@@ -59,9 +59,14 @@
 @rd /s /q buildtest 2>NUL
 ::
 :: If WinPE has changed a prebuild will be required
-@fc knowngood\WinPE.mod WinPE.mod
+@fc knowngood\Link.mod Link.mod >NUL
+@if errorlevel 1 goto prebuild
+@fc knowngood\WinHost.mod WinHost.mod >NUL
+@if errorlevel 1 goto prebuild
+@fc knowngood\WinPE.mod WinPE.mod >NUL
 @if not errorlevel 1 goto firstbuild
 ::
+:prebuild
 @echo.
 @echo ------------- Build prebuild compiler from knowngood and new WinPE -------------
 @mkdir buildpre >NUL
@@ -82,7 +87,7 @@
 if exist ..\buildpre\obuild.exe (
   ..\buildpre\obuild %VERBOSE% /l /s ../Console.;../ obuild
 ) else (
-  %KNOWNGOODBUILD% %VERBOSE% /s ../Console.;../ obuild
+  %KNOWNGOODBUILD% %VERBOSE% /l /s ../Console.;../ obuild
 )
 @if errorlevel 1 goto end
 @cd ..

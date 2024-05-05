@@ -6,7 +6,7 @@ MODULE obuild;
 (* imports, compiles them, and combines all objects into a single executable. *)
 
 IMPORT
-  SYSTEM, H := WinHost, K := Kernel, Files, Texts, Oberon, ORS, ORB, X64, ORG, ORP, WinPE, Link;
+  SYSTEM, H := WinHost, K := Kernel, Files, Texts, ORS, ORB, X64, ORG, ORP, WinPE, Link;
 
 TYPE
   PathName   = ARRAY H.MaxPath OF CHAR;
@@ -338,7 +338,13 @@ BEGIN
       END
     END;
     mod.next := Modules; Modules := mod;
-  END
+  END;
+  (*
+  IF mod.code.file = NIL THEN
+    H.ws("** obuild.GetModule('"); H.ws(name); H.wsn("') **");
+    H.Trap(10H, "** obuild.GetModule[343]: mod.code.file = NIL.")
+  END;
+  *)
 RETURN mod END GetModule;
 
 
@@ -457,8 +463,16 @@ VAR compile, target: ModuleFile;
 BEGIN
   compile := DetermineNextCompilation(GetModule("WinHost"));
   IF compile # NIL THEN CompileModule(compile) END;
+
   compile := DetermineNextCompilation(GetModule("Kernel"));
   IF compile # NIL THEN CompileModule(compile) END;
+
+  compile := DetermineNextCompilation(GetModule("Files"));
+  IF compile # NIL THEN CompileModule(compile) END;
+
+  compile := DetermineNextCompilation(GetModule("Modules"));
+  IF compile # NIL THEN CompileModule(compile) END;
+
   target  := GetModule(Modulename);
   compile := DetermineNextCompilation(target);
   WHILE compile # NIL DO
@@ -483,6 +497,10 @@ VAR
   hdr: H.ModuleDesc;
   l:   INTEGER;
 BEGIN
+  IF mod.code.file = NIL THEN
+    H.ws("** mod.name "); H.ws(mod.name); H.wsn(".");
+    H.Trap(0B8H, "** obuild.AddModule[492]: mod.code.file = NIL.")
+  END;
   Files.Set(r, mod.code.file, 0);
   Files.ReadBytes(r, hdr, SYSTEM.SIZE(H.ModuleDesc));
   wsl(mod.name, LongestModname + 1);
@@ -531,11 +549,11 @@ BEGIN
     mod := GetModule("Kernel");   AddModule(mod)
   END;
 *)
-  mod := GetModule("WinHost");  AddModule(mod);
-  mod := GetModule("Kernel");   AddModule(mod);
+  mod := GetModule("WinHost");    ASSERT(mod.code.file # NIL);  AddModule(mod);
+  mod := GetModule("Kernel");     ASSERT(mod.code.file # NIL);  AddModule(mod);
   IF UseLink THEN
-    mod := GetModule("Files");    AddModule(mod);
-    mod := GetModule("Modules");  AddModule(mod)
+    mod := GetModule("Files");    ASSERT(mod.code.file # NIL);  AddModule(mod);
+    mod := GetModule("Modules");  ASSERT(mod.code.file # NIL);  AddModule(mod)
   END;
   AddImports(GetModule(Modulename));
 
@@ -601,7 +619,7 @@ BEGIN
   Modulename     := "";
   UseLink        := FALSE;
 
-  Texts.OpenReader(r, Oberon.Par.text, Oberon.Par.pos);
+  Texts.OpenReader(r, Texts.Par.text, Texts.Par.pos);
   Texts.Read(r, ch);
   GetArg(r, ch, arg);
   WHILE arg[0] # 0X DO
