@@ -270,15 +270,14 @@ BEGIN
 
   SYSTEM.PUT(SYSTEM.ADR(H.Handlers[H.NewProc]), SYSTEM.ADR(New));
 
-  IF H.Verbose IN H.Preload.LoadFlags THEN
+  (*
     H.ws("* Heap allocated at ");  H.wh(HeapOrg);
     H.ws("H, commited to ");       H.wh(HeapOrg + commit);
     H.ws("H, reserved to ");       H.wh(HeapOrg + reserve);  H.wsn("H.")
-  END;
+  *)
 END Init;
 
 BEGIN
-  (*IF H.NewLoad IN H.Preload.LoadFlags THEN H.wsn("Reached kernel.") END;*)
   ActCnt := 0;
   Init;
 END Kernel.

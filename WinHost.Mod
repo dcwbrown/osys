@@ -17,11 +17,6 @@ CONST
 
   MaxPath* = 780;  (* Enough UTF-8 bytes for for 260 wide chars *)
 
-  (* LoadFlags *)
-  Verbose*    = 0;
-  LoadOberon* = 62;
-  NewLoad*    = 63;
-
   (* Windows VirtualAlloc flags *)
   MEMRESERVE           = 2000H;
   MEMCOMMIT            = 1000H;
@@ -87,12 +82,12 @@ TYPE
     context:   Context
   END;
 
-  PreLoadVars = RECORD-
-    Exeadr:     INTEGER;    (* Image PE header loaded address *)
+  PreLoadVars* = RECORD-
+    Exeadr*:    INTEGER;    (* Image PE header loaded address *)
     ImgHeader*: Module;     (* Image Oberon section loaded address *)
-    LoadFlags*: SET;
+    xLoadFlags*: SET;
     FileOfs*:   INTEGER;    (* Offset into exe file of first embedded file *)
-    LoadMod*:   ModuleName; (* Module for Oberon.Mod to load at startup *)
+    xLoadMod*:   ModuleName; (* Module for Oberon.Mod to load at startup *)
   END;
 
 
@@ -490,50 +485,6 @@ BEGIN
     wn;  INC(rowstart, 16);
   END
 END DumpMem;
-
-
-(* -------------------------------------------------------------------------- *)
-(* ------------------------ Bootstrap initialisation ------------------------ *)
-(* -------------------------------------------------------------------------- *)
-
-(* -------------------------------------------------------------------------- *)
-(* This code runs in-place before the Oberon 4GB memory is reserved           *)
-(* System functions have not been set up, meaning                             *)
-(*   The code may not use system functions such as NEW, ASSERT etc.           *)
-(*   Faults like Array size mismatch or unterminated string will crash        *)
-(* Any global variables set to code addresses must be reset after WinHost is  *)
-(*   moved to Oberon memory.                                                  *)
-(* -------------------------------------------------------------------------- *)
-
-PROCEDURE PrepareOberonMachine;
-VAR
-  reserveadr:   INTEGER;
-  size:         INTEGER;        (* loaded length including global vars *)
-  hdr:          Module;
-BEGIN
-  (* Reserve 2GB memory for the Oberon module space (code, tables and global vars) *)
-  reserveadr := VirtualAlloc(100000000H, 100000000H, MEMRESERVE, PAGEEXECUTEREADWRITE);
-  IF reserveadr = 0 THEN
-    wsn("** Could not reserve Oberon machine memory **");  ExitProcess(9);
-  ELSIF Verbose IN Preload.LoadFlags THEN
-    ws("* Reserved 2GB Oberon machine memory at ");  wh(reserveadr);  wsn("H.")
-  END;
-
-  (* Determine loaded size of all modules *)
-  hdr  := Preload.ImgHeader;
-  size := 0;
-  WHILE hdr.size # 0 DO
-    INC(size, (hdr.vars + hdr.varsize + 15) DIV 16 * 16);
-    hdr := SYSTEM.VAL(Module, ORD(hdr) + hdr.size)
-  END;
-
-  (* Commit enough for the modules being loaded plus a sentinel ModuleDesc. *)
-  CommitLen := (size + SYSTEM.SIZE(ModuleDesc) + 4095) DIV 4096 * 4096;
-  ModuleSpace := VirtualAlloc(reserveadr, CommitLen, MEMCOMMIT, PAGEEXECUTEREADWRITE);
-  IF Verbose IN Preload.LoadFlags THEN
-    ws("* Committed ");  wh(CommitLen);  ws("H bytes at ");  wh(ModuleSpace);  wsn("H.")
-  END
-END PrepareOberonMachine;
 
 
 (* -------------------- Pulling variables out of memory --------------------- *)
@@ -1065,16 +1016,16 @@ BEGIN
   (* Update length in header from object binary size to loaded size *)
   loadedhdr.size   := (loadedhdr.vars + loadedhdr.varsize + 15) DIV 16 * 16;
 
-  IF Verbose IN Preload.LoadFlags THEN
-    ws("* Loaded ");              ws(loadedhdr.name);
-    ws(" at ");                   wh(AllocPtr);
-    ws("H, code ");               wh(loadedhdr.vars);
-    ws("H bytes, data ");         wh(loadedhdr.varsize);
-    ws("H bytes, loaded size ");  wh(loadedhdr.size);
-    ws("H bytes, limit ");        wh(AllocPtr + loadedhdr.size);
-    ws("H, lines at ");           wh(loadedhdr.lines);
-    wsn("H.")
-  END;
+  (*
+  ws("* Loaded ");              ws(loadedhdr.name);
+  ws(" at ");                   wh(AllocPtr);
+  ws("H, code ");               wh(loadedhdr.vars);
+  ws("H bytes, data ");         wh(loadedhdr.varsize);
+  ws("H bytes, loaded size ");  wh(loadedhdr.size);
+  ws("H bytes, limit ");        wh(AllocPtr + loadedhdr.size);
+  ws("H, lines at ");           wh(loadedhdr.lines);
+  wsn("H.")
+  *)
 
   (* Build list of imported module header addresses *)
   i := 0;
@@ -1196,9 +1147,9 @@ VAR
   loadedhdr: Module;
 BEGIN
   (* Load and link remaining code modules from EXE file image *)
-  IF Verbose IN Preload.LoadFlags THEN
-    ws("* Load remaining modules starting from "); wh(ORD(Preload.ImgHeader)); wsn("H.");
-  END;
+  (*
+  ws("* Load remaining modules starting from "); wh(ORD(Preload.ImgHeader)); wsn("H.");
+  *)
   WHILE imagehdr.size # 0 DO
     LoadModule(imagehdr);
     imagehdr := SYSTEM.VAL(Module, ORD(imagehdr) + imagehdr.size);
@@ -1436,10 +1387,9 @@ BEGIN
 
   (*wsn("* WinHost starting.");*)
 
-  IF NewLoad IN Preload.LoadFlags THEN  (* New non-copying startup variant *)
+  NewStartup;
 
-    NewStartup
-
+  (*
   ELSE
 
     IF Verbose IN Preload.LoadFlags THEN
@@ -1482,6 +1432,7 @@ BEGIN
     LoadRemainingModules(SYSTEM.VAL(Module, ORD(Preload.ImgHeader) + Preload.ImgHeader.size));
     ExitProcess(0)
   END;
+  *)
 
   ParseCommandLine
 

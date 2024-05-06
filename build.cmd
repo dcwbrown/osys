@@ -11,6 +11,7 @@
 ::
 @fc ..\Link.Mod ..\knowngood\Link.Mod >NUL
 @if not errorlevel 1 goto noprebuild
+::goto noprebuild
 ::
 ::
 @echo.

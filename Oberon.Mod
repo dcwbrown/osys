@@ -446,30 +446,24 @@ BEGIN
 
   NEW(Par);
 
-  IF H.NewLoad IN H.Preload.LoadFlags THEN
-    IF H.Preload.LoadMod[0] # 0X THEN
-      H.ws("**** Full Oberon loading '"); H.ws(H.Preload.LoadMod); H.wsn("' ****");
-      Modules.Load(H.Preload.LoadMod, Mod);
-    ELSE
-      Modules.Load("System", Mod)
-    END;
+  Modules.Load("System", Mod);
+
+  IF Mod = NIL THEN
+    H.wsn("**** Load failed. ****");
     IF Mod = NIL THEN
       H.wsn("**** Load failed. ****");
-      IF Mod = NIL THEN
-        H.wsn("**** Load failed. ****");
-        H.ws("**** Full Oberon init load error: "); H.ws(Modules.importing);
-        IF    Modules.res = 1 THEN H.wsn(" module not found")
-        ELSIF Modules.res = 2 THEN H.wsn(" bad version")
-        ELSIF Modules.res = 3 THEN H.ws(" imports ");
-                                   H.ws(Modules.imported);
-                                   H.wsn(" with bad key");
-        ELSIF Modules.res = 4 THEN H.wsn(" corrupted obj file")
-        ELSIF Modules.res = 5 THEN H.wsn(" command not found")
-        ELSIF Modules.res = 7 THEN H.wsn(" insufficient space")
-        END
+      H.ws("**** Full Oberon init load error: "); H.ws(Modules.importing);
+      IF    Modules.res = 1 THEN H.wsn(" module not found")
+      ELSIF Modules.res = 2 THEN H.wsn(" bad version")
+      ELSIF Modules.res = 3 THEN H.ws(" imports ");
+                                 H.ws(Modules.imported);
+                                 H.wsn(" with bad key");
+      ELSIF Modules.res = 4 THEN H.wsn(" corrupted obj file")
+      ELSIF Modules.res = 5 THEN H.wsn(" command not found")
+      ELSIF Modules.res = 7 THEN H.wsn(" insufficient space")
       END
-    END;
-    Mod := NIL; (*Loop*)
-  END
+    END
+  END;
+  Mod := NIL; (*Loop*)
 
 END Oberon.

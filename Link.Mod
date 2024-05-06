@@ -772,21 +772,31 @@ BEGIN
 RETURN mod END LoadModule;
 
 
-PROCEDURE PresetWinHost(loadflags: SET;  loadmod: ARRAY OF CHAR);
-VAR mod: Modules.Module;  varpos, i: INTEGER;
+PROCEDURE PresetWinHost;
+VAR
+  mod:     Modules.Module;
+  varpos:  INTEGER;
+  i:       INTEGER;
+  preload: H.PreLoadVars;
 BEGIN
   mod := SYSTEM.VAL(Modules.Module, SYSTEM.ADR(Mem));
   (*H.ws("* PresetWinHost. mod.name "); H.ws(mod.name); H.ws(", nimports "); H.wh(mod.vars); H.wsn("H.");*)
   varpos := mod.vars - ModuleBase;
 
-  (*
-  H.WriteModuleHeader(mod);
-  H.ws("  varpos "); H.wh(varpos); H.wsn("H.");
-  *)
+  H.ZeroFill(preload);
+  preload.Exeadr    := ImageBase;
+  preload.ImgHeader := SYSTEM.VAL(H.Module, ModuleBase);
+  IF Embedded # NIL THEN
+    preload.FileOfs := FadrModules + Align(ModuleSize, FileAlignment)
+  END;
 
+  SYSTEM.COPY(SYSTEM.ADR(preload), SYSTEM.ADR(Mem[varpos]), SYSTEM.SIZE(H.PreLoadVars));
+  INC(varpos, SYSTEM.SIZE(H.PreLoadVars));
+
+  (*
   SYSTEM.PUT(SYSTEM.ADR(Mem[varpos]), ImageBase);   INC(varpos, 8);
   SYSTEM.PUT(SYSTEM.ADR(Mem[varpos]), ModuleBase);  INC(varpos, 8);
-  SYSTEM.PUT(SYSTEM.ADR(Mem[varpos]), loadflags);   INC(varpos, 8);
+  SYSTEM.PUT(SYSTEM.ADR(Mem[varpos]), 0);           INC(varpos, 8);
   IF Embedded = NIL THEN
     SYSTEM.PUT(SYSTEM.ADR(Mem[varpos]), 0);
   ELSE
@@ -799,6 +809,8 @@ BEGIN
   INC(varpos, 8);
   SYSTEM.COPY(SYSTEM.ADR(loadmod), SYSTEM.ADR(Mem[varpos]), SYSTEM.SIZE(H.ModuleName));
   INC(varpos, SYSTEM.SIZE(H.ModuleName));
+  *)
+
   ASSERT(ModuleBase + varpos = mod.vars + BootstrapVarBytes);
 
   (*
@@ -833,7 +845,7 @@ BEGIN
 END CallJumpIndirect;
 
 
-PROCEDURE Generate*(PEname: ARRAY OF CHAR; loadflags: SET; loadmod: ARRAY OF CHAR);
+PROCEDURE Generate*(PEname: ARRAY OF CHAR);
 VAR
   WinHostHdr: Modules.Module;
   KernelHdr:  Modules.Module;
@@ -852,7 +864,6 @@ BEGIN
   ModCount      := 0;
   ModuleSize    := 0;
   EntryPoint    := 0;
-  INCL(loadflags, H.NewLoad);
   (*
   H.ws("Link.Generate: Linking '"); H.ws(PEname); H.wsn("':");
   H.ws("  loadflags ");  H.wh(ORD(loadflags)); H.wsn("H.");
@@ -889,7 +900,7 @@ BEGIN
 
   Files.Set(Exe, ExeFile, 0);
   WriteImports;
-  PresetWinHost(loadflags, loadmod);
+  PresetWinHost;
 
   WritePEHeader;
 
@@ -996,7 +1007,7 @@ BEGIN
     END;
 
     H.Append(".exe", target);
-    Generate(target, {H.NewLoad}, "");
+    Generate(target);
 
     ParseTarget(r, ch, target, modname)
   END
