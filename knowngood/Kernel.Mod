@@ -239,23 +239,20 @@ BEGIN END SetClock;
 
 (* -------------------------------------------------------------------------- *)
 
-PROCEDURE Init*;
+PROCEDURE Init*;  (* Called from Files.Init *)
 CONST
   MEMRESERVE = 2000H;  MEMCOMMIT = 1000H;  PAGEREADWRITE = 4;
   reserve = 80000000H;  (* Reserve 2GB contiguous *)
   commit  = 2000000H;   (* Initially commit 32MB  *)
 BEGIN
-  (*
-  H.wsn("Kernel initialising.");
-  H.ws("H.VirtualAlloc at ");  H.wh(SYSTEM.VAL(INTEGER, H.VirtualAlloc));  H.wsn("H.");
-  *)
+  H.Init;
+
+  ActCnt := 0;
 
   (* Initialize heap *)
   HeapOrg := H.VirtualAlloc(200000000H, reserve, MEMRESERVE, PAGEREADWRITE);
-  (*H.ws("Virtual alloc reservation returned ");  H.wh(HeapOrg);  H.wsn("H.");*)
   ASSERT(HeapOrg # 0);
   HeapOrg := H.VirtualAlloc(HeapOrg, commit, MEMCOMMIT, PAGEREADWRITE);
-  (*H.ws("Virtual alloc commit returned ");  H.wh(HeapOrg);  H.wsn("H.");*)
   ASSERT(HeapOrg # 0);
 
   HeapLimit := HeapOrg + commit;
@@ -277,7 +274,4 @@ BEGIN
   *)
 END Init;
 
-BEGIN
-  ActCnt := 0;
-  Init;
 END Kernel.

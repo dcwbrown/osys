@@ -264,27 +264,13 @@ BEGIN mod := H.Root;  res := 0;
 END Free;
 
 
-PROCEDURE Init*;
 BEGIN
-(*
   Files.Init;
-  MTOrg := SYSTEM.REG(MT);
-  SYSTEM.GET(16, AllocPtr);
-  SYSTEM.GET(20, root);
-  SYSTEM.GET(24, limit);
-  DEC(limit, 8000H)
-*)
-END Init;
 
-BEGIN
-  Init;
-  (*H.ws("Modules initialisation, LoadFlags: "); H.wh(ORD(H.Preload.LoadFlags)); H.wsn("H.");*)
-
-  IF H.CmdModule = "Modules" THEN  (* Default behaviour in PO2013 *)
+  IF H.CmdModule = "Modules" THEN  (* Simulate default behaviour of PO2013 *)
     Load("Oberon", M);
   ELSE
     Load(H.CmdModule, M);
-
     IF (res = 0) & (H.CmdCommand[0] # 0X) THEN
       P := ThisCommand(M, H.CmdCommand);
       IF res = 0 THEN P END

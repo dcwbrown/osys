@@ -1089,7 +1089,7 @@ BEGIN
 
 END InitMemory;
 
-
+PROCEDURE Init*;  (* Called from Kernel.init *)
 BEGIN
   HWnd           := 0;
   Log            := NoLog;
@@ -1111,5 +1111,7 @@ BEGIN
   END;
 
   ParseCommandLine
+END Init;
+
 
 END WinHost.

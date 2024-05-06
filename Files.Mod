@@ -579,7 +579,11 @@ BEGIN
 END LoadExeDir;
 
 
-BEGIN
-  first := NIL;
+(* Files.Mod is initialised by Modules.Init *)
+
+PROCEDURE Init*;
+BEGIN first := NIL;  Kernel.Init;
   IF H.Preload.FileOfs # 0 THEN LoadExeDir END
+END Init;
+
 END Files.
