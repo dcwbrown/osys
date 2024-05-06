@@ -44,6 +44,54 @@ BEGIN ch := s[0];  res := 1;  i := 1;
 END Check;
 
 
+PROCEDURE ExportedAddress(modhdr: Module; index: INTEGER): INTEGER;
+VAR exportoffset: SYSTEM.CARD32;
+BEGIN
+  SYSTEM.GET(ORD(modhdr) + modhdr.exports + index * 4, exportoffset);
+RETURN ORD(modhdr) + exportoffset END ExportedAddress;
+
+
+PROCEDURE LinkImport*(modadr, offset, impno, modno: INTEGER; modules: ARRAY OF Module);
+VAR disp, absreloc: INTEGER;
+BEGIN
+  IF modno = 0 THEN  (* system function *)
+    SYSTEM.GET(modadr + offset, disp);
+    ASSERT((impno >= 0) & (impno <= H.HandlerCount));
+    disp := SYSTEM.ADR(H.Handlers) + 8 * impno + disp - modadr;
+    SYSTEM.PUT(modadr + offset, disp)
+  ELSIF modno = 0FFFFH THEN (* 64 bit absolute address relocation *)
+    (* qword at offset contains 32/0,32/module offset or 32/1,16/mod,16/imp *)
+    SYSTEM.GET(modadr + offset, absreloc);
+    IF absreloc DIV 100000000H = 0 THEN  (* offset in this module *)
+      SYSTEM.PUT(modadr + offset, modadr + absreloc)
+    ELSE  (* import reference from another module *)
+      modno := absreloc DIV 10000H MOD 10000H;  ASSERT(modno > 0);
+      impno := absreloc MOD 10000H;
+      ASSERT(impno > 0);
+      SYSTEM.PUT(modadr + offset, ExportedAddress(modules[modno-1], impno-1))
+    END
+  ELSE
+    ASSERT(modno > 0);
+    SYSTEM.GET(modadr + offset, disp);
+    INC(disp, ExportedAddress(modules[modno-1], impno-1) - modadr);
+    SYSTEM.PUT(modadr + offset, disp)
+  END
+END LinkImport;
+
+
+PROCEDURE RelocatePointerAddresses*(ptradr, varadr: INTEGER);
+VAR ptroff: INTEGER;
+BEGIN
+  SYSTEM.GET(ptradr, ptroff);
+  WHILE ptroff >= 0 DO
+    SYSTEM.PUT(ptradr, varadr + ptroff);
+    INC(ptradr, 8);
+    SYSTEM.GET(ptradr, ptroff)
+  END
+END RelocatePointerAddresses;
+
+
+
 PROCEDURE ReadVar(VAR r: Files.Rider;  VAR var: ARRAY OF BYTE);
 BEGIN Files.ReadBytes(r, var, LEN(var)) END ReadVar;
 
@@ -187,11 +235,11 @@ BEGIN
       (*H.ws("Import count: "); H.wi(impcount); H.wsn(".");*)
       FOR i := 1 TO impcount DO
         ReadVar(R, offset);  ReadVar(R, impno);  ReadVar(R, modno);
-        H.LinkImport(ORD(mod), offset, impno, modno, import)
+        LinkImport(ORD(mod), offset, impno, modno, import)
       END;
 
       (* Relocate pointer addresses *)
-      H.RelocatePointerAddresses(mod.ptr, mod.vars);
+      RelocatePointerAddresses(mod.ptr, mod.vars);
 
       (*
       H.ws("* Loaded ");             H.ws(mod.name);

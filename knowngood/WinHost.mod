@@ -85,9 +85,12 @@ TYPE
   PreLoadVars* = RECORD-
     Exeadr*:    INTEGER;    (* Image PE header loaded address *)
     ImgHeader*: Module;     (* Image Oberon section loaded address *)
-    x1:         SET;
+    dummy1:     INTEGER;
     FileOfs*:   INTEGER;    (* Offset into exe file of first embedded file *)
-    x2:         ModuleName; (* Module for Oberon.Mod to load at startup *)
+    dummy2:     INTEGER;
+    dummy3:     INTEGER;
+    dummy4:     INTEGER;
+    dummy5:     INTEGER;
   END;
 
 
@@ -902,175 +905,6 @@ END WriteStdout;
 
 (* -------------------------------------------------------------------------- *)
 
-PROCEDURE FindModule(name: ARRAY OF CHAR; key: INTEGER): Module;
-VAR
-  hdr:     Module;
-BEGIN
-  hdr := Root;
-  WHILE (hdr # NIL) & (hdr.name # name) DO hdr := hdr.next END;
-  assert(hdr.size # 0); (*, "FindModule hdr.size is 0.");*)
-RETURN hdr END FindModule;
-
-
-PROCEDURE ExportedAddress(modhdr: Module; index: INTEGER): INTEGER;
-VAR exportoffset: SYSTEM.CARD32;
-BEGIN
-  SYSTEM.GET(ORD(modhdr) + modhdr.exports + index * 4, exportoffset);
-RETURN ORD(modhdr) + exportoffset END ExportedAddress;
-
-
-PROCEDURE LinkImport*(modadr, offset, impno, modno: INTEGER; modules: ARRAY OF Module);
-VAR disp, absreloc: INTEGER;
-BEGIN
-  IF modno = 0 THEN  (* system function *)
-    SYSTEM.GET(modadr + offset, disp);
-    ASSERT((impno >= 0) & (impno <= HandlerCount));
-    disp := SYSTEM.ADR(Handlers) + 8 * impno + disp - modadr;
-    SYSTEM.PUT(modadr + offset, disp)
-  ELSIF modno = 0FFFFH THEN (* 64 bit absolute address relocation *)
-    (* qword at offset contains 32/0,32/module offset or 32/1,16/mod,16/imp *)
-    SYSTEM.GET(modadr + offset, absreloc);
-    IF absreloc DIV 100000000H = 0 THEN  (* offset in this module *)
-      SYSTEM.PUT(modadr + offset, modadr + absreloc)
-    ELSE  (* import reference from another module *)
-      modno := absreloc DIV 10000H MOD 10000H;  assert(modno > 0);
-      impno := absreloc MOD 10000H;
-      assert(impno > 0);
-      SYSTEM.PUT(modadr + offset, ExportedAddress(modules[modno-1], impno-1))
-    END
-  ELSE
-    assert(modno > 0);
-    SYSTEM.GET(modadr + offset, disp);
-    INC(disp, ExportedAddress(modules[modno-1], impno-1) - modadr);
-    SYSTEM.PUT(modadr + offset, disp)
-  END
-END LinkImport;
-
-
-PROCEDURE RelocatePointerAddresses*(ptradr, varadr: INTEGER);
-VAR ptroff: INTEGER;
-BEGIN
-  SYSTEM.GET(ptradr, ptroff);
-  WHILE ptroff >= 0 DO
-    SYSTEM.PUT(ptradr, varadr + ptroff);
-    INC(ptradr, 8);
-    SYSTEM.GET(ptradr, ptroff)
-  END
-END RelocatePointerAddresses;
-
-
-PROCEDURE WriteModuleHeader*(mod: Module);
-BEGIN
-  ws("  Module "); ws(mod.name); ws(" at "); wh(ORD(mod)); wsn("H:");
-  ws("    key:     "); whr(mod.key,      16);  wsn("H  28H.");
-  ws("    num:     "); whr(mod.num,      16);  wsn("H  30H Module num, set on load.");
-  ws("    size:    "); whr(mod.size,     16);  wsn("H  38H Allocated memory, set on load (image size in file).");
-  ws("    refcnt:  "); whr(mod.refcnt,   16);  wsn("H  40H Managed by module loader.");
-  ws("    vars:    "); whr(mod.vars,     16);  wsn("H  48H Start of global VARs / in code file start of import ref table.");
-  ws("    init:    "); whr(mod.init,     16);  wsn("H  50H Module initialisation entry point.");
-  ws("    imprefs: "); whr(mod.imprefs,  16);  wsn("H  58H Imports references.");
-  ws("    cmd:     "); whr(mod.cmd,      16);  wsn("H  60H PO2013 Commands: address of seq of command strings and code offsets.");
-  ws("    exports: "); whr(mod.exports,  16);  wsn("H  68H PO2013 Entries: address of array of exported offsets.");
-  ws("    ptr:     "); whr(mod.ptr,      16);  wsn("H  70H PO2013 Pointers: address of array of pointer var addresses.");
-  ws("    lines:   "); whr(mod.lines,    16);  wsn("H  78H Line numbers etc. to address mapping.");
-  ws("    varsize: "); whr(mod.varsize,  16);  wsn("H  80H Size of module VARs.");
-END WriteModuleHeader;
-
-
-PROCEDURE WriteModuleHeaders*;
-VAR mod: Module;
-BEGIN
-  wsn("Module headers:");
-  mod := Root;
-  WHILE mod # NIL DO
-    IF mod.name[0] = 0X THEN
-      ws("Free block at ");  wh(ORD(mod)); ws("H size "); wh(mod.size); wsn("H:");
-    ELSE
-      WriteModuleHeader(mod)
-    END;
-    mod := mod.next
-  END
-END WriteModuleHeaders;
-
-
-PROCEDURE LoadModule(imagehdr: Module);
-(* Load module whose code image is at modadr *)
-(* Module is loaded at AllocPtr which is then updated *)
-(* Returns address of body code *)
-VAR
-  adr:         INTEGER;
-  loadedhdr:   Module;
-  impmod:      ARRAY 32 OF CHAR;
-  modules:     ARRAY 64 OF Module; (* Import from up to 64 modules *)
-  i:           INTEGER;
-  key:         INTEGER;
-  importcount: SYSTEM.CARD32;
-  offset:      SYSTEM.CARD32;
-  impno:       SYSTEM.CARD16;
-  modno:       SYSTEM.CARD16;
-  modulebody:  PROCEDURE;
-BEGIN
-  SYSTEM.COPY(ORD(imagehdr), AllocPtr, imagehdr.vars);  (* Copy up to but excluding import table *)
-  loadedhdr := SYSTEM.VAL(Module, AllocPtr);
-
-  (* Update length in header from object binary size to loaded size *)
-  loadedhdr.size   := (loadedhdr.vars + loadedhdr.varsize + 15) DIV 16 * 16;
-
-  (*
-  ws("* Loaded ");              ws(loadedhdr.name);
-  ws(" at ");                   wh(AllocPtr);
-  ws("H, code ");               wh(loadedhdr.vars);
-  ws("H bytes, data ");         wh(loadedhdr.varsize);
-  ws("H bytes, loaded size ");  wh(loadedhdr.size);
-  ws("H bytes, limit ");        wh(AllocPtr + loadedhdr.size);
-  ws("H, lines at ");           wh(loadedhdr.lines);
-  wsn("H.")
-  *)
-
-  (* Build list of imported module header addresses *)
-  i := 0;
-  adr := ORD(imagehdr) + loadedhdr.vars;
-  GetString(adr, impmod);
-  WHILE impmod[0] # 0X DO
-    SYSTEM.GET(adr, key);  INC(adr, 8);
-    modules[i] := FindModule(impmod, key);
-    INC(i);
-    GetString(adr, impmod)
-  END;
-  modules[i] := NIL;
-
-  (* Link imports from other modules *)
-  adr := (adr + 15) DIV 16 * 16;
-  SYSTEM.GET(adr, importcount);  INC(adr, 4);
-  i := 0;
-  WHILE i < importcount DO
-    SYSTEM.GET(adr, offset); INC(adr, 4);
-    SYSTEM.GET(adr, impno);  INC(adr, 2);
-    SYSTEM.GET(adr, modno);  INC(adr, 2);
-    LinkImport(AllocPtr, offset, impno, modno, modules);
-    INC(i)
-  END;
-
-  (* Relocate pointer addresses *)
-  assert(loadedhdr.ptr # 0);  assert(ORD(loadedhdr) = AllocPtr);
-  INC(loadedhdr.vars, AllocPtr);
-  INC(loadedhdr.ptr, AllocPtr);
-  RelocatePointerAddresses(loadedhdr.ptr, loadedhdr.vars);
-
-  INC(loadedhdr.cmd, AllocPtr);
-
-  (* Link module into loaded module list *)
-  loadedhdr.next := Root;
-  Root := loadedhdr;
-
-  (* Execute module body *)
-  SYSTEM.PUT(SYSTEM.ADR(modulebody), AllocPtr + loadedhdr.init);
-  INC(AllocPtr, loadedhdr.size);
-
-  modulebody
-END LoadModule;
-
-
 PROCEDURE SetRoot*(r: Module); BEGIN
   (*
   ws("* Change Root from "); wh(ORD(Root));
@@ -1127,35 +961,6 @@ BEGIN
 END Allocate;
 
 
-PROCEDURE IncPC(increment: INTEGER);  (* Update return address by increment *)
-VAR pc: INTEGER;
-BEGIN
-  SYSTEM.GET(SYSTEM.ADR(pc) + 8, pc);
-  SYSTEM.PUT(SYSTEM.ADR(pc) + 8, pc + increment);
-END IncPC;
-
-PROCEDURE GetPC(): INTEGER;
-VAR pc: INTEGER;
-BEGIN SYSTEM.GET(SYSTEM.ADR(pc) + 8, pc);
-RETURN pc END GetPC;
-
-(* -------------------------------------------------------------------------- *)
-
-PROCEDURE LoadRemainingModules(imagehdr: Module);
-VAR
-  res:       INTEGER;
-  loadedhdr: Module;
-BEGIN
-  (* Load and link remaining code modules from EXE file image *)
-  (*
-  ws("* Load remaining modules starting from "); wh(ORD(Preload.ImgHeader)); wsn("H.");
-  *)
-  WHILE imagehdr.size # 0 DO
-    LoadModule(imagehdr);
-    imagehdr := SYSTEM.VAL(Module, ORD(imagehdr) + imagehdr.size);
-  END
-END LoadRemainingModules;
-
 
 (* -------------------------------------------------------------------------- *)
 
@@ -1174,41 +979,6 @@ PROCEDURE PressKeyToContinue;
 VAR ch: CHAR;
 BEGIN wcn; ws("Press any key to continue "); ch := GetChar(); wn
 END PressKeyToContinue;
-
-PROCEDURE QueryMem(adr: INTEGER): INTEGER;
-TYPE
-  mbidesc = RECORD-
-    BaseAddress:       INTEGER;
-    AllocationBase:    INTEGER;
-    AllocationProtect: SYSTEM.CARD32;
-    PartitionId:       SYSTEM.CARD16;
-    RegionSize:        INTEGER;
-    State:             SYSTEM.CARD32;
-    Protect:           SYSTEM.CARD32;
-    Type:              SYSTEM.CARD32
-  END;
-VAR mbi: mbidesc;  res, size: INTEGER;
-BEGIN
-  size := 0;
-  res := VirtualQuery(adr, SYSTEM.ADR(mbi), SYSTEM.SIZE(mbidesc));
-  IF res >= SYSTEM.SIZE(mbidesc) THEN
-    ws("VirtualQuery adr "); wh(adr);
-    ws("H, result "); wh(res); wsn("H.");
-    ws("  BaseAddress:       "); wh(mbi.BaseAddress);       wsn("H.");
-    ws("  AllocationBase:    "); wh(mbi.AllocationBase);    wsn("H.");
-    ws("  AllocationProtect: "); wh(mbi.AllocationProtect); wsn("H.");
-    ws("  PartitionId:       "); wh(mbi.PartitionId);       wsn("H.");
-    ws("  RegionSize:        "); wh(mbi.RegionSize);        wsn("H.");
-    ws("  State:             "); wh(mbi.State);             wsn("H.");
-    ws("  Protect:           "); wh(mbi.Protect);           wsn("H.");
-    ws("  Type:              "); wh(mbi.Type);              wsn("H.");
-    DumpMem(0, SYSTEM.ADR(mbi), 0, res);
-    IF adr < ORD(Preload.ImgHeader) + 180000000H THEN
-      size := mbi.RegionSize
-    END
-  END
-RETURN size END QueryMem;
-
 
 (* -------------------------- Command line parsing -------------------------- *)
 
@@ -1261,14 +1031,8 @@ BEGIN
 
     IF modlimit < 0 THEN modlimit := i END;
     CommandLine[i] := 0X;
-    (*
-    ws("Extract module and command names from '"); ws(CommandLine); wsn("'");
-    ws("  modstart: "); wi(modstart); wsn(".");
-    ws("  modlimit: "); wi(modlimit); wsn(".");
-    *)
 
     (* Extract module and command names from program name, if any *)
-
     j := modstart;
     k := 0;
     WHILE j < modlimit DO
@@ -1292,83 +1056,38 @@ BEGIN
 
   (* Copy remainder of command line *)
   WHILE (i < LEN(CommandLine) - 3) & (ch # 0) DO PutUtf8(ch, CommandLine, i);  Getch32(adr, ch) END;
-  CommandLine[i] := 0X;
-
-  (*
-  wsn("Winhost command line parsing:");
-  ws("  CommandLine: '"); ws(CommandLine); wsn("'.");
-  ws("  CmdModule:   '"); ws(CmdModule);   wsn("'.");
-  ws("  CmdCommand:  '"); ws(CmdCommand);  wsn("'.");
-  ws("  ArgStart:    ");  wi(ArgStart);    wsn(".");
-  *)
+  CommandLine[i] := 0X
 END ParseCommandLine;
 
-PROCEDURE NewStartup;
+
+PROCEDURE InitMemory;
 VAR
   res:        INTEGER;
   loadedlen:  INTEGER;
   reserveadr: INTEGER;
   reservelen: INTEGER;
-  lastbyte:   INTEGER;
-  adr:        INTEGER;
-  size:       INTEGER;
   mod:        Module;
 BEGIN
   ModuleSpace := ORD(Preload.ImgHeader);
   Root        := Preload.ImgHeader;
   InitSysHandlers;
 
-  (*
-  ws("* Exeadr:       "); wh(Preload.Exeadr);         wsn("H *");
-  ws("* ImgHeader at: "); wh(ORD(Preload.ImgHeader)); wsn("H *");
-  ws("* LoadFlags:    "); wh(ORD(Preload.LoadFlags)); wsn("H *");
-  *)
-
-  (* Show loaded modules *)
-  (*wsn("* Modules: *");*)
   mod := Preload.ImgHeader;
   WHILE mod # NIL DO
-    (*
-    ws("  "); ws(mod.name);
-    ws(" at "); wh(ORD(mod));
-    ws("H size "); wh(mod.size);
-    wsn("H.");
-    *)
-    lastbyte := ORD(mod) + mod.size - 1;
+    AllocPtr := ORD(mod) + mod.size;
     mod := mod.next;
   END;
 
-  (*WriteModuleHeaders;*)
-
-  AllocPtr    := lastbyte + 1;
-  CommitLen   := (AllocPtr + 0FFFFH) DIV 10000H * 10000H - ModuleSpace;
-  (*
-  wsn("Derived values: ");
-  ws("  ModuleSpace: "); wh(ModuleSpace); wsn("H.");
-  ws("  AllocPtr:    "); wh(AllocPtr);    wsn("H.");
-  ws("  CommitLen:   "); wh(CommitLen);   wsn("H.");
-
-  ws("* lastbyte "); wh(lastbyte);
-  ws("H => loaded length "); wh(lastbyte + 1 - ORD(Preload.ImgHeader));
-  *)
-  loadedlen := (lastbyte + 1 - ORD(Preload.ImgHeader) + 65535) DIV 65536 * 65536;
-  (*ws("H, rounded up to allocation granularity "); wh(loadedlen); wsn("H.");*)
+  CommitLen := (AllocPtr + 0FFFFH) DIV 10000H * 10000H - ModuleSpace;
+  loadedlen := (AllocPtr - ORD(Preload.ImgHeader) + 65535) DIV 65536 * 65536;
 
   (* Extend memory to 2GB reserve *)
   reserveadr := ORD(Preload.ImgHeader) + loadedlen;
   reservelen := 80000000H - loadedlen;
-  (*
-  ws("Reserving memory from "); wh(reserveadr);
-  ws("H up to "); wh(reserveadr + reservelen); wsn("H.");
-  *)
   res := VirtualAlloc(reserveadr, reservelen, MEMRESERVE, PAGEEXECUTEREADWRITE);
-  (*ws("* VirtualAlloc result "); wh(res); wsn("H *");*)
   IF res = 0 THEN ws(": "); WriteWindowsErrorMessage(GetLastError()); wsn(".")  END;
 
-  IF AddVectoredExceptionHandler(1, SYSTEM.ADR(ExceptionHandler)) = 0 THEN
-    AssertWinErr(GetLastError())
-  END
-END NewStartup;
+END InitMemory;
 
 
 BEGIN
@@ -1385,54 +1104,11 @@ BEGIN
   crlf := $0D 0A 00$;
   Log := WriteStdout;
 
-  (*wsn("* WinHost starting.");*)
+  InitMemory;
 
-  NewStartup;
-
-  (*
-  ELSE
-
-    IF Verbose IN Preload.LoadFlags THEN
-      ws("* WinHost starting, old style binary, Preload.ImgHeader at "); wh(ORD(Preload.ImgHeader)); wsn("H.");
-      ws("* Initial RSP "); wh(GetRSP()); wsn("H.");
-    END;
-
-    PrepareOberonMachine;
-
-    IF Preload.ImgHeader.size # (Preload.ImgHeader.vars + Preload.ImgHeader.varsize + 15) DIV 16 * 16 THEN
-      assertmsg(FALSE, "Invalid image size in bootstrap image (WinHost) header")
-    END;
-
-    (* Copy boot module into newly committed memory and switch PC to the new code. *)
-    SYSTEM.COPY(ORD(Preload.ImgHeader), ModuleSpace, Preload.ImgHeader.size);
-
-    (***** Transfer program counter to copied code *****)
-    IncPC(ModuleSpace - ORD(Preload.ImgHeader));
-
-    Log := WriteStdout;  (* Correct Log fn address following move *)
-    IF Verbose IN Preload.LoadFlags THEN
-      ws("* Transferred PC to code copied to Oberon memory at ");  wh(GetPC());  wsn("H.")
-    END;
-
-    SYSTEM.PUT(SYSTEM.ADR(Root), ModuleSpace);
-    INC(Root.cmd, ModuleSpace);
-    INC(Root.ptr, ModuleSpace);
-    RelocatePointerAddresses(Root.ptr, ModuleSpace + Root.vars);
-
-    Root.next := NIL;
-    AllocPtr := ModuleSpace + Preload.ImgHeader.size;
-
-    InitSysHandlers;
-
-    (* Trap OS exceptions *)
-    IF AddVectoredExceptionHandler(1, SYSTEM.ADR(ExceptionHandler)) = 0 THEN
-      AssertWinErr(GetLastError())
-    END;
-
-    LoadRemainingModules(SYSTEM.VAL(Module, ORD(Preload.ImgHeader) + Preload.ImgHeader.size));
-    ExitProcess(0)
+  IF AddVectoredExceptionHandler(1, SYSTEM.ADR(ExceptionHandler)) = 0 THEN
+    AssertWinErr(GetLastError())
   END;
-  *)
 
   ParseCommandLine
 
