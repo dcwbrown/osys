@@ -85,9 +85,9 @@ TYPE
   PreLoadVars* = RECORD-
     Exeadr*:    INTEGER;    (* Image PE header loaded address *)
     ImgHeader*: Module;     (* Image Oberon section loaded address *)
-    xLoadFlags*: SET;
+    x1:         SET;
     FileOfs*:   INTEGER;    (* Offset into exe file of first embedded file *)
-    xLoadMod*:   ModuleName; (* Module for Oberon.Mod to load at startup *)
+    x2:         ModuleName; (* Module for Oberon.Mod to load at startup *)
   END;
 
 
