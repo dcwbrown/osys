@@ -780,7 +780,6 @@ VAR
   preload: H.PreLoadVars;
 BEGIN
   mod := SYSTEM.VAL(Modules.Module, SYSTEM.ADR(Mem));
-  (*H.ws("* PresetWinHost. mod.name "); H.ws(mod.name); H.ws(", nimports "); H.wh(mod.vars); H.wsn("H.");*)
   varpos := mod.vars - ModuleBase;
 
   H.ZeroFill(preload);
@@ -789,37 +788,9 @@ BEGIN
   IF Embedded # NIL THEN
     preload.FileOfs := FadrModules + Align(ModuleSize, FileAlignment)
   END;
-
   SYSTEM.COPY(SYSTEM.ADR(preload), SYSTEM.ADR(Mem[varpos]), SYSTEM.SIZE(H.PreLoadVars));
   INC(varpos, SYSTEM.SIZE(H.PreLoadVars));
-
-  (*
-  SYSTEM.PUT(SYSTEM.ADR(Mem[varpos]), ImageBase);   INC(varpos, 8);
-  SYSTEM.PUT(SYSTEM.ADR(Mem[varpos]), ModuleBase);  INC(varpos, 8);
-  SYSTEM.PUT(SYSTEM.ADR(Mem[varpos]), 0);           INC(varpos, 8);
-  IF Embedded = NIL THEN
-    SYSTEM.PUT(SYSTEM.ADR(Mem[varpos]), 0);
-  ELSE
-    (*
-    H.ws("Embedded files will be written at "); H.wh(FadrModules + Align(ModuleSize, FileAlignment));
-    H.wsn("H.");
-    *)
-    SYSTEM.PUT(SYSTEM.ADR(Mem[varpos]), FadrModules + Align(ModuleSize, FileAlignment));
-  END;
-  INC(varpos, 8);
-  SYSTEM.COPY(SYSTEM.ADR(loadmod), SYSTEM.ADR(Mem[varpos]), SYSTEM.SIZE(H.ModuleName));
-  INC(varpos, SYSTEM.SIZE(H.ModuleName));
-  *)
-
   ASSERT(ModuleBase + varpos = mod.vars + BootstrapVarBytes);
-
-  (*
-  H.ws("Before IDT lookups write, varpos "); H.wh(varpos); H.wsn("H.");
-
-  H.ws("SYSTEM.ADR(Idt.Kernel32Lookups) "); H.wh(SYSTEM.ADR(Idt.Kernel32Lookups)); H.wsn("H.");
-  H.ws("SYSTEM.ADR(Mem[varpos])         "); H.wh(SYSTEM.ADR(Mem[varpos]));         H.wsn("H.");
-  H.ws("Kernel32ImportCount * 8         "); H.wh(Kernel32ImportCount * 8);         H.wsn("H.");
-  *)
 
   SYSTEM.COPY(SYSTEM.ADR(Idt.Kernel32Lookups), SYSTEM.ADR(Mem[varpos]), Kernel32ImportCount * 8);
   INC(varpos, Kernel32ImportCount * 8);
@@ -830,19 +801,6 @@ BEGIN
   SYSTEM.COPY(SYSTEM.ADR(Idt.Gdi32Lookups), SYSTEM.ADR(Mem[varpos]), Gdi32ImportCount * 8);
   INC(varpos, Gdi32ImportCount * 8);
 END PresetWinHost;
-
-
-PROCEDURE CallJumpIndirect(opcode: INTEGER; mod: Modules.Module);
-VAR target: INTEGER;  disp: SYSTEM.INT32;
-BEGIN
-  IF mod.init # 0 THEN
-    Mem[ModuleSize] := opcode;  INC(ModuleSize);
-    target := mod.init + ORD(mod) - SYSTEM.ADR(Mem);
-    disp := target - (ModuleSize + 4);
-    SYSTEM.PUT(SYSTEM.ADR(Mem[ModuleSize]), disp);
-    INC(ModuleSize, 4)
-  END
-END CallJumpIndirect;
 
 
 PROCEDURE Generate*(PEname: ARRAY OF CHAR);
@@ -864,11 +822,6 @@ BEGIN
   ModCount      := 0;
   ModuleSize    := 0;
   EntryPoint    := 0;
-  (*
-  H.ws("Link.Generate: Linking '"); H.ws(PEname); H.wsn("':");
-  H.ws("  loadflags ");  H.wh(ORD(loadflags)); H.wsn("H.");
-  H.ws("  loadmod:  '"); H.ws(loadmod);        H.wsn("'.");
-  *)
 
   WinHostHdr := LoadModule(Files.Old("WinHost.x64"));
   KernelHdr  := LoadModule(Files.Old("Kernel.x64"));
@@ -880,24 +833,13 @@ BEGIN
   FilesHdr.next   := SYSTEM.VAL(Modules.Module, ModuleBase + ORD(ModulesHdr) - SYSTEM.ADR(Mem));
   ModulesHdr.next := NIL;
 
-  (* Set up initialisation *)
-  EntryPoint := RvaModules (*ModuleBase*) + ModuleSize;
-
-  CallJumpIndirect(0E8H, WinHostHdr);  (* Call *)
-  CallJumpIndirect(0E8H, KernelHdr);   (* Call *)
-  CallJumpIndirect(0E8H, FilesHdr);    (* Call *)
-  CallJumpIndirect(0E9H, ModulesHdr);  (* Jump *)
+  (* Initialisation is at Modules body - it takes care *)
+  (* of initialising Files, Kernel and WinHost.        *)
+  EntryPoint := RvaModules + ORD(ModulesHdr) - SYSTEM.ADR(Mem) + ModulesHdr.init;
 
   ModuleVSize := Align(ModuleSize, 10000H);  (* Tell loader to allocate whole multiple of alloc size *)
 
-  (*
-  H.ws("ModuleSize ");    H.wh(ModuleSize);
-  H.ws("H ModuleVSize "); H.wh(ModuleVSize);
-  H.ws("H entry point "); H.wh(EntryPoint); H.wsn("H.");
-  *)
-
   ExeFile := Files.New(PEname);
-
   Files.Set(Exe, ExeFile, 0);
   WriteImports;
   PresetWinHost;
