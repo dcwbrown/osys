@@ -79,19 +79,6 @@ BEGIN
 END LinkImport;
 
 
-PROCEDURE RelocatePointerAddresses*(ptradr, varadr: INTEGER);
-VAR ptroff: INTEGER;
-BEGIN
-  SYSTEM.GET(ptradr, ptroff);
-  WHILE ptroff >= 0 DO
-    SYSTEM.PUT(ptradr, varadr + ptroff);
-    INC(ptradr, 8);
-    SYSTEM.GET(ptradr, ptroff)
-  END
-END RelocatePointerAddresses;
-
-
-
 PROCEDURE ReadVar(VAR r: Files.Rider;  VAR var: ARRAY OF BYTE);
 BEGIN Files.ReadBytes(r, var, LEN(var)) END ReadVar;
 
@@ -123,6 +110,7 @@ VAR
   allocsize: INTEGER;
   loadlen:   INTEGER;
   i:         INTEGER;
+  ptroff:    INTEGER;
   impcount:  SYSTEM.CARD32;
   offset:    SYSTEM.CARD32;
   impno:     SYSTEM.CARD16;
@@ -135,26 +123,16 @@ BEGIN
   WHILE (mod # NIL) & (name # mod.name) DO mod := mod.next END;
 
   IF mod = NIL THEN (*load*)
-    (*H.ws("Modules.Load: loading '"); H.ws(name); H.wsn("'.");*)
     Check(name);
     IF res = 0 THEN F := ThisFile(name) ELSE F := NIL END;
     IF F # NIL THEN
-      (*
-      H.ws("* Loading "); H.ws(name);
-      H.ws(" from file "); H.ws(F.name);  H.wsn(" *");
-      *)
       Files.Set(R, F, 0);
       Files.ReadBytes(R, header, SYSTEM.SIZE(ModDesc));
       name1     := header.name;
       key       := header.key;
       size      := (header.vars + header.varsize + 15) DIV 16 * 16;
       importing := name1;
-      (*
-      H.wsn("File header:");
-      H.ws("  name: "); H.ws(name1); H.wsn(".");
-      H.ws("  key:  "); H.wh(key);   H.wsn("H.");
-      H.ws("  size: "); H.wh(size);  H.wsn("H.");
-      *)
+
       (* Load list of imported modules *)
       Files.Set(R, F, header.vars);
       Files.ReadString(R, impname);
@@ -166,20 +144,13 @@ BEGIN
         importing := name1;
         IF res = 0 THEN
           IF impmod.key = impkey THEN INC(impmod.refcnt);  INC(nofimps)
-          ELSE
-            H.ws("Modules.Load recursive load of imported module ");
-            H.ws(impname); H.wsn(" has mismatched key.");
-            error(3, name1);  imported := impname
+          ELSE error(3, name1);  imported := impname
           END
-        ELSE
-          H.ws("Modules.Load recursive load of imported module ");
-          H.ws(impname); H.wsn(" failed.");
         END;
         Files.ReadString(R, impname)
       END;
       imptabpos := (Files.Pos(R) + 15) DIV 16 * 16;
     ELSE
-      H.ws("Couldn't find compiled binary .X64 file for module '"); H.ws(name); H.wsn("'.");
       error(1, name)
     END;
 
@@ -188,11 +159,6 @@ BEGIN
       WHILE (mod # NIL) & ~((mod.name[0] = 0X) & (mod.size >= size)) DO mod := mod.next END;
       IF mod = NIL THEN (*no large enough hole was found*)
         H.Allocate(size, p, allocsize);
-        (*
-        H.ws("H.Allocate requested "); H.wh(size);
-        H.ws("H, got "); H.wh(allocsize);
-        H.ws("H bytes at "); H.wh(p); H.wsn("H.");
-        *)
         IF allocsize # 0 THEN
           mod := SYSTEM.VAL(Module, p);
           H.ZeroFill(mod^);
@@ -208,7 +174,6 @@ BEGIN
     END;
 
     IF res = 0 THEN
-      (*H.ws("Modules.Load "); H.ws(name); H.wsn(" reading static memory.");*)
       (* Read static memory, including code, type descriptors, strings and pointers *)
       INC(p, SYSTEM.SIZE(ModDesc));  (* Skip header *)
       Files.Set(R, F, SYSTEM.SIZE(ModDesc));
@@ -232,41 +197,27 @@ BEGIN
       (* Link imports *)
       Files.Set(R, F, imptabpos);
       Files.ReadBytes(R, impcount, 4);
-      (*H.ws("Import count: "); H.wi(impcount); H.wsn(".");*)
       FOR i := 1 TO impcount DO
         ReadVar(R, offset);  ReadVar(R, impno);  ReadVar(R, modno);
         LinkImport(ORD(mod), offset, impno, modno, import)
       END;
 
       (* Relocate pointer addresses *)
-      RelocatePointerAddresses(mod.ptr, mod.vars);
+      p := mod.ptr;
+      SYSTEM.GET(p, ptroff);
+      WHILE ptroff >= 0 DO
+        SYSTEM.PUT(p, mod.vars + ptroff);
+        INC(p, 8);
+        SYSTEM.GET(p, ptroff)
+      END;
 
-      (*
-      H.ws("* Loaded ");             H.ws(mod.name);
-      H.ws(" at ");                  H.wh(ORD(mod));
-      H.ws("H, code ");              H.wh(header.vars);
-      H.ws("H bytes, data ");        H.wh(header.varsize);
-      H.ws("H bytes, loaded size "); H.wh(mod.size);
-      H.ws("H, lines at ");          H.wh(mod.lines);
-      H.wsn("H.");
-      *)
-
-      body := SYSTEM.VAL(Command, ORD(mod) + mod.init);
-      (*
-      H.ws("Initialising "); H.ws(mod.name);
-      H.ws(" entry point offset "); H.wh(mod.init);
-      H.ws("H at "); H.wh(ORD(body)); H.wsn("H.");
-      *)
-      body;   (*initialize module*)
+      (* Initialize module *)
+      body := SYSTEM.VAL(Command, ORD(mod) + mod.init);  body;
 (*
     ELSIF res >= 3 THEN importing := name;
       WHILE nofimps > 0 DO DEC(nofimps);  DEC(import[nofimps].refcnt) END
 *)
-    END;
-    (*
-    H.ws("Modules.Load "); H.ws(name);
-    IF mod = NIL THEN H.wsn(" failed.") ELSE H.wsn(" succeeded.") END;
-    *)
+    END
   END;
 
   newmod := mod
