@@ -213,6 +213,8 @@ VAR
   CmdCommand*:  ARRAY 32 OF CHAR;
   ArgStart*:    INTEGER;
 
+  ExitCode: INTEGER;
+
 
 PROCEDURE NoLog(s: ARRAY OF BYTE); BEGIN END NoLog;
 
@@ -688,6 +690,14 @@ BEGIN
   Handlers[TypeGuardFailureProc]      := TypeGuardFailureHandler
 END InitSysHandlers;
 
+
+(* ----------------------------- Exit handling ------------------------------ *)
+
+PROCEDURE SetExitCode*(code: INTEGER);
+BEGIN ExitCode := code END SetExitCode;
+
+PROCEDURE Exit*;
+BEGIN ExitProcess(ExitCode) END Exit;
 
 
 (* ------------------ WinHost internal assertion handlers ------------------- *)
@@ -1408,10 +1418,11 @@ END NewStartup;
 
 
 BEGIN
-  HWnd                  := 0;
-  Log                   := NoLog;
-  Sol                   := FALSE;
-  ExceptionDepth        := 0;
+  HWnd           := 0;
+  Log            := NoLog;
+  Sol            := FALSE;
+  ExceptionDepth := 0;
+  ExitCode       := 0;
 
   (* Initialise console input/output *)
   Stdin  := GetStdHandle(-10);  (* -10:   StdInputHandle *)

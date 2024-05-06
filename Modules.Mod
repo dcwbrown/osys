@@ -311,7 +311,7 @@ BEGIN
       END
     END;
     (*H.wsn("**** Modules ExitProcess(0) ****");*)
-    H.ExitProcess(0);
+    H.Exit
   END;
 (*
   Load("Oberon", M);

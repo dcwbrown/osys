@@ -1326,6 +1326,7 @@ BEGIN
       Texts.WriteInt(W, (H.Time() - start) DIV 10000, 4); Texts.WriteString(W, "ms")
     ELSE
       Texts.WriteLn(W);  Texts.WriteString(W, "compilation FAILED");
+      H.SetExitCode(1)
     END;
     Texts.WriteLn(W);  Texts.Append(Texts.Log, W.buf);
     ORB.CloseScope;  pbsList := NIL

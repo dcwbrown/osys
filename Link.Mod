@@ -142,6 +142,7 @@ TYPE
 
 
 VAR
+  W:            Texts.Writer;
   FileName:     ARRAY 512 OF CHAR;
   ExeFile:      Files.File;
   Exe:          Files.Rider;
@@ -919,8 +920,10 @@ BEGIN
   emf := Embedded;
   WHILE emf # NIL DO
     IF ~IsInnerCore(emf.modname) THEN
+      (*
       H.ws("  embedded "); H.ws(emf.name);
       H.ws(" at "); H.wh(Files.Pos(Exe)); H.wsn("H.");
+      *)
       f := emf.file;  ASSERT(f # NIL);
       IF f # NIL THEN
         Files.WriteString(Exe, emf.name);
@@ -955,8 +958,6 @@ BEGIN
   IF (res # 0) & (res # 2) THEN H.AssertWinErr(res) END;
 
   Files.Register(ExeFile);
-
-  H.ws("Link generated "); H.ws(PEname); H.wsn(".")
 END Generate;
 
 
@@ -990,6 +991,9 @@ BEGIN
   i := 0;
   WHILE j < k DO modname[i] := arg[j];  INC(i);  INC(j) END;
   modname[i] := 0X;
+
+  Texts.WriteString(W, "  linking ");  Texts.WriteString(W, arg);
+  Texts.WriteLn(W);  Texts.Append(Texts.Log, W.buf);
 
   IF modname[0] # 0X THEN
     (*H.ws("Embedding modules to satisfy '"); H.ws(arg); H.wsn("'.");*)
@@ -1043,7 +1047,8 @@ END Test;
 
 
 BEGIN
-  (*H.wsn("* Link loaded.");*)
+  Texts.OpenWriter(W); Texts.WriteString(W, "Linker DCWB 06.05.2024");
+  Texts.WriteLn(W); Texts.Append(Texts.Log, W.buf);
   OberonEmbedded := FALSE;
   Test
 END Link.
