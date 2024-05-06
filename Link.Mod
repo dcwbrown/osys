@@ -1,7 +1,7 @@
 MODULE Link;  (* Create exe from a list of compiled Oberon modules *)
 (* DCWB 14.04.2023..10.02.2024 *)
 
-IMPORT SYSTEM, H := WinHost, Kernel, X64, Files, Texts, Modules, Oberon;
+IMPORT SYSTEM, H := WinHost, Kernel, X64, Files, Texts, Modules;
 
 CONST
   HeaderSize      =  200H;
@@ -21,7 +21,7 @@ CONST
   ImageBase   = 0FFFF0000H;  (* Image base must be multiple of 64k / 10000H  *)
   ModuleBase  = ImageBase + RvaModules;
 
-  BootstrapVarBytes   = 64;  (* preloaded bootstrap VAR size preceeding imported proc addresses *)
+  BootstrapVarBytes   = 64;  (* size of WinHost PreLoadVars *)
   Kernel32ImportCount = 39;
   Gdi32ImportCount    = 12;
   User32ImportCount   = 26;
@@ -31,9 +31,11 @@ TYPE
 
   EmbeddedFile     = POINTER TO EmbeddedFileDesc;
   EmbeddedFileDesc = RECORD
-    next: EmbeddedFile;
-    name: Files.FileName;
-    file: Files.File;
+    next:    EmbeddedFile;
+    name:    Files.FileName;
+    modname: Modules.ModuleName;
+    key:     INTEGER;
+    file:    Files.File;
   END;
   Zeroes58 = ARRAY 3AH OF BYTE;
 
@@ -509,44 +511,89 @@ END WritePEHeader;
 (* -------------------------------------------------------------------------- *)
 
 PROCEDURE ReadVar(VAR r: Files.Rider;  VAR var: ARRAY OF BYTE);
-BEGIN
-  (*
-  H.ws("Link.ReadVar "); H.wh(LEN(var));
-  H.ws("H bytes to "); H.wh(SYSTEM.ADR(var));
-  H.ws("H, from rider at "); H.wh(SYSTEM.ADR(r));
-  H.ws("H, from file at "); H.wh(SYSTEM.VAL(INTEGER, Files.Base(r)));
-  H.wsn("H.");
-  *)
-  Files.ReadBytes(r, var, LEN(var))
+BEGIN Files.ReadBytes(r, var, LEN(var))
 END ReadVar;
 
+(* ----------------------------- Embedded files ----------------------------- *)
 
-PROCEDURE IsNamedModule(f: Files.File; name: ARRAY OF CHAR): BOOLEAN;
-VAR mod: H.ModuleDesc;  r: Files.Rider;
+
+PROCEDURE GetModule(name: ARRAY OF CHAR): EmbeddedFile;
+VAR emf: EmbeddedFile;
 BEGIN
-  Files.Set(r, f, 0);  ReadVar(r, mod);
-  (*
-  IF mod.name = name THEN
-    H.ws("Link.IsNamedModule found module "); H.ws(mod.name); H.wsn(".")
-  END;
-  *)
-RETURN mod.name = name END IsNamedModule;
+  emf := Embedded;
+  WHILE (emf # NIL) & (emf.modname # name) DO emf := emf.next END;
+RETURN emf END GetModule;
 
+PROCEDURE IsInnerCore(name: ARRAY OF CHAR): BOOLEAN;
+RETURN (name = "WinHost")
+    OR (name = "Kernel")
+    OR (name = "Files")
+    OR (name = "Modules")
+END IsInnerCore;
+
+PROCEDURE Isx64(name: ARRAY OF CHAR): BOOLEAN;
+VAR i, j: INTEGER;  ext: ARRAY 10 OF CHAR;  result: BOOLEAN;
+BEGIN
+  i := 0;  j := 0;  result := FALSE;
+  WHILE name[i] # 0X DO
+    IF name[i] = "." THEN
+      j := 0
+    ELSE
+      ext[j] := name[i];
+      IF j < LEN(ext) - 1 THEN INC(j) END;
+    END;
+    INC(i)
+  END;
+  IF j > 0 THEN ext[j] := 0X;  result := ext = "x64" END
+RETURN result END Isx64;
 
 PROCEDURE AddEmbeddedFile*(name: ARRAY OF CHAR; file: Files.File);
-VAR emf: EmbeddedFile;  r: Files.Rider;  mod: Modules.ModDesc;
+VAR
+  emf: EmbeddedFile;
+  r:   Files.Rider;
+  mod: Modules.ModDesc;
+  imp: ARRAY 64 OF CHAR;
+  key: INTEGER;
 BEGIN
-  IF    IsNamedModule(file, "WinHost") THEN WinHostFile := file
-  ELSIF IsNamedModule(file, "Kernel")  THEN KernelFile  := file
-  ELSIF IsNamedModule(file, "Files")   THEN FilesFile   := file
-  ELSIF IsNamedModule(file, "Modules") THEN ModulesFile := file
+  IF file = NIL THEN file := Files.Old(name) END;
+  ASSERT(file # NIL);
+  IF Isx64(name) THEN
+    Files.Set(r, file, 0);
+    ReadVar(r, mod)
   ELSE
-    IF IsNamedModule(file, "Oberon") THEN OberonEmbedded := TRUE END;
+    H.ZeroFill(mod);
+  END;
+
+  IF    mod.name = "WinHost" THEN WinHostFile := file
+  ELSIF mod.name = "Kernel"  THEN KernelFile  := file
+  ELSIF mod.name = "Files"   THEN FilesFile   := file
+  ELSIF mod.name = "Modules" THEN ModulesFile := file
+  ELSE
+    IF mod.name = "Oberon" THEN OberonEmbedded := TRUE END;
+
     NEW(emf);
-    emf.name := name;
-    emf.file := file;
+    emf.name    := name;
+    emf.file    := file;
+    emf.modname := mod.name;
+    emf.key     := mod.key;
+
     IF Embedded = NIL THEN Embedded := emf ELSE LastEmbedded.next := emf END;
-    LastEmbedded := emf
+    LastEmbedded := emf;
+
+    IF mod.name[0] # 0X THEN
+      Files.Set(r, file, (SYSTEM.SIZE(Modules.ModDesc) + 15) DIV 16 * 16);
+      Files.ReadString(r, imp);
+      WHILE imp[0] # 0X DO
+        Files.ReadInt(r, key);
+        (*H.ws(name); H.ws(" imports "); H.ws(imp); H.wsn(".");*)
+        IF (GetModule(imp) = NIL) & (~IsInnerCore(imp)) THEN
+          H.Append(".x64", imp);  AddEmbeddedFile(imp, NIL);
+        END;
+        Files.ReadString(r, imp);
+      END
+    ELSE
+      emf.modname[0] := 0X;
+    END
   END;
 END AddEmbeddedFile;
 
@@ -578,8 +625,9 @@ BEGIN
     SYSTEM.GET(modadr + offset, disp);
     ASSERT((impno >= 0) & (impno <= H.HandlerCount));
 
-    handlersoffset := SYSTEM.ADR(H.Handlers) - SYSTEM.ADR(H.Preload); (* Relative to start of WinHost vars *)
-    INC(handlersoffset, winhost.vars - 100000000H);  (* relative to start of modules *)
+    handlersoffset := winhost.vars - ModuleBase  (* relative to start of modules *)
+                    + BootstrapVarBytes
+                    + 8 * (Kernel32ImportCount + Gdi32ImportCount + User32ImportCount);
 
     INC(disp, handlersoffset + 8 * impno - modofs);
     SYSTEM.PUT(modadr + offset, disp)
@@ -604,19 +652,6 @@ BEGIN
   END
 END LinkImport;
 
-
-(*
-PROCEDURE RelocatePointerAddresses*(ptradr, varadr: INTEGER);
-VAR ptroff: INTEGER;
-BEGIN
-  SYSTEM.GET(ptradr, ptroff);
-  WHILE ptroff >= 0 DO
-    SYSTEM.PUT(ptradr, varadr + ptroff);
-    INC(ptradr, 8);
-    SYSTEM.GET(ptradr, ptroff)
-  END
-END RelocatePointerAddresses;
-*)
 
 PROCEDURE LoadModule(f: Files.File): Modules.Module;
 VAR
@@ -880,27 +915,29 @@ BEGIN
   Files.WriteBytes(Exe, Mem, 0, ModuleSize);
   FileAlign(Exe, FileAlignment);
 
-  (* Add any requested object files *)
+  (* Add any requested embedded files *)
   emf := Embedded;
   WHILE emf # NIL DO
-    H.ws("* embed "); H.ws(emf.name);
-    H.ws(" at "); H.wh(Files.Pos(Exe)); H.wsn("H *");
-    f := emf.file;  ASSERT(f # NIL);
-    IF f # NIL THEN
-      Files.WriteString(Exe, emf.name);
-      size := Files.Length(f);
-      Files.WriteNum(Exe, size);
-      Files.Set(r, f, 0);
-      i := size DIV LEN(buf);
-      WHILE i > 0 DO
-        Files.ReadBytes(r, buf, LEN(buf));
-        Files.WriteBytes(Exe, buf, 0, LEN(buf));
-        DEC(i)
-      END;
-      i := size MOD LEN(buf);
-      IF i > 0 THEN
-        Files.ReadBytes(r, buf, i);
-        Files.WriteBytes(Exe, buf, 0, i)
+    IF ~IsInnerCore(emf.modname) THEN
+      H.ws("  embedded "); H.ws(emf.name);
+      H.ws(" at "); H.wh(Files.Pos(Exe)); H.wsn("H.");
+      f := emf.file;  ASSERT(f # NIL);
+      IF f # NIL THEN
+        Files.WriteString(Exe, emf.name);
+        size := Files.Length(f);
+        Files.WriteNum(Exe, size);
+        Files.Set(r, f, 0);
+        i := size DIV LEN(buf);
+        WHILE i > 0 DO
+          Files.ReadBytes(r, buf, LEN(buf));
+          Files.WriteBytes(Exe, buf, 0, LEN(buf));
+          DEC(i)
+        END;
+        i := size MOD LEN(buf);
+        IF i > 0 THEN
+          Files.ReadBytes(r, buf, i);
+          Files.WriteBytes(Exe, buf, 0, i)
+        END
       END
     END;
     emf := emf.next
@@ -924,15 +961,46 @@ END Generate;
 
 
 PROCEDURE Link*;
-VAR i: INTEGER;  arg: ARRAY 32 OF CHAR;  r: Texts.Reader;  ch: CHAR;
+VAR
+  i, j, k: INTEGER;
+  arg:     ARRAY 32 OF CHAR;
+  r:       Texts.Reader;
+  ch:      CHAR;
+  modname: ARRAY 64 OF CHAR;
 BEGIN
   Files.DisconnectEmbeddedFiles;
+
+  (* Parse argument modname[.commandname] from parameter as arg *)
   Texts.OpenReader(r, Texts.Par.text, Texts.Par.pos);
   Texts.Read(r, ch);
   WHILE ch = " " DO Texts.Read(r, ch) END;
-  i := 0; WHILE ch > " " DO arg[i] := ch;  INC(i);  Texts.Read(r, ch) END;
-  IF i > 0 THEN
-    arg[i] := 0X;
+  i := 0;  j := 0;  k := -1;
+  WHILE ch > " " DO
+    arg[i] := ch;
+    IF ch = "." THEN k := i END;
+    INC(i);
+    IF (ch = "/") OR (ch = 5CX) THEN j := i END;
+    Texts.Read(r, ch)
+  END;
+  arg[i] := 0X;
+
+  (* Extract modname from modname[.commandname] *)
+  IF k < 0 THEN k := i END;
+  (* Module name from j to k, command name from k+1 to i *)
+  i := 0;
+  WHILE j < k DO modname[i] := arg[j];  INC(i);  INC(j) END;
+  modname[i] := 0X;
+
+  IF modname[0] # 0X THEN
+    (*H.ws("Embedding modules to satisfy '"); H.ws(arg); H.wsn("'.");*)
+    H.Append(".x64", modname);
+    AddEmbeddedFile(modname, NIL);
+
+    (* Special knowledge: Oberon.Mod loads System.Mod *)
+    IF GetModule("Oberon") # NIL THEN
+      AddEmbeddedFile("System.x64", NIL)
+    END;
+
     H.Append(".exe", arg);
     Generate(arg, {H.NewLoad}, "")
   ELSE
@@ -944,7 +1012,7 @@ END Link;
 PROCEDURE Test;
 VAR r: Texts.Reader;  ch: CHAR;
 BEGIN
-  Texts.OpenReader(r, Oberon.Par.text, Oberon.Par.pos);  Texts.Read(r, ch);
+  Texts.OpenReader(r, Texts.Par.text, Texts.Par.pos);  Texts.Read(r, ch);
   IF ch = "!" THEN
     H.wsn("* Link !");
     Files.DisconnectEmbeddedFiles;

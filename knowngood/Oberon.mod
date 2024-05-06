@@ -447,8 +447,12 @@ BEGIN
   NEW(Par);
 
   IF H.NewLoad IN H.Preload.LoadFlags THEN
-    (*H.ws("**** Full Oberon loading "); H.ws(H.Preload.LoadMod); H.wsn(" ****");*)
-    Modules.Load(H.Preload.LoadMod, Mod);
+    IF H.Preload.LoadMod[0] # 0X THEN
+      H.ws("**** Full Oberon loading '"); H.ws(H.Preload.LoadMod); H.wsn("' ****");
+      Modules.Load(H.Preload.LoadMod, Mod);
+    ELSE
+      Modules.Load("System", Mod)
+    END;
     IF Mod = NIL THEN
       H.wsn("**** Load failed. ****");
       IF Mod = NIL THEN

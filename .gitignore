@@ -15,6 +15,9 @@ build2/*
 buildtest/*
 buildsys/*
 buildlink/*
+new/*
+newgood/*
+newgood.prev*/*
 p6000/*
 wirth/old/*
 wirth/PaulReed/*
