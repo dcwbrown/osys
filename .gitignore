@@ -8,16 +8,7 @@ t[0-9]
 knowngood.prev*/*
 background docs/*
 Pirklbauer/*
-prevgui/*
-buildpre/*
-build1/*
-build2/*
-buildtest/*
-buildsys/*
-buildlink/*
-new/*
-newgood/*
-newgood.prev*/*
+build/*
 p6000/*
 wirth/old/*
 wirth/PaulReed/*

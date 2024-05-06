@@ -2,9 +2,9 @@
 @echo.
 ::
 ::
-@rd /s /q new 2>NUL
-@md new >NUL 2>NUL
-@cd new
+@rd /s /q build 2>NUL
+@md build >NUL 2>NUL
+@cd build
 @copy ..\knowngood\ORP.Compile.exe >NUL 2>NUL
 @copy ..\knowngood\Link.Link.exe >NUL 2>NUL
 ::
