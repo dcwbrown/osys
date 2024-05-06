@@ -1,9 +1,7 @@
 :: Copy latest build to knowngood
-@if exist build2\obuild.exe goto good
-@if exist new\Oberon.exe goto good
+@if exist build\Oberon.exe goto good
 ::
-@echo Cannot snapshot good build: no file build2\obuild.exe
-@echo and no file new\Oberon.exe.
+@echo Cannot snapshot good build: no file build\Oberon.exe.
 @goto end
 ::
 :good
@@ -23,10 +21,8 @@
 @echo Copying files from build2 to knowngood
 @mkdir knowngood
 @copy *.mod knowngood >NUL
-::@copy build2\*.smb knowngood >NUL
-::@copy build2\*.x64 knowngood >NUL
-::@copy build2\*.exe knowngood >NUL
-@copy new\ORP.Compile.exe knowngood >NUL
-@copy new\Link.Link.exe knowngood >NUL
+@copy build\ORP.Compile.exe knowngood >NUL
+@copy build\Link.Link.exe knowngood >NUL
+@copy build\Oberon.exe knowngood >NUL
 ::
 :end
