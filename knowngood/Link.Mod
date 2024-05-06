@@ -1,7 +1,7 @@
-MODULE Link;  (* Create exe from a list of compiled Oberon modules *)
-(* DCWB 14.04.2023..10.02.2024 *)
+MODULE Link;  (* Create exe for a given module + optional command *)
+(* DCWB 14.04.2023..06.05.2024 *)
 
-IMPORT SYSTEM, H := WinHost, Kernel, X64, Files, Texts, Modules;
+IMPORT SYSTEM, H := WinHost, Kernel, Files, Texts, Modules;
 
 CONST
   HeaderSize      =  200H;
@@ -22,7 +22,7 @@ CONST
   ModuleBase  = ImageBase + RvaModules;
 
   BootstrapVarBytes   = 64;  (* size of WinHost PreLoadVars *)
-  Kernel32ImportCount = 39;
+  Kernel32ImportCount = 40;
   Gdi32ImportCount    = 12;
   User32ImportCount   = 26;
 
@@ -245,6 +245,7 @@ BEGIN
   AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "AddVectoredExceptionHandler");
   AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "CloseHandle");
   AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "CreateFileW");
+  AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "CreateProcessW");
   AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "DeleteFileW");
   AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "ExitProcess");
   AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "FileTimeToLocalFileTime");

@@ -23,9 +23,10 @@
 @echo Copying files from build2 to knowngood
 @mkdir knowngood
 @copy *.mod knowngood >NUL
-@copy build2\*.smb knowngood >NUL
-@copy build2\*.x64 knowngood >NUL
-@copy build2\*.exe knowngood >NUL
-@copy new\*.exe knowngood >NUL
+::@copy build2\*.smb knowngood >NUL
+::@copy build2\*.x64 knowngood >NUL
+::@copy build2\*.exe knowngood >NUL
+@copy new\ORP.Compile.exe knowngood >NUL
+@copy new\Link.Link.exe knowngood >NUL
 ::
 :end

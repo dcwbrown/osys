@@ -105,6 +105,9 @@ VAR
   AddVectoredExceptionHandler*:    PROCEDURE-(first, filter: INTEGER): INTEGER;
   CloseHandle*:                    PROCEDURE-(hObject: INTEGER): INTEGER;
   CreateFileW*:                    PROCEDURE-(lpFileName, dwDesiredAccess, dwShareMode, lpSecurityAttributes, dwCreationDisposition, dwFlagsAndAttributes, hTemplateFile: INTEGER): INTEGER;
+  CreateProcessW*:                 PROCEDURE-(appname, cmdline, procattr, threadattr,
+                                              handles, flags, env, dir,
+                                              startupinfo, processinfo: INTEGER): INTEGER;
   DeleteFileW*:                    PROCEDURE-(lpFilename: INTEGER): INTEGER;
   ExitProcess*:                    PROCEDURE-(exitcode: INTEGER);
   FileTimeToLocalFileTime*:        PROCEDURE-(filetime, localfiletime: INTEGER): INTEGER;
@@ -1429,12 +1432,12 @@ BEGIN
   Stdout := GetStdHandle(-11);  (* -11:   StdOutputHandle *)
   SetConsoleOutputCP(65001);    (* 65001: UTF8            *)
   crlf := $0D 0A 00$;
-
   Log := WriteStdout;
+
+  (*wsn("* WinHost starting.");*)
 
   IF NewLoad IN Preload.LoadFlags THEN  (* New non-copying startup variant *)
 
-    (*wsn("* WinHost starting, new style binary.");*)
     NewStartup
 
   ELSE
