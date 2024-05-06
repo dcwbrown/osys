@@ -1,4 +1,4 @@
-@echo ------------------- Build Oberon compiler and system ---------------------
+@echo ------------------------- Build Oberon compiler --------------------------
 @echo.
 ::
 ::
@@ -15,6 +15,7 @@
 ::
 @echo.
 @echo ---------- Build prebuild linker with new link and old winhost -----------
+@echo.
 ::
 ::
 @copy ..\knowngood\*.mod >NUL
@@ -30,6 +31,7 @@
 ::
 @echo.
 @echo ----------- Build with known good compiler and updated linker ------------
+@echo.
 :noprebuild
 ::
 @copy /Y ..\*.mod >NUL
@@ -41,36 +43,36 @@
 @ORP.Compile ORS.Mod/s ORB.Mod/s X64.Mod/s Listing.Mod/s ORG.Mod/s ORP.Mod/s ~
 @if errorlevel 1 goto end
 ::
-@Link.Link Link
+@Link.Link ORP.Compile Link
 @if errorlevel 1 goto end
 @move /Y Link.exe Link.Link.exe >NUL
 ::
-@Link.Link ORP.Compile
-@if errorlevel 1 goto end
-::
 ::
 @echo.
-@echo.
-@echo ------------------- Rebuild with newly built compiler --------------------
+@echo --------------- Rebuild compiler with newly built compiler ---------------
 @echo.
 ::
 ::
-@ORP.Compile WinHost.Mod/s Kernel.Mod/s FileDir.Mod/s Files.Mod/s Modules.Mod/s ~
+@ORP.Compile WinHost.Mod/s Kernel.Mod/s Files.Mod/s Modules.Mod/s ~
 @if errorlevel 1 goto end
-@ORP.Compile WinGui.Mod/s Input.Mod/s Display.Mod/s Viewers.Mod/s ~
-@if errorlevel 1 goto end
-@ORP.Compile Fonts.Mod/s Texts.Mod/s Link.Mod/s Oberon.Mod/s ~
-@if errorlevel 1 goto end
-@ORP.Compile MenuViewers.Mod/s TextFrames.Mod/s Edit.Mod/s System.Mod/s ~
+@ORP.Compile Fonts.Mod/s Texts.Mod/s Link.Mod/s ~
 @if errorlevel 1 goto end
 @ORP.Compile ORS.Mod/s ORB.Mod/s X64.Mod/s Listing.Mod/s ORG.Mod/s ORP.Mod/s ~
 @if errorlevel 1 goto end
 ::
-@Link.Link Link
+@Link.Link ORP.Compile Link
 @if errorlevel 1 goto end
 @move /Y Link.exe Link.Link.exe >NUL
 ::
-@Link.Link ORP.Compile
+::
+@echo.
+@echo -------------------------- Build Oberon system ---------------------------
+@echo.
+::
+::
+@ORP.Compile FileDir.Mod/s WinGui.Mod/s Input.Mod/s Display.Mod/s Viewers.Mod/s ~
+@if errorlevel 1 goto end
+@ORP.Compile Oberon.Mod/s MenuViewers.Mod/s TextFrames.Mod/s Edit.Mod/s System.Mod/s ~
 @if errorlevel 1 goto end
 ::
 @Link.Link Oberon

@@ -159,8 +159,6 @@ VAR
   FilesFile:    Files.File;
   ModulesFile:  Files.File;
 
-  OberonEmbedded: BOOLEAN;
-
   Idt: ImportDirectoryTable;
 
   Mem:    ARRAY 10000H OF BYTE;  (* Will be loaded at ImageBase + RvaModules *)
@@ -571,8 +569,6 @@ BEGIN
   ELSIF mod.name = "Files"   THEN FilesFile   := file
   ELSIF mod.name = "Modules" THEN ModulesFile := file
   ELSE
-    IF mod.name = "Oberon" THEN OberonEmbedded := TRUE END;
-
     NEW(emf);
     emf.name    := name;
     emf.file    := file;
@@ -907,9 +903,7 @@ BEGIN
 
   Files.Set(Exe, ExeFile, 0);
   WriteImports;
-  IF OberonEmbedded THEN INCL(loadflags, H.LoadOberon) END;
   PresetWinHost(loadflags, loadmod);
-  OberonEmbedded := FALSE;
 
   WritePEHeader;
 
@@ -962,12 +956,38 @@ BEGIN
 END Generate;
 
 
-PROCEDURE Link*;
+PROCEDURE ParseTarget(
+  VAR r: Texts.Reader;
+  VAR ch: CHAR;
+  VAR target, modname: ARRAY OF CHAR
+);
 VAR
   i, j, k: INTEGER;
-  arg:     ARRAY 32 OF CHAR;
+BEGIN
+  WHILE ch = " " DO Texts.Read(r, ch) END;
+  i := 0;  j := 0;  k := -1;
+  WHILE ch > " " DO
+    target[i] := ch;
+    IF ch = "." THEN k := i END;
+    INC(i);
+    IF (ch = "/") OR (ch = 5CX) THEN j := i END;
+    Texts.Read(r, ch)
+  END;
+  target[i] := 0X;
+
+  (* Extract modname from modname[.commandname] *)
+  IF k < 0 THEN k := i END;
+  (* Module name from j to k, command name from k+1 to i *)
+  i := 0;
+  WHILE j < k DO modname[i] := target[j];  INC(i);  INC(j) END;
+  modname[i] := 0X
+END ParseTarget;
+
+PROCEDURE Link*;
+VAR
   r:       Texts.Reader;
   ch:      CHAR;
+  target:  ARRAY 64 OF CHAR;
   modname: ARRAY 64 OF CHAR;
 BEGIN
   Files.DisconnectEmbeddedFiles;
@@ -975,29 +995,11 @@ BEGIN
   (* Parse argument modname[.commandname] from parameter as arg *)
   Texts.OpenReader(r, Texts.Par.text, Texts.Par.pos);
   Texts.Read(r, ch);
-  WHILE ch = " " DO Texts.Read(r, ch) END;
-  i := 0;  j := 0;  k := -1;
-  WHILE ch > " " DO
-    arg[i] := ch;
-    IF ch = "." THEN k := i END;
-    INC(i);
-    IF (ch = "/") OR (ch = 5CX) THEN j := i END;
-    Texts.Read(r, ch)
-  END;
-  arg[i] := 0X;
 
-  (* Extract modname from modname[.commandname] *)
-  IF k < 0 THEN k := i END;
-  (* Module name from j to k, command name from k+1 to i *)
-  i := 0;
-  WHILE j < k DO modname[i] := arg[j];  INC(i);  INC(j) END;
-  modname[i] := 0X;
-
-  Texts.WriteString(W, "  linking ");  Texts.WriteString(W, arg);
-  Texts.WriteLn(W);  Texts.Append(Texts.Log, W.buf);
-
-  IF modname[0] # 0X THEN
-    (*H.ws("Embedding modules to satisfy '"); H.ws(arg); H.wsn("'.");*)
+  ParseTarget(r, ch, target, modname);
+  WHILE target[0] # 0X DO
+    Texts.WriteString(W, "  linking ");  Texts.WriteString(W, target);
+    Texts.WriteLn(W);  Texts.Append(Texts.Log, W.buf);
     H.Append(".x64", modname);
     AddEmbeddedFile(modname, NIL);
 
@@ -1006,50 +1008,15 @@ BEGIN
       AddEmbeddedFile("System.x64", NIL)
     END;
 
-    H.Append(".exe", arg);
-    Generate(arg, {H.NewLoad}, "")
-  ELSE
-    Generate("innercore.exe", {H.NewLoad, H.LoadOberon(*, H.Verbose*)}, "System")
+    H.Append(".exe", target);
+    Generate(target, {H.NewLoad}, "");
+
+    ParseTarget(r, ch, target, modname)
   END
 END Link;
-
-
-PROCEDURE Test;
-VAR r: Texts.Reader;  ch: CHAR;
-BEGIN
-  Texts.OpenReader(r, Texts.Par.text, Texts.Par.pos);  Texts.Read(r, ch);
-  IF ch = "!" THEN
-    H.wsn("* Link !");
-    Files.DisconnectEmbeddedFiles;
-    Generate("innercore.exe", {H.NewLoad, H.LoadOberon(*, H.Verbose*)}, "System")
-(*
-    AddEmbeddedFile("FileDir.x64",     Files.Old("./FileDir.x64"));
-    AddEmbeddedFile("Input.x64",       Files.Old("./Input.x64"));
-    AddEmbeddedFile("Display.x64",     Files.Old("./Display.x64"));
-    AddEmbeddedFile("Viewers.x64",     Files.Old("./Viewers.x64"));
-    AddEmbeddedFile("Fonts.x64",       Files.Old("./Fonts.x64"));
-    AddEmbeddedFile("Texts.x64",       Files.Old("./Texts.x64"));
-    AddEmbeddedFile("Oberon.x64",      Files.Old("./Oberon.x64"));
-    AddEmbeddedFile("MenuViewers.x64", Files.Old("./MenuViewers.x64"));
-    AddEmbeddedFile("TextFrames.x64",  Files.Old("./TextFrames.x64"));
-    AddEmbeddedFile("System.x64",      Files.Old("./System.x64"));
-    AddEmbeddedFile("Edit.x64",        Files.Old("./Edit.x64"));
-    AddEmbeddedFile("ORS.x64",         Files.Old("./ORS.x64"));
-    AddEmbeddedFile("ORB.x64",         Files.Old("./ORB.x64"));
-    AddEmbeddedFile("X64.x64",         Files.Old("./X64.x64"));
-    AddEmbeddedFile("Listing.x64",     Files.Old("./Listing.x64"));
-    AddEmbeddedFile("ORG.x64",         Files.Old("./ORG.x64"));
-    AddEmbeddedFile("ORP.x64",         Files.Old("./ORP.x64"));
-  (*AddEmbeddedFile("Link.x64",        Files.Old("./Link.x64"));*)
-    AddEmbeddedFile("WinGui.x64", Files.Old("WinGui.x64"));
-*)
-  END
-END Test;
 
 
 BEGIN
   Texts.OpenWriter(W); Texts.WriteString(W, "Linker DCWB 06.05.2024");
   Texts.WriteLn(W); Texts.Append(Texts.Log, W.buf);
-  OberonEmbedded := FALSE;
-  Test
 END Link.
