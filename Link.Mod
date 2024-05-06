@@ -154,11 +154,6 @@ VAR
   Verbose:      BOOLEAN;
   EntryPoint:   INTEGER;
 
-  WinHostFile:  Files.File;
-  KernelFile:   Files.File;
-  FilesFile:    Files.File;
-  ModulesFile:  Files.File;
-
   Idt: ImportDirectoryTable;
 
   Mem:    ARRAY 10000H OF BYTE;  (* Will be loaded at ImageBase + RvaModules *)
@@ -564,11 +559,8 @@ BEGIN
     H.ZeroFill(mod);
   END;
 
-  IF    mod.name = "WinHost" THEN WinHostFile := file
-  ELSIF mod.name = "Kernel"  THEN KernelFile  := file
-  ELSIF mod.name = "Files"   THEN FilesFile   := file
-  ELSIF mod.name = "Modules" THEN ModulesFile := file
-  ELSE
+  IF (mod.name[0] = 0X)
+  OR (GetModule(mod.name) = NIL) & ~IsInnerCore(mod.name) THEN
     NEW(emf);
     emf.name    := name;
     emf.file    := file;
@@ -584,7 +576,7 @@ BEGIN
       WHILE imp[0] # 0X DO
         Files.ReadInt(r, key);
         (*H.ws(name); H.ws(" imports "); H.ws(imp); H.wsn(".");*)
-        IF (GetModule(imp) = NIL) & (~IsInnerCore(imp)) THEN
+        IF GetModule(imp) = NIL THEN
           H.Append(".x64", imp);  AddEmbeddedFile(imp, NIL);
         END;
         Files.ReadString(r, imp);
@@ -867,16 +859,10 @@ BEGIN
   H.ws("  loadmod:  '"); H.ws(loadmod);        H.wsn("'.");
   *)
 
-  (* Hopefully temporary code *)
-  IF WinHostFile = NIL THEN WinHostFile := Files.Old("WinHost.x64") END;
-  IF KernelFile  = NIL THEN KernelFile  := Files.Old("Kernel.x64")  END;
-  IF FilesFile   = NIL THEN FilesFile   := Files.Old("Files.x64")   END;
-  IF ModulesFile = NIL THEN ModulesFile := Files.Old("Modules.x64") END;
-
-  WinHostHdr := LoadModule(WinHostFile);
-  KernelHdr  := LoadModule(KernelFile);
-  FilesHdr   := LoadModule(FilesFile);
-  ModulesHdr := LoadModule(ModulesFile);
+  WinHostHdr := LoadModule(Files.Old("WinHost.x64"));
+  KernelHdr  := LoadModule(Files.Old("Kernel.x64"));
+  FilesHdr   := LoadModule(Files.Old("Files.x64"));
+  ModulesHdr := LoadModule(Files.Old("Modules.x64"));
 
   WinHostHdr.next := SYSTEM.VAL(Modules.Module, ModuleBase + ORD(KernelHdr)  - SYSTEM.ADR(Mem));
   KernelHdr.next  := SYSTEM.VAL(Modules.Module, ModuleBase + ORD(FilesHdr)   - SYSTEM.ADR(Mem));
@@ -982,6 +968,7 @@ BEGIN
   WHILE j < k DO modname[i] := target[j];  INC(i);  INC(j) END;
   modname[i] := 0X
 END ParseTarget;
+
 
 PROCEDURE Link*;
 VAR
