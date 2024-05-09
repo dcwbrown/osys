@@ -1682,7 +1682,7 @@ BEGIN Trace(TraceAny, "Len(x: "); l.Item(x, Tr); l.sn(")", Tr);
     x.mode := Const;
     IF x.mode # String THEN (* Length not already in x.n *)
       ASSERT(x.type.form = ORB.Array);
-      x.n := x.type.size DIV x.type.base.size;
+      x.n := x.type.len
     END;
     x.offset := 0;
   END;
