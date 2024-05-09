@@ -1,4 +1,5 @@
 MODULE WinHost;  IMPORT SYSTEM;
+
 CONST
   (* Platform independent file open kinds *)
   OpenRO* = 0;  (* Open r/o, fail if doesn't exist *)

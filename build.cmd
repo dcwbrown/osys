@@ -9,8 +9,7 @@
 @copy ..\knowngood\Link.Link.exe >NUL 2>NUL
 ::
 ::
-@fc ..\Link.Mod ..\knowngood\Link.Mod >NUL
-@if not errorlevel 1 goto noprebuild
+@fc ..\Link.Mod ..\knowngood\Link.Mod >NUL && goto noprebuild
 ::goto noprebuild
 ::
 ::
@@ -21,12 +20,9 @@
 ::
 @copy ..\knowngood\*.mod >NUL
 @copy /Y ..\Link.mod >NUL
-@ORP.Compile WinHost.Mod/s Kernel.Mod/s Files.Mod/s Modules.Mod/s ~
-@if errorlevel 1 goto end
-@ORP.Compile Fonts.Mod/s Texts.Mod/s Link.Mod/s ~
-@if errorlevel 1 goto end
-@Link.Link Link
-@if errorlevel 1 goto end
+@ORP.Compile WinHost.Mod/s Kernel.Mod/s Files.Mod/s Modules.Mod/s ~ || goto end
+@ORP.Compile Fonts.Mod/s Texts.Mod/s Link.Mod/s ~                   || goto end
+@Link.Link Link                                                     || goto end
 @move /Y Link.exe Link.Link.exe >NUL
 ::
 ::
@@ -37,15 +33,11 @@
 ::
 @copy /Y ..\*.mod >NUL
 ::
-@ORP.Compile WinHost.Mod/s Kernel.Mod/s Files.Mod/s Modules.Mod/s ~
-@if errorlevel 1 goto end
-@ORP.Compile Fonts.Mod/s Texts.Mod/s Link.Mod/s ~
-@if errorlevel 1 goto end
-@ORP.Compile ORS.Mod/s ORB.Mod/s X64.Mod/s Listing.Mod/s ORG.Mod/s ORP.Mod/s ~
-@if errorlevel 1 goto end
+@ORP.Compile WinHost.Mod/s Kernel.Mod/s Files.Mod/s Modules.Mod/s ~  || goto end
+@ORP.Compile Fonts.Mod/s Texts.Mod/s Link.Mod/s ORS.Mod/s ~          || goto end
+@ORP.Compile ORB.Mod/s X64.Mod/s Listing.Mod/s ORG.Mod/s ORP.Mod/s ~ || goto end
 ::
-@Link.Link ORP.Compile Link
-@if errorlevel 1 goto end
+@Link.Link ORP.Compile Link || goto end
 @move /Y Link.exe Link.Link.exe >NUL
 ::
 ::
@@ -54,15 +46,11 @@
 @echo.
 ::
 ::
-@ORP.Compile WinHost.Mod/s Kernel.Mod/s Files.Mod/s Modules.Mod/s ~
-@if errorlevel 1 goto end
-@ORP.Compile Fonts.Mod/s Texts.Mod/s Link.Mod/s ~
-@if errorlevel 1 goto end
-@ORP.Compile ORS.Mod/s ORB.Mod/s X64.Mod/s Listing.Mod/s ORG.Mod/s ORP.Mod/s ~
-@if errorlevel 1 goto end
+@ORP.Compile WinHost.Mod/s Kernel.Mod/s Files.Mod/s Modules.Mod/s ~  || goto end
+@ORP.Compile Fonts.Mod/s Texts.Mod/s Link.Mod/s ORS.Mod/s ~          || goto end
+@ORP.Compile ORB.Mod/s X64.Mod/s Listing.Mod/s ORG.Mod/s ORP.Mod/s ~ || goto end
 ::
-@Link.Link ORP.Compile Link
-@if errorlevel 1 goto end
+@Link.Link ORP.Compile Link                                          || goto end
 @move /Y Link.exe Link.Link.exe >NUL
 ::
 ::
@@ -71,13 +59,11 @@
 @echo.
 ::
 ::
-@ORP.Compile FileDir.Mod/s WinGui.Mod/s Input.Mod/s Display.Mod/s Viewers.Mod/s ~
-@if errorlevel 1 goto end
-@ORP.Compile Oberon.Mod/s MenuViewers.Mod/s TextFrames.Mod/s Edit.Mod/s System.Mod/s ~
-@if errorlevel 1 goto end
+@ORP.Compile FileDir.Mod/s WinGui.Mod/s Input.Mod/s Display.Mod/s ~ || goto end
+@ORP.Compile Viewers.Mod/s Oberon.Mod/s MenuViewers.Mod/s ~         || goto end
+@ORP.Compile TextFrames.Mod/s Edit.Mod/s System.Mod/s ~             || goto end
 ::
-@Link.Link Oberon
-@if errorlevel 1 goto end
+@Link.Link Oberon                                                   || goto end
 ::
 ::
 :end

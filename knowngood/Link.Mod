@@ -669,7 +669,6 @@ BEGIN
     REPEAT impname[i] := CHR(Mem[m]); INC(i); INC(m) UNTIL impname[i-1] = 0X;
     IF impname[0] # 0X THEN
       SYSTEM.GET(SYSTEM.ADR(Mem[m]), impkey); INC(m, 8);
-      (*H.ws(f.name); H.ws(" importing "); H.ws(impname); H.ws(" key "); H.wh(impkey); H.wsn("H.");*)
     END;
   UNTIL impname[0] = 0X;
 
@@ -678,7 +677,6 @@ BEGIN
    Build Modules ARRAY in import name loader above
    Add Imports field to header pointing beyond names to actual imports
    Link imports using imports field to address them
-   Update Modules and Winhost to link modules the same way
    Remove redundant import names at end of code
    Implement module ref counts
 *)

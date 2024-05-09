@@ -247,7 +247,6 @@ PROCEDURE LoadImpl(name: ARRAY OF CHAR;  VAR newmod: Module);
 VAR mod: Module;  F: Files.File;  offset: INTEGER;
 BEGIN
   res := 0;
-  error(0, name);  (* No error yet *)
   mod := H.Root;
   WHILE (mod # NIL) & (name # mod.name) DO mod := mod.next END;
   IF (mod = NIL) & (PreloadOffset # 0) THEN
@@ -261,7 +260,9 @@ BEGIN
     IF F = NIL THEN
       error(1, name)
     ELSE
-      offset := 0;  LoadModule(F, offset, mod)
+      error(0, name);  (* No error yet *)
+      offset := 0;
+      LoadModule(F, offset, mod)
     END;
   END;
   newmod := mod
@@ -350,7 +351,8 @@ BEGIN
     ELSIF res = 4 THEN H.wsn("' corrupted obj file")
     ELSIF res = 5 THEN H.ws("' command '"); H.ws(H.CmdCommand); H.wsn("' not found")
     ELSIF res = 7 THEN H.wsn("' insufficient space")
-    END
+    END;
+    H.SetExitCode(res)
   END;
 
   H.Exit
