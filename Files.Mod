@@ -14,11 +14,11 @@ TYPE
     next:       POINTER- TO FileDesc;  (* Non-collecting list of open files *)
     name*:      FileName;
     registered: BOOLEAN;
-    pos:        INTEGER;
+    pos:        INTEGER;  (* Current pos for Win file, start offset for embedded file *)
     tempname:   FileName;
     handle:     INTEGER;
     embedded:   BOOLEAN;
-    size:       INTEGER;  (* only for embedded files *)
+    size:       INTEGER;  (* Only for embedded files *)
   END;
 
   Rider* = RECORD
@@ -28,19 +28,8 @@ TYPE
     file:  File;
   END;
 
-  ExeDirEnt     = POINTER TO ExeDirEntDesc;
-  ExeDirEntDesc = RECORD
-    next: ExeDirEnt;
-    name: FileName;
-    pos:  INTEGER;
-    size: INTEGER;
-  END;
-
 VAR
   first:  POINTER- TO FileDesc;  (* uncollected list of open files *)
-  Exe:    File;
-  ExeDir: ExeDirEnt;
-
 
 (* --------------------------------- Files ---------------------------------- *)
 
@@ -63,24 +52,6 @@ BEGIN
   END
 RETURN f END OpenWinFile;
 
-PROCEDURE OpenExeFile(name: ARRAY OF CHAR): File;
-VAR f: File;  entry: ExeDirEnt;
-BEGIN
-  entry := ExeDir;
-  WHILE (entry # NIL) & (name # entry.name) DO entry := entry.next END;
-  IF entry # NIL THEN
-    (*H.ws("Opening EXE file "); H.ws(name); H.wsn(".");*)
-    NEW(f);
-    H.ZeroFill(f^);
-    f.next       := first;
-    f.registered := TRUE;
-    f.name       := name;
-    f.pos        := entry.pos;
-    f.size       := entry.size;
-    f.embedded   := TRUE;
-    first        := f;
-  END
-RETURN f END OpenExeFile;
 
 PROCEDURE Old*(name: ARRAY OF CHAR): File;
 VAR f: File;
@@ -94,10 +65,10 @@ BEGIN
       (*H.ws("  consider "); H.ws(f.name);  H.wsn("."); *)
       f := f.next
     END;
-    IF f = NIL THEN f := OpenExeFile(name) END;
     IF f = NIL THEN f := OpenWinFile(name) END;
   END
 RETURN f END Old;
+
 
 PROCEDURE MakeTempFile(VAR name: ARRAY OF CHAR);
 VAR temppath: FileName;  res: INTEGER;
@@ -107,6 +78,7 @@ BEGIN
   res := H.GetTempFileNameA(SYSTEM.ADR(temppath), SYSTEM.ADR("OSY"), 0, SYSTEM.ADR(name));
   ASSERT(res # 0)
 END MakeTempFile;
+
 
 PROCEDURE New*(name: ARRAY OF CHAR): File;
 VAR
@@ -132,6 +104,7 @@ BEGIN
   f.next       := first;  first := f;
 RETURN f END New;
 
+
 PROCEDURE Close*(f: File);
 VAR res: INTEGER;
 BEGIN
@@ -139,6 +112,7 @@ BEGIN
     IF ~f.embedded THEN res := H.FlushFileBuffers(f.handle) END
   END
 END Close;
+
 
 PROCEDURE Unregister(f: File);
 VAR disposition, res: INTEGER;
@@ -158,6 +132,7 @@ BEGIN
   END
 END Unregister;
 
+
 PROCEDURE UnregisterByName(name: ARRAY OF CHAR);
 VAR f: File;
 BEGIN f := first;
@@ -168,6 +143,7 @@ BEGIN f := first;
     f := f.next;
   END;
 END UnregisterByName;
+
 
 PROCEDURE Register*(f: File);
 VAR
@@ -220,43 +196,12 @@ END Rename;
 PROCEDURE Length*(f: File): INTEGER;
 VAR res, size: INTEGER;
 BEGIN
-  IF f.embedded THEN
-    size := f.size
-  ELSE
-    ASSERT(H.GetFileSizeEx(f.handle, SYSTEM.ADR(size)) # 0)
-  END
+  ASSERT(H.GetFileSizeEx(f.handle, SYSTEM.ADR(size)) # 0)
 RETURN size END Length;
 
+
 PROCEDURE Date*(f: File): INTEGER;  (* In 100 nanosecond ticks since 1601 UTC *)
-VAR res: INTEGER;
-BEGIN
-  IF f.embedded THEN res := Date(Exe)
-  ELSE res := H.FileTime(f.handle)
-  END
-RETURN res END Date;
-
-
-PROCEDURE DisconnectEmbeddedFiles*;
-VAR f, g: File;
-BEGIN
-  (* Remove embedded files from the actve file list *)
-  WHILE (first # NIL) & first.embedded DO first := first.next END;
-
-  WHILE (first # NIL) & (first.next # NIL) DO
-    IF first.next.embedded THEN
-      first.next := first.next.next
-    ELSE
-      first := first.next
-    END
-  END;
-
-  (* Check there are no embedded files left *)
-  f := first; WHILE f # NIL DO ASSERT(~f.embedded);  f := f.next END;
-
-
-  (* Remove directory of embedded files *)
-  ExeDir := NIL
-END DisconnectEmbeddedFiles;
+RETURN H.FileTime(f.handle) END Date;
 
 
 (* --------------------------------- Riders --------------------------------- *)
@@ -296,25 +241,15 @@ END SetFilePos;
 
 
 PROCEDURE ReadRange(VAR r: Rider; n: INTEGER; VAR x: ARRAY OF BYTE; VAR bytesread: INTEGER);
-VAR fw, fx: File; res, pos, len: INTEGER;
+VAR f: File; res, pos, len: INTEGER;
 BEGIN
-  IF ~r.file.embedded THEN
-    fw  := r.file;
-    pos := r.pos;
-    len := n;
-  ELSE
-    fx  := r.file;
-    fw  := Exe;
-    pos := r.pos + fx.pos;
-    len := n;
-    IF    r.pos >= fx.size      THEN len := 0
-    ELSIF len > r.pos + fx.size THEN len := fx.size - r.pos
-    END
-  END;
+  f  := r.file;
+  pos := r.pos;
+  len := n;
   IF len > 0 THEN
-    SetFilePos(fw, pos);
-    res := H.ReadFile(fw.handle, SYSTEM.ADR(x), len, SYSTEM.ADR(bytesread), 0);
-    INC(fw.pos, bytesread)
+    SetFilePos(f, pos);
+    res := H.ReadFile(f.handle, SYSTEM.ADR(x), len, SYSTEM.ADR(bytesread), 0);
+    INC(f.pos, bytesread)
   ELSE
     bytesread := 0;
   END;
@@ -466,7 +401,7 @@ BEGIN
   f:= first;
   WHILE f # NIL DO
     H.ws("File '"); H.ws(f.name);  H.ws("' ");
-    IF ~f.embedded THEN H.wh(f.handle); H.ws("H ") END;
+    H.wh(f.handle); H.ws("H ");
     IF ~f.registered THEN
       H.ws("temp name "); H.ws(f.tempname); H.wsn(".")
     ELSE
@@ -519,39 +454,9 @@ BEGIN
 END CloseCollectableFiles;
 
 
-PROCEDURE LoadExeDir;
-VAR
-  fn16:  ARRAY H.MaxPath OF SYSTEM.CARD16;
-  fn8:   ARRAY H.MaxPath OF CHAR;
-  res:   INTEGER;
-  f:     File;
-  r:     Rider;
-  entry: ExeDirEnt;
-BEGIN
-  res := H.GetModuleFileNameW(0, SYSTEM.ADR(fn16), H.MaxPath);  ASSERT(res # 0);
-  res := H.Utf16ToUtf8(fn16, fn8);
-  f   := OpenWinFile(fn8);  ASSERT(f # NIL);
-  Exe := f;
-  Set(r, f, H.Preload.FileOfs);
-  REPEAT
-    NEW(entry);
-    ReadString(r, entry.name);
-    ReadNum(r, entry.size);
-    IF ~r.eof THEN
-      entry.pos  := Pos(r);
-      entry.next := ExeDir;
-      ExeDir     := entry;
-      Set(r, f, Pos(r) + entry.size);
-    END
-  UNTIL r.eof
-END LoadExeDir;
-
-
 (* Files.Mod is initialised by Modules.Init *)
-
 PROCEDURE Init*;
 BEGIN first := NIL;  Kernel.Init;
-  IF H.Preload.FileOfs # 0 THEN LoadExeDir END
 END Init;
 
 END Files.

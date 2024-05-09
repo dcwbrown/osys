@@ -41,7 +41,7 @@ TYPE
     ptr*:     INTEGER;     (* 70H PO2013 Pointers: address of array of pointer var addresses *)
     lines*:   INTEGER;     (* 78H Line numbers etc. to address mapping *)
     varsize*: INTEGER;     (* 80H Size of module VARs *)
-    reserve1: INTEGER;     (* 88H *)
+    magic*:   ARRAY 8 OF CHAR; (* 88H *)
   END;
 
 

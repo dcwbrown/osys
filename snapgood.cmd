@@ -18,11 +18,9 @@
 @rd /s /q knowngood.prev1 2>NUL
 @ren knowngood knowngood.prev1
 ::
-@echo Copying files from build2 to knowngood
+@echo Copying files from build to knowngood
 @mkdir knowngood
 @copy *.mod knowngood >NUL
-@copy build\ORP.Compile.exe knowngood >NUL
-@copy build\Link.Link.exe knowngood >NUL
-@copy build\Oberon.exe knowngood >NUL
+@copy build\*.exe knowngood >NUL
 ::
 :end

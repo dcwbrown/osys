@@ -29,14 +29,14 @@ CONST
 TYPE
   ModuleDesc = H.ModuleDesc;
 
-  EmbeddedFile     = POINTER TO EmbeddedFileDesc;
-  EmbeddedFileDesc = RECORD
-    next:    EmbeddedFile;
-    name:    Files.FileName;
-    modname: Modules.ModuleName;
-    key:     INTEGER;
-    file:    Files.File;
+  EmbeddedModule = POINTER TO EmbeddedModuleDesc;
+  EmbeddedModuleDesc = RECORD
+    next: EmbeddedModule;
+    name: Modules.ModuleName;
+    key:  INTEGER;
+    file: Files.File
   END;
+
   Zeroes58 = ARRAY 3AH OF BYTE;
 
   U8  = BYTE;         U16 = SYSTEM.CARD16;  U32 = SYSTEM.CARD32;
@@ -149,10 +149,12 @@ VAR
   ModuleSize:   INTEGER;
   ModuleVSize:  INTEGER;
   ImportMSize:  INTEGER;       (* Import section size in memory (multiple of 16 bytes) *)
-  Embedded:     EmbeddedFile;
-  LastEmbedded: EmbeddedFile;
+
   Verbose:      BOOLEAN;
   EntryPoint:   INTEGER;
+
+  Embeddings:    EmbeddedModule;
+  LastEmbedding: EmbeddedModule;
 
   Idt: ImportDirectoryTable;
 
@@ -509,15 +511,7 @@ PROCEDURE ReadVar(VAR r: Files.Rider;  VAR var: ARRAY OF BYTE);
 BEGIN Files.ReadBytes(r, var, LEN(var))
 END ReadVar;
 
-(* ----------------------------- Embedded files ----------------------------- *)
-
-
-PROCEDURE GetModule(name: ARRAY OF CHAR): EmbeddedFile;
-VAR emf: EmbeddedFile;
-BEGIN
-  emf := Embedded;
-  WHILE (emf # NIL) & (emf.modname # name) DO emf := emf.next END;
-RETURN emf END GetModule;
+(* ---------------------------- Embedded modules ---------------------------- *)
 
 PROCEDURE IsInnerCore(name: ARRAY OF CHAR): BOOLEAN;
 RETURN (name = "WinHost")
@@ -526,66 +520,65 @@ RETURN (name = "WinHost")
     OR (name = "Modules")
 END IsInnerCore;
 
-PROCEDURE Isx64(name: ARRAY OF CHAR): BOOLEAN;
-VAR i, j: INTEGER;  ext: ARRAY 10 OF CHAR;  result: BOOLEAN;
-BEGIN
-  i := 0;  j := 0;  result := FALSE;
-  WHILE name[i] # 0X DO
-    IF name[i] = "." THEN
-      j := 0
-    ELSE
-      ext[j] := name[i];
-      IF j < LEN(ext) - 1 THEN INC(j) END;
-    END;
-    INC(i)
-  END;
-  IF j > 0 THEN ext[j] := 0X;  result := ext = "x64" END
-RETURN result END Isx64;
 
-PROCEDURE AddEmbeddedFile*(name: ARRAY OF CHAR; file: Files.File);
+PROCEDURE IsEmbedded(name: ARRAY OF CHAR): BOOLEAN;
+VAR emb: EmbeddedModule;
+BEGIN emb := Embeddings;
+  WHILE (emb # NIL) & (emb.name # name) DO emb := emb.next END;
+RETURN emb # NIL END IsEmbedded;
+
+
+PROCEDURE EmbedModule(name: ARRAY OF CHAR; reqkey: INTEGER);
 VAR
-  emf: EmbeddedFile;
+  fn:  Files.FileName;
+  f:   Files.File;
   r:   Files.Rider;
-  mod: Modules.ModDesc;
-  imp: ARRAY 64 OF CHAR;
+  hdr: Modules.ModDesc;
+  imp: Modules.ModuleName;
   key: INTEGER;
+  emb: EmbeddedModule;
+
 BEGIN
-  IF file = NIL THEN file := Files.Old(name) END;
-  ASSERT(file # NIL);
-  IF Isx64(name) THEN
-    Files.Set(r, file, 0);
-    ReadVar(r, mod)
-  ELSE
-    H.ZeroFill(mod);
-  END;
-
-  IF (mod.name[0] = 0X)
-  OR (GetModule(mod.name) = NIL) & ~IsInnerCore(mod.name) THEN
-    NEW(emf);
-    emf.name    := name;
-    emf.file    := file;
-    emf.modname := mod.name;
-    emf.key     := mod.key;
-
-    IF Embedded = NIL THEN Embedded := emf ELSE LastEmbedded.next := emf END;
-    LastEmbedded := emf;
-
-    IF mod.name[0] # 0X THEN
-      Files.Set(r, file, (SYSTEM.SIZE(Modules.ModDesc) + 15) DIV 16 * 16);
-      Files.ReadString(r, imp);
-      WHILE imp[0] # 0X DO
-        Files.ReadInt(r, key);
-        (*H.ws(name); H.ws(" imports "); H.ws(imp); H.wsn(".");*)
-        IF GetModule(imp) = NIL THEN
-          H.Append(".x64", imp);  AddEmbeddedFile(imp, NIL);
-        END;
-        Files.ReadString(r, imp);
-      END
+  IF ~IsEmbedded(name) THEN
+    fn := name;  H.Append(".x64", fn);  f := Files.Old(fn);
+    IF f = NIL THEN
+      H.ws("Link.Mod cannot find "); H.ws(fn); H.wsn(".");  ASSERT(FALSE)
     ELSE
-      emf.modname[0] := 0X;
+      Files.Set(r, f, 0);  ReadVar(r, hdr);
+      H.ws("Link.Mod: "); H.ws(fn); H.ws(" scanning "); H.ws(f.name); H.wsn(".");
+      IF hdr.magic # "Oberon5" THEN
+        H.ws("Link.Mod: "); H.ws(fn); H.wsn(" corrupt header.");  ASSERT(FALSE)
+      ELSIF hdr.name # name THEN
+        H.ws("Link.Mod: "); H.ws(fn); H.wsn(" wrong module name.");  ASSERT(FALSE)
+      ELSIF (reqkey # 0) & (reqkey # hdr.key) THEN
+        H.ws("Link.Mod: "); H.ws(fn); H.ws(" key ");
+        H.wh(hdr.key); H.ws("H not requested key ");
+        H.wh(reqkey); H.wsn("H.");
+        ASSERT(FALSE)
+      ELSE
+        Files.Set(r, f, (SYSTEM.SIZE(Modules.ModDesc) + 15) DIV 16 * 16);
+        Files.ReadString(r, imp);
+        WHILE imp[0] # 0X DO
+          Files.ReadInt(r, key);
+          IF ~IsEmbedded(imp) THEN
+            H.ws(name); H.ws(" imports "); H.ws(imp); H.ws(" requesting key ");
+            H.wh(key); H.wsn("H.");
+          END;
+          EmbedModule(imp, key);
+          Files.ReadString(r, imp);
+        END;
+        NEW(emb);
+        emb.next := NIL;
+        emb.name := hdr.name;
+        emb.key  := hdr.key;
+        emb.file := f;
+        IF Embeddings = NIL THEN Embeddings := emb ELSE LastEmbedding.next := emb END;
+        LastEmbedding := emb
+      END
     END
-  END;
-END AddEmbeddedFile;
+  END
+END EmbedModule;
+
 
 PROCEDURE ExportedOffset(modhdr: INTEGER; index: INTEGER): INTEGER;
 VAR exportoffset: SYSTEM.CARD32;  mod: Modules.Module;
@@ -757,13 +750,12 @@ BEGIN
   INC(mod.ptr, ModuleBase + ModuleSize);
   INC(mod.cmd, ModuleBase + ModuleSize);
 
-  (*
-  H.ws("Loaded module "); H.wi(ModCount);
+  H.ws("Link.Link Loaded module "); H.wi(ModCount);
   H.ws(" '");             H.ws(ModAdr[ModCount].name);
-  H.ws("' at ");          H.wh(ModAdr[ModCount].adr);
+  H.ws("' key ");         H.wh(ModAdr[ModCount].key);
+  H.ws("H at ");          H.wh(ModAdr[ModCount].adr);
   H.ws("H nimports ");    H.wh(mod.vars);
   H.ws("H varsize ");     H.wh(mod.varsize);  H.wsn("H.");
-  *)
 
   mod.size := (mod.vars + mod.varsize + 16) DIV 16 * 16;
   INC(mod.vars, ModuleBase + ModuleSize);
@@ -785,7 +777,7 @@ BEGIN
   H.ZeroFill(preload);
   preload.Exeadr    := ImageBase;
   preload.ImgHeader := SYSTEM.VAL(H.Module, ModuleBase);
-  IF Embedded # NIL THEN
+  IF Embeddings # NIL THEN
     preload.FileOfs := FadrModules + Align(ModuleSize, FileAlignment)
   END;
   SYSTEM.COPY(SYSTEM.ADR(preload), SYSTEM.ADR(Mem[varpos]), SYSTEM.SIZE(H.PreLoadVars));
@@ -809,8 +801,8 @@ VAR
   KernelHdr:  Modules.Module;
   FilesHdr:   Modules.Module;
   ModulesHdr: Modules.Module;
-  emf:        EmbeddedFile;
-  f:          Files.File;
+  mod:        Modules.ModDesc;
+  emb:        EmbeddedModule;
   r:          Files.Rider;
   buf:        ARRAY 1024 OF BYTE;
   i, size:    INTEGER;
@@ -850,37 +842,36 @@ BEGIN
   Files.WriteBytes(Exe, Mem, 0, ModuleSize);
   FileAlign(Exe, FileAlignment);
 
-  (* Add any requested embedded files *)
-  emf := Embedded;
-  WHILE emf # NIL DO
-    IF ~IsInnerCore(emf.modname) THEN
-      (*
-      H.ws("  embedded "); H.ws(emf.name);
-      H.ws(" at "); H.wh(Files.Pos(Exe)); H.wsn("H.");
-      *)
-      f := emf.file;  ASSERT(f # NIL);
-      IF f # NIL THEN
-        Files.WriteString(Exe, emf.name);
-        size := Files.Length(f);
-        Files.WriteNum(Exe, size);
-        Files.Set(r, f, 0);
-        i := size DIV LEN(buf);
-        WHILE i > 0 DO
-          Files.ReadBytes(r, buf, LEN(buf));
-          Files.WriteBytes(Exe, buf, 0, LEN(buf));
-          DEC(i)
-        END;
-        i := size MOD LEN(buf);
-        IF i > 0 THEN
-          Files.ReadBytes(r, buf, i);
-          Files.WriteBytes(Exe, buf, 0, i)
-        END
+  (* Add embedded modules *)
+  emb := Embeddings;
+  WHILE emb # NIL DO
+    IF ~IsInnerCore(emb.name) THEN
+      H.ws("* Add embedded module '"); H.ws(emb.name);
+      H.ws("' from '"); H.ws(emb.file.name);
+      Files.Set(r, emb.file, 0);
+      ReadVar(r, mod);
+      H.ws("' name '"); H.ws(mod.name);
+      H.ws("' key "); H.wh(mod.key);
+      H.ws("H at ");  H.wh(Files.Pos(Exe));  H.wsn("H.");
+
+      size := Files.Length(emb.file);  ASSERT(size > 0);
+      Files.Set(r, emb.file, 0);
+      i := size DIV LEN(buf);
+      WHILE i > 0 DO
+        Files.ReadBytes(r, buf, LEN(buf));
+        Files.WriteBytes(Exe, buf, 0, LEN(buf));
+        DEC(i)
+      END;
+      i := size MOD LEN(buf);
+      IF i > 0 THEN
+        Files.ReadBytes(r, buf, i);
+        Files.WriteBytes(Exe, buf, 0, i)
       END
     END;
-    emf := emf.next
+    emb := emb.next
   END;
-  Embedded     := NIL;
-  LastEmbedded := NIL;
+  Embeddings    := NIL;
+  LastEmbedding := NIL;
 
   (* Shuffle previous versions *)
   prev1 := ExeFile.name; H.Append(".-1", prev1);
@@ -930,23 +921,18 @@ VAR
   target:  ARRAY 64 OF CHAR;
   modname: ARRAY 64 OF CHAR;
 BEGIN
-  Files.DisconnectEmbeddedFiles;
-
   (* Parse argument modname[.commandname] from parameter as arg *)
   Texts.OpenReader(r, Texts.Par.text, Texts.Par.pos);
   Texts.Read(r, ch);
 
   ParseTarget(r, ch, target, modname);
-  WHILE target[0] # 0X DO
+  WHILE (target[0] # 0X) & (target # "~") DO
     Texts.WriteString(W, "  linking ");  Texts.WriteString(W, target);
     Texts.WriteLn(W);  Texts.Append(Texts.Log, W.buf);
-    H.Append(".x64", modname);
-    AddEmbeddedFile(modname, NIL);
 
+    EmbedModule(modname, 0);
     (* Special knowledge: Oberon.Mod loads System.Mod *)
-    IF GetModule("Oberon") # NIL THEN
-      AddEmbeddedFile("System.x64", NIL)
-    END;
+    IF IsEmbedded("Oberon") THEN EmbedModule("System", 0) END;
 
     H.Append(".exe", target);
     Generate(target);
@@ -957,6 +943,8 @@ END Link;
 
 
 BEGIN
-  Texts.OpenWriter(W); Texts.WriteString(W, "Linker DCWB 06.05.2024");
+  Texts.OpenWriter(W); Texts.WriteString(W, "Linker DCWB 9th May 2024");
   Texts.WriteLn(W); Texts.Append(Texts.Log, W.buf);
+  Embeddings    := NIL;
+  LastEmbedding := NIL;
 END Link.

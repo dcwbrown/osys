@@ -1312,7 +1312,7 @@ BEGIN
   l.s(") SPO ", Tr);           l.i(X64.SPO, Tr);  l.n(Tr);
   IF stkoff # 0 THEN
     ORS.Mark("VAR parameters not supported for Windows ABI")
-  ELSIF x.mode = Reg THEN
+  ELSIF x.mode IN {Reg, Const} THEN
     ORS.Mark("Not compatible with VAR parameter")
   ELSIF (ftype.form = ORB.Array) & (ftype.len < 0) THEN
     OpenArrayParam(x, stkoff)
@@ -3125,6 +3125,7 @@ BEGIN
   X64.EmitBytes(4, -1);
   WHILE X64.PC MOD 16 # 0 DO X64.Emit(0) END;
   Hdr.size := X64.PC;
+  Hdr.magic := "Oberon5";
 
   (* Display header content *)
   l.sn("Header:", Tr);
