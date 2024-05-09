@@ -545,7 +545,6 @@ BEGIN
       H.ws("Link.Mod cannot find "); H.ws(fn); H.wsn(".");  ASSERT(FALSE)
     ELSE
       Files.Set(r, f, 0);  ReadVar(r, hdr);
-      H.ws("Link.Mod: "); H.ws(fn); H.ws(" scanning "); H.ws(f.name); H.wsn(".");
       IF hdr.magic # "Oberon5" THEN
         H.ws("Link.Mod: "); H.ws(fn); H.wsn(" corrupt header.");  ASSERT(FALSE)
       ELSIF hdr.name # name THEN
@@ -560,10 +559,6 @@ BEGIN
         Files.ReadString(r, imp);
         WHILE imp[0] # 0X DO
           Files.ReadInt(r, key);
-          IF ~IsEmbedded(imp) THEN
-            H.ws(name); H.ws(" imports "); H.ws(imp); H.ws(" requesting key ");
-            H.wh(key); H.wsn("H.");
-          END;
           EmbedModule(imp, key);
           Files.ReadString(r, imp);
         END;
@@ -656,18 +651,8 @@ VAR
 BEGIN
   ASSERT(f # NIL);
   Files.Set(R, f, 0);
-  (*H.wsn("Link.LoadModule: module opened.");*)
   mod := SYSTEM.VAL(Modules.Module, SYSTEM.ADR(Mem[ModuleSize]));
-  (*
-  H.wsn("Link.LoadModule: Loading raw module header:");
-  H.ws("  ModuleSize:                  "); H.wh(ModuleSize); H.wsn("H.");
-  H.ws("  SYSTEM.ADR(Mem[ModuleSize]): "); H.wh(SYSTEM.ADR(Mem[ModuleSize])); H.wsn("H.");
-  *)
   ReadVar(R, mod^);
-  (*
-  H.wsn("Link.LoadModule: raw module header loaded:");
-  H.WriteModuleHeader(mod);
-  *)
   ModAdr[ModCount].name := mod.name;
   ModAdr[ModCount].key  := mod.key;
   ModAdr[ModCount].adr  := ModuleSize;  (* Offset into Mem = relative to ModuleBase *)
@@ -713,26 +698,8 @@ BEGIN
   END;
   Files.Set(R, f, (Files.Pos(R) + 15) DIV 16 * 16);
 
-  (*
-  IF impcnt > 0 THEN
-    H.ws("* "); H.ws(mod.name); H.ws(" importing from");
-    FOR i := 0 TO impcnt-1 DO
-      H.ws("  ");
-      mod2 := SYSTEM.VAL(Modules.Module, SYSTEM.ADR(Mem[modules[i]]));
-      H.ws(mod2.name)
-    END;
-    H.wsn(".");
-  END;
-  *)
-
   (* Link imports *)
   Files.ReadBytes(R, impcnt, 4);
-  (*
-  IF impcnt > 0 THEN
-    H.ws("Linking "); H.wi(impcnt);
-    H.ws(" imports to module "); H.ws(mod.name); H.wsn(".");
-  END;
-  *)
   FOR i := 1 TO impcnt DO
     ReadVar(R, offset);  ReadVar(R, impno);  ReadVar(R, modno);
     LinkImport(ModuleSize, offset, impno, modno, modules)
@@ -750,12 +717,14 @@ BEGIN
   INC(mod.ptr, ModuleBase + ModuleSize);
   INC(mod.cmd, ModuleBase + ModuleSize);
 
+  (*
   H.ws("Link.Link Loaded module "); H.wi(ModCount);
   H.ws(" '");             H.ws(ModAdr[ModCount].name);
   H.ws("' key ");         H.wh(ModAdr[ModCount].key);
   H.ws("H at ");          H.wh(ModAdr[ModCount].adr);
   H.ws("H nimports ");    H.wh(mod.vars);
   H.ws("H varsize ");     H.wh(mod.varsize);  H.wsn("H.");
+  *)
 
   mod.size := (mod.vars + mod.varsize + 16) DIV 16 * 16;
   INC(mod.vars, ModuleBase + ModuleSize);
@@ -846,13 +815,15 @@ BEGIN
   emb := Embeddings;
   WHILE emb # NIL DO
     IF ~IsInnerCore(emb.name) THEN
-      H.ws("* Add embedded module '"); H.ws(emb.name);
-      H.ws("' from '"); H.ws(emb.file.name);
       Files.Set(r, emb.file, 0);
       ReadVar(r, mod);
-      H.ws("' name '"); H.ws(mod.name);
-      H.ws("' key "); H.wh(mod.key);
-      H.ws("H at ");  H.wh(Files.Pos(Exe));  H.wsn("H.");
+      (*
+      H.ws("* Add embedded module '"); H.ws(emb.name);
+      H.ws("' from '");                H.ws(emb.file.name);
+      H.ws("' name '");                H.ws(mod.name);
+      H.ws("' key ");                  H.wh(mod.key);
+      H.ws("H at ");                   H.wh(Files.Pos(Exe));  H.wsn("H.");
+      *)
 
       size := Files.Length(emb.file);  ASSERT(size > 0);
       Files.Set(r, emb.file, 0);
