@@ -101,7 +101,7 @@ BEGIN
   res := H.MoveFile(f.name, f.tempname);
   IF (res # 0) & (res # 2) THEN  (* any failure other than 'not found' *)
     H.ws("** Unregister: Could not move '"); H.ws(f.name); H.ws("' to '");
-    H.ws(f.tempname); H.ws("':"); H.AssertWinErr(res);
+    H.ws(f.tempname); H.ws("':"); H.AssertWinError(res);
   END;
   ASSERT(H.FileOpen(f.tempname, H.OpenRW, f.handle) = 0);
   disposition := 1;  (* 1 = DeleteFile on close *)
@@ -139,7 +139,7 @@ BEGIN
       res := H.Utf8ToUtf16(f.tempname, nameW);  (* Couldn't move temp file, so delete it *)
       res := H.DeleteFileW(SYSTEM.ADR(nameW));
       H.wn; H.ws("** Cannot register "); H.ws(f.name); H.ws(" as it is already in use: **");
-      H.AssertWinErr(err);
+      H.AssertWinError(err);
     END;
     ASSERT(H.FileOpen(f.name, H.OpenRW, f.handle) = 0);
     f.registered := TRUE;
@@ -202,7 +202,7 @@ BEGIN
     IF res = 0 THEN
       H.ws("SetFilePos failed. File handle "); H.wh(f.handle);
       H.ws("H, pos "); H.wi(pos); H.wsn(".");
-      H.AssertWinErr(H.GetLastError())
+      H.AssertWinError(H.GetLastError())
     END;
     ASSERT(res # 0);
     f.pos := pos

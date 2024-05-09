@@ -204,7 +204,7 @@ BEGIN
   H.ws(", height ");  H.wi(height);  H.wsn(".");
   *)
   res := H.BitBlt(ps.hdc, x, y, width, height, Window.bmp.context, x, y, 0CC0020H);  (* SRCCPY *)
-  IF res = 0 THEN H.AssertWinErr(H.GetLastError()) END;
+  IF res = 0 THEN H.AssertWinError(H.GetLastError()) END;
   res := H.EndPaint(hwnd, SYSTEM.ADR(ps));
 END WmPaint;
 

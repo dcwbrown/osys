@@ -310,54 +310,46 @@ BEGIN mod := H.Root;  res := 0;
 END Free;
 
 
-PROCEDURE InitPreload;
+PROCEDURE Init;
 VAR
   fn16:  ARRAY H.MaxPath OF SYSTEM.CARD16;
   fn8:   ARRAY H.MaxPath OF CHAR;
-  res:   INTEGER;
 BEGIN
-  PreloadOffset := H.Preload.FileOfs;
-  IF PreloadOffset # 0 THEN
-    res := H.GetModuleFileNameW(0, SYSTEM.ADR(fn16), H.MaxPath);  ASSERT(res # 0);
-    res := H.Utf16ToUtf8(fn16, fn8);
-    PreloadExe := Files.Old(fn8);
-    ASSERT(PreloadExe # NIL)
-  ELSE
-    PreloadExe := NIL
-  END
-END InitPreload;
-
-
-BEGIN
-  Load := LoadImpl;
   Files.Init;
-  InitPreload;
+  Load          := LoadImpl;
+  PreloadExe    := NIL;
+  PreloadOffset := 0;
+  IF H.Preload.FileOfs # 0 THEN
+    ASSERT(H.GetModuleFileNameW(0, SYSTEM.ADR(fn16), H.MaxPath) # 0);
+    ASSERT(H.Utf16ToUtf8(fn16, fn8) # 0);
+    PreloadExe    := Files.Old(fn8);
+    PreloadOffset := H.Preload.FileOfs;
+    ASSERT(PreloadExe # NIL)
+  END
+END Init;
 
-  IF H.CmdModule = "Modules" THEN  (* Simulate default behaviour of PO2013 *)
-    Load("Oberon", M);
-  ELSE
-    Load(H.CmdModule, M);
-    IF (res = 0) & (H.CmdCommand[0] # 0X) THEN
-      P := ThisCommand(M, H.CmdCommand);
-      IF res = 0 THEN P END
-    END
+
+BEGIN
+  Init;
+
+  Load(H.CmdModule, M);
+  IF (res = 0) & (H.CmdCommand[0] # 0X) THEN
+    P := ThisCommand(M, H.CmdCommand);
+    IF res = 0 THEN P END
   END;
 
   IF res # 0 THEN
-    H.ws("** Modules initialisation: load error: '"); H.ws(importing);
-    IF    res = 1 THEN H.wsn("' module not found")
-    ELSIF res = 2 THEN H.wsn("' bad version")
-    ELSIF res = 3 THEN H.ws("' imports '"); H.ws(imported); H.wsn("' with bad key");
-    ELSIF res = 4 THEN H.wsn("' corrupted obj file")
-    ELSIF res = 5 THEN H.ws("' command '"); H.ws(H.CmdCommand); H.wsn("' not found")
-    ELSIF res = 7 THEN H.wsn("' insufficient space")
+    H.ws("Load error: "); H.ws(importing);
+    IF    res = 1 THEN H.wsn(" module not found")
+    ELSIF res = 2 THEN H.wsn(" bad version")
+    ELSIF res = 3 THEN H.ws(" imports '"); H.ws(imported); H.wsn(" with bad key");
+    ELSIF res = 4 THEN H.wsn(" corrupted obj file")
+    ELSIF res = 5 THEN H.ws(" command "); H.ws(H.CmdCommand); H.wsn(" not found")
+    ELSIF res = 7 THEN H.wsn(" insufficient space")
     END;
     H.SetExitCode(res)
   END;
 
   H.Exit
-(*
-  Load("Oberon", M);
-  LED(res);  REPEAT UNTIL FALSE  (*only if load fails*)
-*)
+  (*LED(res);  REPEAT UNTIL FALSE*)  (*only if load fails*)
 END Modules.

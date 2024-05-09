@@ -319,7 +319,6 @@ BEGIN
   H.ws("H, B.last ");            H.wh(ORD(B.last));
   H.wsn("H.");
   *)
-  (*IF T = NIL THEN H.Trap(0, "** Texts.Append: T = NIL") END;*)
   Insert(T, T.len, B)
 END Append;
 

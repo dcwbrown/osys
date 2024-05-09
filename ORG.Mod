@@ -201,10 +201,21 @@ BEGIN
     l.s(", Free: ", Tr); l.Set(Free, Tr);
     l.s(", SPO ",   Tr); l.i(X64.SPO, Tr); l.sn(".", Tr)
   END;
-  IF Free # AllFree           THEN ORS.Mark("Reg Stack"); ClearRegs;      H.wn; H.Trap(0, "** Free # AllFree")           END;
-  IF X64.PC >= X64.MaxPC - 40 THEN ORS.Mark("program too long");          H.wn; H.Trap(0, "** X64.PC >= X64.MaxPC - 40") END;
-  IF X64.SPO # 0              THEN ORS.Mark("SPO error"); X64.ClearStack; H.wn; H.Trap(0, "** X64.SPO # 0")              END
+  IF Free # AllFree           THEN ORS.Mark("Reg Stack"); ClearRegs;      H.wn; H.Trap(0, "Free # AllFree")           END;
+  IF X64.PC >= X64.MaxPC - 40 THEN ORS.Mark("program too long");          H.wn; H.Trap(0, "X64.PC >= X64.MaxPC - 40") END;
+  IF X64.SPO # 0              THEN ORS.Mark("SPO error"); X64.ClearStack; H.wn; H.Trap(0, "X64.SPO # 0")              END
 END CheckRegs;
+
+PROCEDURE UsesReg(x: Item; reg: INTEGER): BOOLEAN;
+VAR result: BOOLEAN;
+BEGIN result := FALSE;
+  IF x.mode IN {Reg, Eadr} THEN
+    result := result OR (x.n = reg)
+  END;
+  IF x.mode IN {Stkind, Strucp, Eadr, String, Global, Import} THEN
+    result := result OR (x.index = reg)
+  END
+RETURN result END UsesReg;
 
 PROCEDURE FreeRegs(VAR x: Item);
 BEGIN
@@ -1671,7 +1682,7 @@ BEGIN Trace(TraceAny, "Len(x: "); l.Item(x, Tr); l.sn(")", Tr);
     x.mode := Const;
     IF x.mode # String THEN (* Length not already in x.n *)
       ASSERT(x.type.form = ORB.Array);
-      x.n := x.type.size
+      x.n := x.type.size DIV x.type.base.size;
     END;
     x.offset := 0;
   END;
@@ -2363,7 +2374,7 @@ BEGIN
       IF (x.mode = Reg) & (x.n = RAX) THEN
         (* numerator is already in rax *)
       ELSE
-        IF ~(RAX IN Free) THEN
+        IF ~((RAX IN Free) OR UsesReg(x, RAX)) THEN
           (* Save rax temporarily *)
           saveRAX := TRUE;
           PushReg(RAX);  X64.AdjustStack(1);  Release(RAX);

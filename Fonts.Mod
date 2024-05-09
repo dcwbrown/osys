@@ -158,7 +158,5 @@ PROCEDURE Free*;  (*remove all but first two from font list*)
 BEGIN IF root.next # NIL THEN root.next.next := NIL END
 END Free;
 
-BEGIN
-  root    := NIL;
-  Default := This("Syntax14.Scn.Fnt");
+BEGIN root := NIL;  Default := This("Syntax14.Scn.Fnt")
 END Fonts.

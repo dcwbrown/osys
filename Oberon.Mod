@@ -1,6 +1,7 @@
 MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
 
-IMPORT SYSTEM, H := WinHost, WinGui, Kernel, Files, Modules, Input, Display, Viewers, Fonts, Texts;
+IMPORT SYSTEM, H := WinHost, WinGui, Kernel, Files, Modules,
+       Input, Display, Viewers, Fonts, Texts;
 
 CONST (*message ids*)
   consume* = 0; track* = 1; defocus* = 0; neutralize* = 1; mark* = 2;
@@ -428,7 +429,7 @@ BEGIN
 END Reset;
 
 BEGIN
-  (*H.wsn("** Full Oberon initialising.");*)
+  IF Fonts.Default = NIL THEN H.Trap(-1, "Default font not available") END;
 
   User[0] := 0X;
   Arrow.Fade := FlipArrow; Arrow.Draw := FlipArrow;
