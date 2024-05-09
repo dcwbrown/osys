@@ -14,11 +14,9 @@ TYPE
     next:       POINTER- TO FileDesc;  (* Non-collecting list of open files *)
     name*:      FileName;
     registered: BOOLEAN;
-    pos:        INTEGER;  (* Current pos for Win file, start offset for embedded file *)
+    pos:        INTEGER;
     tempname:   FileName;
-    handle:     INTEGER;
-    embedded:   BOOLEAN;
-    size:       INTEGER;  (* Only for embedded files *)
+    handle:     INTEGER
   END;
 
   Rider* = RECORD
@@ -31,41 +29,29 @@ TYPE
 VAR
   first:  POINTER- TO FileDesc;  (* uncollected list of open files *)
 
+
 (* --------------------------------- Files ---------------------------------- *)
 
-PROCEDURE OpenWinFile(name: ARRAY OF CHAR): File;
-VAR res, hnd: INTEGER; f: File;
-BEGIN
-  res := H.FileOpen(name, H.OpenRW, hnd);
-  IF res > 0 THEN (* error encountered *)
-    f := NIL
-  ELSE
-    NEW(f);
-    H.ZeroFill(f^);
-    f.next       := first;
-    f.registered := TRUE;
-    f.name       := name;
-    f.tempname   := "";
-    f.handle     := hnd;
-    f.embedded   := FALSE;
-    first        := f;
-  END
-RETURN f END OpenWinFile;
-
-
 PROCEDURE Old*(name: ARRAY OF CHAR): File;
-VAR f: File;
+VAR res, hnd: INTEGER;  f: File;
 BEGIN
   IF name[0] = 0X THEN
     f := NIL  (* E.g. commonly when Texts.Open passed "" as filename *)
   ELSE
-    (*H.ws("* Old("); H.ws(name); H.wsn("):");*)
     f := first;
-    WHILE (f # NIL) & ~(f.registered & (f.name = name)) DO
-      (*H.ws("  consider "); H.ws(f.name);  H.wsn("."); *)
-      f := f.next
-    END;
-    IF f = NIL THEN f := OpenWinFile(name) END;
+    WHILE (f # NIL) & ~(f.registered & (f.name = name)) DO f := f.next END;
+    IF f = NIL THEN
+      IF H.FileOpen(name, H.OpenRW, hnd) = 0 THEN
+        NEW(f);
+        H.ZeroFill(f^);
+        f.next       := first;
+        f.registered := TRUE;
+        f.name       := name;
+        f.tempname   := "";
+        f.handle     := hnd;
+        first        := f;
+      END
+    END
   END
 RETURN f END Old;
 
@@ -82,54 +68,45 @@ END MakeTempFile;
 
 PROCEDURE New*(name: ARRAY OF CHAR): File;
 VAR
-  res:         INTEGER;
   h:           INTEGER;
   f:           File;
   tempname:    FileName;
   disposition: INTEGER;
 BEGIN
   MakeTempFile(tempname);
-  res := H.FileOpen(tempname, H.OpenRW, h);
-  ASSERT(res = 0);
+  ASSERT(H.FileOpen(tempname, H.OpenRW, h) = 0);
   disposition := 1;  (* 1 = DeleteFile on close *)
-  res := H.SetFileInformationByHandle(h, 4, SYSTEM.ADR(disposition), 8);
-  ASSERT(res # 0);
+  ASSERT(H.SetFileInformationByHandle(h, 4, SYSTEM.ADR(disposition), 8) # 0);
   NEW(f);
   H.ZeroFill(f^);
   f.tempname   := tempname;
   f.registered := FALSE;
   f.name       := name;
   f.handle     := h;
-  f.embedded   := FALSE;
   f.next       := first;  first := f;
 RETURN f END New;
 
 
 PROCEDURE Close*(f: File);
 VAR res: INTEGER;
-BEGIN
-  IF f # NIL THEN
-    IF ~f.embedded THEN res := H.FlushFileBuffers(f.handle) END
-  END
+BEGIN IF f # NIL THEN res := H.FlushFileBuffers(f.handle) END
 END Close;
 
 
 PROCEDURE Unregister(f: File);
 VAR disposition, res: INTEGER;
 BEGIN
-  IF ~f.embedded THEN
-    ASSERT(H.CloseHandle(f.handle) # 0);
-    MakeTempFile(f.tempname);
-    res := H.MoveFile(f.name, f.tempname);
-    IF (res # 0) & (res # 2) THEN  (* any failure other than 'not found' *)
-      H.ws("** Unregister: Could not move '"); H.ws(f.name); H.ws("' to '");
-      H.ws(f.tempname); H.ws("':"); H.AssertWinErr(res);
-    END;
-    ASSERT(H.FileOpen(f.tempname, H.OpenRW, f.handle) = 0);
-    disposition := 1;  (* 1 = DeleteFile on close *)
-    res := H.SetFileInformationByHandle(f.handle, 4, SYSTEM.ADR(disposition), 8);
-    f.registered := FALSE
-  END
+  ASSERT(H.CloseHandle(f.handle) # 0);
+  MakeTempFile(f.tempname);
+  res := H.MoveFile(f.name, f.tempname);
+  IF (res # 0) & (res # 2) THEN  (* any failure other than 'not found' *)
+    H.ws("** Unregister: Could not move '"); H.ws(f.name); H.ws("' to '");
+    H.ws(f.tempname); H.ws("':"); H.AssertWinErr(res);
+  END;
+  ASSERT(H.FileOpen(f.tempname, H.OpenRW, f.handle) = 0);
+  disposition := 1;  (* 1 = DeleteFile on close *)
+  res := H.SetFileInformationByHandle(f.handle, 4, SYSTEM.ADR(disposition), 8);
+  f.registered := FALSE
 END Unregister;
 
 
@@ -152,24 +129,20 @@ VAR
   err:         INTEGER;
   disposition: INTEGER;
 BEGIN
-  (*H.wn; H.ws("* Register('"); H.ws(f.name); H.wsn("') *");*)
-  IF ~f.embedded THEN
-    IF (f # NIL) & (f.name[0] # 0X) & ~f.registered THEN
-      disposition := 0;  (* Remove delete on close flag *)
-      res := H.SetFileInformationByHandle(f.handle, 4, SYSTEM.ADR(disposition), 8);
-      ASSERT(res # 0);
-      ASSERT(H.CloseHandle(f.handle) # 0);
-      UnregisterByName(f.name);
-      IF H.MoveFile(f.tempname, f.name) # 0 THEN
-        err := H.GetLastError();
-        res := H.Utf8ToUtf16(f.tempname, nameW);  (* Couldn't move temp file, so delete it *)
-        res := H.DeleteFileW(SYSTEM.ADR(nameW));
-        H.wn; H.ws("** Cannot register "); H.ws(f.name); H.ws(" as it is already in use: **");
-        H.AssertWinErr(err);
-      END;
-      ASSERT(H.FileOpen(f.name, H.OpenRW, f.handle) = 0);
-      f.registered := TRUE;
-    END
+  IF (f # NIL) & (f.name[0] # 0X) & ~f.registered THEN
+    disposition := 0;  (* Remove delete on close flag *)
+    ASSERT(H.SetFileInformationByHandle(f.handle, 4, SYSTEM.ADR(disposition), 8) # 0);
+    ASSERT(H.CloseHandle(f.handle) # 0);
+    UnregisterByName(f.name);
+    IF H.MoveFile(f.tempname, f.name) # 0 THEN
+      err := H.GetLastError();
+      res := H.Utf8ToUtf16(f.tempname, nameW);  (* Couldn't move temp file, so delete it *)
+      res := H.DeleteFileW(SYSTEM.ADR(nameW));
+      H.wn; H.ws("** Cannot register "); H.ws(f.name); H.ws(" as it is already in use: **");
+      H.AssertWinErr(err);
+    END;
+    ASSERT(H.FileOpen(f.name, H.OpenRW, f.handle) = 0);
+    f.registered := TRUE;
   END
 END Register;
 
@@ -224,7 +197,6 @@ BEGIN RETURN r.file END Base;
 PROCEDURE SetFilePos(f: File; pos: INTEGER);
 VAR res: INTEGER;
 BEGIN
-  ASSERT(~f.embedded);
   IF pos # f.pos THEN
     res := H.SetFilePointerEx(f.handle, pos, 0, 0);
     IF res = 0 THEN
@@ -431,13 +403,10 @@ VAR f, g: File;
   VAR res: INTEGER;
   BEGIN
     H.ws("* Finalising ");
-    IF f.embedded THEN H.ws("embedded file ") ELSE H.ws("Win file ") END;
     H.ws(f.name); H.ws(" ("); IF ~f.registered THEN H.ws("un") END;
     H.wsn("registered).");
     ASSERT(getmark(f) = 0);
-    IF ~f.embedded & f.registered THEN
-      res := H.CloseHandle(f.handle);
-    END
+    IF f.registered THEN res := H.CloseHandle(f.handle) END
   END finalise;
 
 BEGIN
