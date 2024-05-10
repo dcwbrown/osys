@@ -108,7 +108,6 @@ VAR
   import:    ARRAY 16 OF Module;
   impmod:    Module;
   impkey:    INTEGER;
-  imptabpos: INTEGER;
   p:         INTEGER;
   allocsize: INTEGER;
   loadlen:   INTEGER;
@@ -150,8 +149,7 @@ BEGIN
         END
       END;
       Files.ReadString(R, impname)
-    END;
-    imptabpos := (Files.Pos(R) + 15) DIV 16 * 16;
+    END
   END;
 
   IF res = 0 THEN (*search for a hole in the list allocate and link*)
@@ -195,7 +193,8 @@ BEGIN
     mod.ptr     := ORD(mod) + header.ptr;
 
     (* Link imports *)
-    Files.Set(R, F, imptabpos);
+
+    Files.Set(R, F, filepos + header.imprefs);
     Files.ReadBytes(R, impcount, 4);
     FOR i := 1 TO impcount DO
       ReadVar(R, offset);  ReadVar(R, impno);  ReadVar(R, modno);

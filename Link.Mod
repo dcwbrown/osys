@@ -514,10 +514,8 @@ END ReadVar;
 (* ---------------------------- Embedded modules ---------------------------- *)
 
 PROCEDURE IsInnerCore(name: ARRAY OF CHAR): BOOLEAN;
-RETURN (name = "WinHost")
-    OR (name = "Kernel")
-    OR (name = "Files")
-    OR (name = "Modules")
+RETURN (name = "WinHost") OR (name = "Kernel")
+    OR (name = "Files")   OR (name = "Modules")
 END IsInnerCore;
 
 
@@ -663,13 +661,21 @@ BEGIN
   FOR i := 1 TO mod.varsize DO Mem[m] := 0;  INC(m) END;
 
   (* Extract list of imported modules from loaded code *)
-  m := ModuleSize + (SYSTEM.SIZE(Modules.ModDesc) + 15) DIV 16 * 16;
+  m := ModuleSize + SYSTEM.SIZE(Modules.ModDesc);
+  impcnt := 0;
   REPEAT
     i := 0;
     REPEAT impname[i] := CHR(Mem[m]); INC(i); INC(m) UNTIL impname[i-1] = 0X;
     IF impname[0] # 0X THEN
       SYSTEM.GET(SYSTEM.ADR(Mem[m]), impkey); INC(m, 8);
+      (* Find loaded module number for this import *)
+      modnum := 0;
+      WHILE (modnum < ModCount) & (ModAdr[modnum].name # impname) DO INC(modnum) END;
+      ASSERT(modnum < ModCount);
+      ASSERT(ModAdr[modnum].key = impkey);
+      modules[impcnt] := ModAdr[modnum].adr
     END;
+    INC(impcnt)
   UNTIL impname[0] = 0X;
 
 
@@ -681,22 +687,8 @@ BEGIN
    Implement module ref counts
 *)
 
-  (* Build list of imported module addresses *)
-  Files.ReadString(R, impname);
-  impcnt := 0;
-  WHILE impname[0] # 0X DO
-    modnum := 0;
-    WHILE (modnum < ModCount) & (ModAdr[modnum].name # impname) DO INC(modnum) END;
-    ASSERT(modnum < ModCount);
-    Files.ReadInt(R, impkey);
-    ASSERT(ModAdr[modnum].key = impkey);
-    modules[impcnt] := ModAdr[modnum].adr;
-    INC(impcnt);
-    Files.ReadString(R, impname)
-  END;
-  Files.Set(R, f, (Files.Pos(R) + 15) DIV 16 * 16);
-
   (* Link imports *)
+  Files.Set(R, f, mod.imprefs);
   Files.ReadBytes(R, impcnt, 4);
   FOR i := 1 TO impcnt DO
     ReadVar(R, offset);  ReadVar(R, impno);  ReadVar(R, modno);

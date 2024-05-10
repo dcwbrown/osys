@@ -2896,7 +2896,6 @@ l.Init(ORS.SourceFile());
   ImpFInx         := 0;
   Disasmpc        := 0;
   X64.SetPC(SYSTEM.SIZE(ModuleDesc));
-  X64.Align(16);
   Disasmpc := X64.PC;
 
   (* Emit imported module names and keys *)
