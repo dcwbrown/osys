@@ -678,14 +678,7 @@ BEGIN
     INC(impcnt)
   UNTIL impname[0] = 0X;
 
-
-(* TODO
-   Build Modules ARRAY in import name loader above
-   Add Imports field to header pointing beyond names to actual imports
-   Link imports using imports field to address them
-   Remove redundant import names at end of code
-   Implement module ref counts
-*)
+(* TODO - Implement module ref counts *)
 
   (* Link imports *)
   Files.Set(R, f, mod.imprefs);

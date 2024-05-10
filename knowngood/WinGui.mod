@@ -91,13 +91,13 @@ BEGIN (* Note: Windows coords are top down, PO2013's are bottom up *)
   END
 END InvalidateDirty;
 
-PROCEDURE Close*;
+PROCEDURE Quit*;
 VAR res: INTEGER;
 BEGIN
   IF Window # NIL THEN
    res := H.PostMessageW(Window.hwnd, 16 (* WM_CLOSE *), 0, 0)
  END
-END Close;
+END Quit;
 
 
 (* ----------------------- Windows bitmap management ------------------------ *)
