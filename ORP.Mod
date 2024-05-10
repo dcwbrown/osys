@@ -8,33 +8,23 @@ IMPORT SYSTEM, H := WinHost, Kernel, Files, Texts, ORS, ORB, X64, l := Listing, 
     ORG to produce binary code. ORP performs type checking and data allocation.
     Parser is target-independent, except for part of the handling of allocations.*)
 
-TYPE
-  PtrBase     = POINTER TO PtrBaseDesc;
+TYPE PtrBase = POINTER TO PtrBaseDesc;
   PtrBaseDesc = RECORD  (*list of names of pointer base types*)
-    name: ORS.Ident;
-    type: ORB.Type;
-    next: PtrBase
+    name: ORS.Ident; type: ORB.Type; next: PtrBase
   END;
 
-VAR
-  sym:     INTEGER;             (* last symbol read *)
-  dc:      INTEGER;             (* data counter *)
+VAR sym:   INTEGER;    (* last symbol read *)
+  dc:      INTEGER;    (* data counter *)
   level:   INTEGER;
-  modid:   ORS.Ident;
-  pbsList: PtrBase;             (* list of names of pointer base types *)
-  dummy:   ORB.Object;
-
-  (* Forward procedures *)
-  expression:  PROCEDURE(VAR x: X64.Item);
+  NewSF:   BOOLEAN;    (* option flag *)
+  expression:  PROCEDURE(VAR x: X64.Item);  (* to avoid forward reference *)
   Type:        PROCEDURE(VAR type: ORB.Type);
   FormalType:  PROCEDURE(VAR typ: ORB.Type;  dim: INTEGER);
-
-  (* Trace *)
-  Tr: l.Buffer;
-  W:  Texts.Writer;
-
-  NewSF: BOOLEAN;
-
+  modid:   ORS.Ident;
+  pbsList: PtrBase;    (* list of names of pointer base types *)
+  dummy:   ORB.Object;
+  W:       Texts.Writer;
+  Tr:      l.Buffer;
 
 PROCEDURE Check(s: INTEGER;  msg: ARRAY OF CHAR);
 BEGIN
