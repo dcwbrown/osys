@@ -1376,7 +1376,7 @@ END Compile;
 
 
 BEGIN
-  Texts.OpenWriter(W); Texts.WriteString(W, "OR Compiler  NW 8.3.2020 / DCWB 03.04.2024");
+  Texts.OpenWriter(W); Texts.WriteString(W, "OR Compiler  NW 8.3.2020 / DCWB 2024-05-10");
   Texts.WriteLn(W); Texts.Append(Texts.Log, W.buf);
   l.InitBuf(Tr);
   NEW(dummy);  dummy.class := ORB.Var;  dummy.type := ORB.intType;

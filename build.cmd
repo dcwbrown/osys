@@ -64,7 +64,9 @@ goto noprebuild
 @ORP.Compile TextFrames.Mod/s Edit.Mod/s System.Mod/s ~             || goto end
 ::
 @Link.Link Oberon                                                   || goto end
+
 ::
 ::
 :end
 @cd ..
+build\Oberon

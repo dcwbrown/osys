@@ -1,5 +1,5 @@
 MODULE Input; (*NW 5.10.86 / 15.11.90 Ceres-2; PDR 21.4.12 / NW 15.5.2013 Ceres-4*)
-(*DCWB 2024/03/19 hosting on MS Win *)
+(*DCWB 2024-03-19 hosting on MS Win *)
 
 IMPORT SYSTEM, H := WinHost, WinGui;
 
@@ -32,8 +32,7 @@ BEGIN
 END Peek;
 
 PROCEDURE Available*(): INTEGER;
-BEGIN
-  Peek();
+BEGIN Peek();
   RETURN ORD(Recd)
 END Available;
 
@@ -41,7 +40,8 @@ PROCEDURE Read*(VAR ch: CHAR);
 BEGIN
   WHILE ~Recd DO Peek() END;
   IF Shift OR Ctrl THEN INC(kbdCode, 80H) END; (*ctrl implies shift*)
-  SYSTEM.GET(KTabAdr + kbdCode, ch);  (* Was: ch := kbdTab[kbdCode]; *)
+(* ch := kbdTab[kbdCode]; *)
+  SYSTEM.GET(KTabAdr + kbdCode, ch);
   IF Ctrl THEN ch := CHR(ORD(ch) MOD 20H) END;
   Recd := FALSE
 END Read;
@@ -58,8 +58,7 @@ BEGIN
 END Mouse;
 
 PROCEDURE SetMouseLimits*(w, h: INTEGER);
-BEGIN MW := w; MH := h;
-  (*H.ws("Input.SetMouseLimits("); H.wi(w); H.wc(","); H.wi(h); H.wsn(").")*)
+BEGIN MW := w; MH := h
 END SetMouseLimits;
 
 PROCEDURE Init*;

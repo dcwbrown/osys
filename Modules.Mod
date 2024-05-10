@@ -21,19 +21,17 @@ VAR
 
 
 PROCEDURE ThisFile(name: ARRAY OF CHAR): Files.File;
-VAR i: INTEGER;  filename: ModuleName;
+    VAR i: INTEGER;
+      filename: ModuleName;
 BEGIN i := 0;
   WHILE name[i] # 0X DO filename[i] := name[i];  INC(i) END;
-  filename[i]   := ".";  filename[i+1] := "x";  filename[i+2] := "6";
-  filename[i+3] := "4";  filename[i+4] := 0X;
+    filename[i] := "."; filename[i+1] := "x"; filename[i+2] := "6"; filename[i+3] := "4"; filename[i+4] := 0X;
   RETURN Files.Old(filename)
 END ThisFile;
-
 
 PROCEDURE error(n: INTEGER;  name: ARRAY OF CHAR);
 BEGIN res := n;  importing := name
 END error;
-
 
 PROCEDURE Check(s: ARRAY OF CHAR);
 VAR i: INTEGER;  ch: CHAR;
@@ -270,23 +268,18 @@ END LoadImpl;
 
 
 PROCEDURE ThisCommand*(mod: Module;  name: ARRAY OF CHAR): Command;
-VAR k, adr, w: INTEGER;  ch: CHAR; offset: SYSTEM.CARD32;
+VAR k, adr, w: INTEGER;  ch: CHAR;
     s: ARRAY 32 OF CHAR;
-BEGIN
-  res := 5;  w := 0;
+    offset: SYSTEM.CARD32;
+BEGIN res := 5;  w := 0;
   IF mod # NIL THEN
     adr := mod.cmd;  SYSTEM.GET(adr, ch);
-    WHILE (ch # 0X) & (res # 0) DO
-      k := 0;  (*read command name*)
+    WHILE (ch # 0X) & (res # 0) DO k := 0;  (*read command name*)
       REPEAT s[k] := ch;  INC(k);  INC(adr);  SYSTEM.GET(adr, ch) UNTIL ch = 0X;
       s[k] := 0X;
       INC(adr); (*REPEAT INC(adr) UNTIL adr MOD 4 = 0;*)
       SYSTEM.GET(adr, offset);  INC(adr, 4);
-      IF s = name THEN
-        res := 0;  w := ORD(mod) + offset
-      ELSE
-        SYSTEM.GET(adr, ch)
-      END
+      IF s = name THEN res := 0; w := ORD(mod) + offset ELSE SYSTEM.GET(adr, ch) END
     END
   END
   RETURN SYSTEM.VAL(Command, w)
@@ -328,8 +321,7 @@ BEGIN
 END Init;
 
 
-BEGIN
-  Init;
+BEGIN Init;
 
   Load(H.CmdModule, M);
   IF (res = 0) & (H.CmdCommand[0] # 0X) THEN
