@@ -129,38 +129,19 @@ VAR
   card16Type, card32Type: Type;
 
   nofmod, Ref: INTEGER;
-
   typtab: ARRAY maxTypTab OF Type;
 
-  FindSymbolFile: PROCEDURE(name: ORS.Ident): Files.File;
-
-
-PROCEDURE SetSymbolFileFinder*(proc: PROCEDURE(name: ORS.Ident): Files.File);
-BEGIN FindSymbolFile := proc END SetSymbolFileFinder;
 
 PROCEDURE NewObj*(VAR obj: Object; id: ORS.Ident; class: INTEGER);
 (*insert new Object with name id*)
 VAR new, x: Object;
-BEGIN
-  (*w.s("ORB.NewObj, id: '"); w.s(id); w.sl("'.");*)
-  x := topScope;
+BEGIN x := topScope;
   WHILE (x.next # NIL) & (x.next.name # id) DO x := x.next END;
   IF x.next = NIL THEN
-    NEW(new);
-    new.class := class;
-    new.exno  := 0;
-    new.expo  := FALSE;
-    new.rdo   := FALSE;
-    new.lev   := 0;
-    new.next  := NIL;
-    new.dsc   := NIL;
-    new.type  := NIL;
-    new.name  := id;
-    new.val   := 0;
-    x.next := new;
-    obj    := new
-  ELSE
-    obj := x.next; ORS.Mark("mult def")
+    NEW(new); new.name := id; new.class := class; new.next := NIL; new.rdo := FALSE; new.dsc := NIL;
+    new.exno  := 0; new.expo := FALSE; new.lev := 0; new.type  := NIL; new.val := 0;
+    x.next := new; obj    := new
+  ELSE obj := x.next; ORS.Mark("mult def")
   END
 END NewObj;
 
@@ -215,7 +196,6 @@ PROCEDURE CloseScope*;
 BEGIN topScope := topScope.dsc
 END CloseScope;
 
-
 (*------------------------------- Import ---------------------------------*)
 
 PROCEDURE MakeFileName*(VAR FName: ORS.Ident; name, ext: ARRAY OF CHAR);
@@ -229,17 +209,6 @@ END MakeFileName;
 PROCEDURE ThisModule(name, orgname: ORS.Ident; decl: BOOLEAN; key: INTEGER): Object;
 VAR mod: Module; obj, obj1: Object;
 BEGIN obj1 := topScope; obj := obj1.next;  (*search for module*)
-(*
-  WHILE (obj # NIL) & (obj.name # name) DO obj1 := obj; obj := obj1.next END;
-  IF obj = NIL THEN  (*insert new module*)
-    NEW(mod); mod.class := Mod; mod.rdo := FALSE;
-    mod.name := name; mod.orgname := orgname; mod.val := key;
-    mod.lev := nofmod; INC(nofmod); mod.type := noType; mod.dsc := NIL; mod.next := NIL;
-    obj1.next := mod; obj := mod
-  ELSE (*module already present*)
-    IF decl THEN ORS.Mark("invalid import order") END
-  END;
-*)
   WHILE (obj # NIL) & (obj(Module).orgname # orgname) DO obj1 := obj; obj := obj1.next END;
   IF obj = NIL THEN  (*new module, search for alias*)
     obj := topScope.next;
@@ -274,10 +243,7 @@ VAR key: INTEGER;
     name, modname: ORS.Ident;
     b: BYTE;
 BEGIN Read(R, ref);
-  (*w.s("InType: ref read "); w.i(ref); w.sl(".");*)
-  IF ref < 0 THEN
-    T := typtab[-ref];  (*already read*)
-    ASSERT(T # NIL)
+  IF ref < 0 THEN T := typtab[-ref]  (*already read*)
   ELSE NEW(t); T := t; typtab[ref] := t; t.mno := thismod.lev;
     Read(R, form); t.form := form;
     IF form = Pointer THEN InType(R, thismod, t.base); t.size := WordSize
@@ -299,8 +265,8 @@ BEGIN Read(R, ref);
       END;
       IF last = NIL THEN t.dsc := obj ELSE last.next := obj END
     ELSIF form = Proc THEN
-      InType(R, thismod, t.base);  Files.ReadNum(R, t.len);
-      Files.ReadByte(R, b);  t.native := b # 0;
+      InType(R, thismod, t.base);  
+      Files.ReadNum(R, t.len);  Files.ReadByte(R, b);  t.native := b # 0;
       obj := NIL; np := 0; Read(R, class);
       WHILE class # 0 DO  (*parameters*)
         NEW(par); par.class := class; Read(R, readonly); par.rdo := readonly = 1;
@@ -335,10 +301,7 @@ BEGIN
   IF modid1 = "SYSTEM" THEN
     thismod := ThisModule(modid, modid1, TRUE,  key); DEC(nofmod);
     thismod.lev := 0; thismod.dsc := system; thismod.rdo := TRUE
-  ELSE
-    F := NIL;
-    IF FindSymbolFile # NIL THEN F := FindSymbolFile(modid1) END;
-    IF F = NIL THEN MakeFileName(fname, modid1, ".smb"); F := Files.Old(fname) END;
+  ELSE MakeFileName(fname, modid1, ".smb"); F := Files.Old(fname);
     IF F # NIL THEN
       Files.Set(R, F, 0); Files.ReadInt(R, key); Files.ReadInt(R, key); Files.ReadString(R, modname);
       IF modid1 # modname THEN
@@ -363,14 +326,10 @@ BEGIN
         END;
         obj.next := thismod.dsc; thismod.dsc := obj; Read(R, class)
       END;
-    ELSE
-      H.ws("Import("); H.ws(modid); H.ws(", "); H.ws(modid1); H.wsn("):");
-      ORS.Mark("import not available")
+    ELSE ORS.Mark("import not available")
     END
-  END;
-  (*w.sl("ORB.Import complete.")*)
+  END
 END Import;
-
 
 (*-------------------------------- Export ---------------------------------*)
 
@@ -396,13 +355,10 @@ VAR obj, mod, fld, bot: Object;
   PROCEDURE FindHiddenPointers(VAR R: Files.Rider; typ: Type; offset: INTEGER);
     VAR fld: Object; i, n: INTEGER;
   BEGIN
-    IF (typ.form = Pointer) OR (typ.form = NilTyp) THEN
-      Write(R, Fld); Write(R, 0); Files.WriteNum(R, offset)
-    ELSIF typ.form = Record THEN
-      fld := typ.dsc;
+    IF (typ.form = Pointer) OR (typ.form = NilTyp) THEN Write(R, Fld); Write(R, 0); Files.WriteNum(R, offset)
+    ELSIF typ.form = Record THEN fld := typ.dsc;
       WHILE fld # NIL DO FindHiddenPointers(R, fld.type, fld.val + offset); fld := fld.next END
-    ELSIF typ.form = Array THEN
-      i := 0; n := typ.len;
+    ELSIF typ.form = Array THEN i := 0; n := typ.len;
       WHILE i < n DO FindHiddenPointers(R, typ.base, typ.base.size * i + offset); INC(i) END
     END
   END FindHiddenPointers;
@@ -410,13 +366,7 @@ VAR obj, mod, fld, bot: Object;
 BEGIN
   IF t.ref > 0 THEN (*type was already output*) Write(R, -t.ref)
   ELSE obj := t.typobj;
-    IF obj # NIL THEN
-      Write(R, Ref); t.ref := Ref; INC(Ref);
-      (*w.s("OutType: t.ref "); w.i(t.ref); w.sl(".");*)
-    ELSE (*anonymous*)
-      Write(R, 0);
-      (*w.sl("OutType: t.ref 0 (anonymous, was).");*)
-    END;
+    IF obj # NIL THEN Write(R, Ref); t.ref := Ref; INC(Ref) ELSE (*anonymous*) Write(R, 0) END;
     Write(R, t.form);
     IF t.form = Pointer THEN OutType(R, t.base)
     ELSIF t.form = Array THEN OutType(R, t.base); Files.WriteNum(R, t.len); Files.WriteNum(R, t.size)
@@ -433,8 +383,8 @@ BEGIN
         fld := fld.next
       END;
       Write(R, 0)
-    ELSIF t.form = Proc THEN
-      OutType(R, t.base);  Files.WriteNum(R, t.len);  Files.WriteByte(R, ORD(t.native));
+    ELSIF t.form = Proc THEN OutType(R, t.base); 
+      Files.WriteNum(R, t.len);  Files.WriteByte(R, ORD(t.native));
       OutPar(R, t.dsc, t.nofpar); Write(R, 0)
     END;
     IF (t.mno > 0) & (obj # NIL) THEN  (*re-export, output name*)
@@ -454,10 +404,7 @@ VAR x, sum, oldkey: INTEGER;
     obj, obj0: Object;
     filename: ORS.Ident;
     F, F1: Files.File; R, R1: Files.Rider;
-BEGIN
-  (*w.Noskip; w.s("Exporting module "); w.s(modid); w.sl(".");*)
-  Ref := Record + 1;
-  MakeFileName(filename, modid, ".smb");
+BEGIN Ref := Record + 1; MakeFileName(filename, modid, ".smb");
   F := Files.New(filename); Files.Set(R, F, 0);
   Files.WriteInt(R, 0); (*placeholder*)
   Files.WriteInt(R, 0); (*placeholder for key to be inserted at the end*)
@@ -471,9 +418,7 @@ BEGIN
         IF obj.type.form = Record THEN
           obj0 := topScope.next;  (*check whether this is base of previously declared pointer types*)
           WHILE obj0 # obj DO
-            IF (obj0.type.form = Pointer) & (obj0.type.base = obj.type) & (obj0.type.ref > 0) THEN
-              Write(R, obj0.type.ref)
-            END;
+            IF (obj0.type.form = Pointer) & (obj0.type.base = obj.type) & (obj0.type.ref > 0) THEN Write(R, obj0.type.ref) END;
             obj0 := obj0.next
           END
         END;
@@ -491,43 +436,29 @@ BEGIN
   REPEAT Write(R, 0) UNTIL Files.Length(F) MOD 8 = 0; (* Zero fill to whole multiple of integer size *)
 
   FOR Ref := Record+1 TO maxTypTab-1 DO typtab[Ref] := NIL END;
-
   Files.Set(R, F, 0); sum := 0; Files.ReadInt(R, x);  (* compute key (checksum) *)
   WHILE ~R.eof DO sum := sum + x; Files.ReadInt(R, x) END;
-
   F1 := Files.Old(filename); (*sum is new key*)
   IF F1 # NIL THEN Files.Set(R1, F1, 8); Files.ReadInt(R1, oldkey) ELSE oldkey := sum+1 END;
   IF sum # oldkey THEN
     IF newSF OR (F1 = NIL) THEN
       key := sum; newSF := TRUE; Files.Set(R, F, 8); Files.WriteInt(R, sum);  (* insert checksum *)
       Files.Register(F)
-    ELSE
-      ORS.Mark("new symbol file inhibited")
+    ELSE ORS.Mark("new symbol file inhibited")
     END
   ELSE newSF := FALSE; key := sum
   END
 END Export;
 
-
 PROCEDURE Init*;
 BEGIN topScope := universe; nofmod := 1
 END Init;
 
-
 PROCEDURE type(ref, form: INTEGER; size: INTEGER): Type;
-VAR tp, tp2: Type;
-BEGIN
-  NEW(tp); tp.form := form; tp.size := size; tp.ref := ref; tp.base := NIL;
-  (*
-  w.s("Create type, ref ");  w.i(ref);
-  w.s(", typtab at ");       w.h(SYSTEM.ADR(typtab));
-  w.s("H, typtab[ref] at "); w.h(SYSTEM.ADR(typtab[ref]));
-  w.sl("H.");
-  *)
-  tp2 := typtab[ref];
+VAR tp: Type;
+BEGIN NEW(tp); tp.form := form; tp.size := size; tp.ref := ref; tp.base := NIL;
   typtab[ref] := tp; RETURN tp
 END type;
-
 
 PROCEDURE enter(name: ARRAY OF CHAR; cl: INTEGER; type: Type; n: INTEGER);
 VAR obj: Object;
@@ -554,11 +485,9 @@ BEGIN
   strType    := type(String, String, 16);
 
 (*initialize universe with data types and in-line procedures;
-  INTEGER is synonym to INTEGER, LONGREAL to REAL.
+  LONGREAL is synonym to REAL.
   LED, ADC, SBC; LDPSR, LDREG, REG, COND are not in language definition*)
-
   system := NIL;  (*n = procno*10 + nofpar*)
-
   enter("UML",      SFunc, intType,  132);  (*functions*)
   enter("SBC",      SFunc, intType,  122);
   enter("ADC",      SFunc, intType,  112);
@@ -591,7 +520,6 @@ BEGIN
 
   topScope := NIL; OpenScope; topScope.next := system; universe := topScope;
   system   := NIL;  (* initialize "unsafe" pseudo-module SYSTEM*)
-
   enter("COND",   SFunc, boolType,   191);  (*functions*)
   enter("SIZE",   SFunc, intType,    181);
   enter("ADR",    SFunc, intType,    171);
@@ -604,7 +532,7 @@ BEGIN
   enter("PUT",    SProc, noType,     112);
   enter("GET",    SProc, noType,     102);
   enter("INT8",   Typ,   int8Type,   0);    (*types*)
-  enter("INT16",  Typ,   int16Type,  0);    (*types*)
+  enter("INT16",  Typ,   int16Type,  0);
   enter("INT32",  Typ,   int32Type,  0);
   enter("CARD16", Typ,   card16Type, 0);
   enter("CARD32", Typ,   card32Type, 0)

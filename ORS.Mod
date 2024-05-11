@@ -11,11 +11,9 @@ IMPORT SYSTEM, H := WinHost, Files, Texts;
   If Get delivers ident, then the identifier (a string) is in variable id, if int or char
   in ival, if real in rval, and if string in str (and slen) *)
   
-CONST
-  IdLen*        = 32;
-  NKW           = 34;  (* nof keywords *)
-  maxExp        = 38;
-  stringBufSize = 2048;
+CONST IdLen* = 32;
+  NKW = 34;  (* nof keywords *)
+  maxExp = 38;  stringBufSize = 2048;
 
   (* lexical symbols *)
   null    = 0;  times*     = 1;  rdiv*      = 2;  div*    = 3;  mod*    = 4;
@@ -31,8 +29,7 @@ CONST
   to*     = 50; by*        = 51; semicolon* = 52; end*    = 53; bar*    = 54;
   else*   = 55; elsif*     = 56; until*     = 57; return* = 58;
   array*  = 60; record*    = 61; pointer*   = 62; const*  = 63; type*   = 64;
-  var*    = 65; procedure* = 66; begin*     = 67; import* = 68; module* = 69;
-  eot     = 70;
+  var*    = 65; procedure* = 66; begin*     = 67; import* = 68; module* = 69;  eot = 70;
 
 TYPE Ident* = ARRAY IdLen OF CHAR;
 
@@ -51,13 +48,13 @@ VAR
   R:        Texts.Reader;
   k:        INTEGER;
   KWX:      ARRAY 10 OF INTEGER;
-  keyTab:   ARRAY NKW OF RECORD sym: INTEGER; id: ARRAY 12 OF CHAR END;
+  keyTab:   ARRAY NKW OF 
+              RECORD sym: INTEGER; id: ARRAY 12 OF CHAR END;
 
   (* Compilation options *)
   ListCodegen*:  BOOLEAN;
   ListAssembly*: BOOLEAN;
   Hasty*:        BOOLEAN;
-
 
 
 PROCEDURE CopyId*(VAR ident: Ident);
@@ -93,19 +90,16 @@ BEGIN p := Pos();
   INC(errcnt); errpos := p + 4
 END Mark;
 
-
 PROCEDURE Identifier(VAR sym: INTEGER);
 VAR i, k: INTEGER;
 BEGIN i := 0;
   REPEAT
-    IF i < IdLen-1 THEN id[i] := ch; INC(i) END;  GetCh
+    IF i < IdLen-1 THEN id[i] := ch; INC(i) END;  
+    GetCh
   UNTIL (ch < "0") OR (ch > "9") & (ch < "A") OR (ch > "Z") & (ch < "a") OR (ch > "z");
   id[i] := 0X;
   IF i < 10 THEN k := KWX[i-1];  (*search for keyword*)
-    WHILE (id # keyTab[k].id) & (k < KWX[i]) DO
-      (*w.s("  "); w.s(id); w.s(" # ["); w.i(k); w.s("] "); w.s(keyTab[k].id); w.sl(".");*)
-      INC(k)
-    END;
+    WHILE (id # keyTab[k].id) & (k < KWX[i]) DO INC(k) END;
     IF k < KWX[i] THEN sym := keyTab[k].sym ELSE sym := ident END
   ELSE sym := ident
   END
@@ -186,7 +180,6 @@ BEGIN ival := 0; i := 0; n := 0; k := 0;
     ELSE sym := int; ival := k
     END;
     GetCh
-
   ELSIF ch = "." THEN
     GetCh;
     IF ch = "." THEN (*double dot*) ch := 7FX;  (*decimal integer*)
@@ -333,8 +326,7 @@ BEGIN
       END;
       GetCh
     END
-  UNTIL sym # null;
-  (*w.s("GetSym -> "); IF sym = ident THEN w.s(id) ELSE w.i(sym) END; w.sl(".");*)
+  UNTIL sym # null
 END Get;
 
 
@@ -359,12 +351,8 @@ PROCEDURE EnterKW(sym: INTEGER; name: ARRAY OF CHAR);
 BEGIN keyTab[k].id := name; keyTab[k].sym := sym; INC(k)
 END EnterKW;
 
-BEGIN
-  Texts.OpenWriter(W);
-  ch     := 0X;
-  k      := 0;
-  KWX[0] := 0;
-  KWX[1] := 0;
+BEGIN Texts.OpenWriter(W);  k := 0;  KWX[0] := 0;  KWX[1] := 0;
+  ch := 0X;
   EnterKW(if, "IF");
   EnterKW(do, "DO");
   EnterKW(of, "OF");

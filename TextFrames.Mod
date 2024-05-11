@@ -44,7 +44,7 @@ TYPE Line = POINTER TO LineDesc;
   UpdateMsg* = RECORD (Display.FrameMsg)
     id*:   INTEGER;
     text*: Texts.Text;
-    beg*,
+    beg*:  INTEGER;
     end*:  INTEGER
   END;
 
@@ -53,25 +53,12 @@ TYPE Line = POINTER TO LineDesc;
     beg, end: INTEGER
   END;
 
-VAR
-  TBuf*,
-  DelBuf:       Texts.Buffer;
-  menuH*,
-  barW*,
-  left*,
-  right*,
-  top*,
-  bot*,
-  lsp*:         INTEGER; (*standard sizes*)
-  asr,
-  dsr,
-  selH,
-  markW,
-  eolW:         INTEGER;
-  nextCh:       CHAR;
+VAR TBuf*, DelBuf: Texts.Buffer;
+  menuH*, barW*, left*, right*, top*, bot*, lsp*: INTEGER; (*standard sizes*)
+  asr, dsr, selH, markW, eolW: INTEGER;
+  nextCh: CHAR;
   ScrollMarker: Oberon.Marker;
-  W,
-  KW:           Texts.Writer; (*keyboard writer*)
+  W, KW: Texts.Writer; (*keyboard writer*)
 
 PROCEDURE Min (i, j: INTEGER): INTEGER;
 BEGIN IF i < j THEN j := i END ;
@@ -212,9 +199,7 @@ END Extend;
 
 PROCEDURE Reduce* (F: Frame; newY: INTEGER);
 VAR L: Line; curY, botY: INTEGER;
-BEGIN
-  (*Host.ws("TextFrames.Reduce newY "); Host.wi(newY); Host.wsn(".");*)
-  F.H := F.H + F.Y - newY; F.Y := newY;
+BEGIN F.H := F.H + F.Y - newY; F.Y := newY;
   botY := F.Y + F.bot + dsr;
   L := F.trailer; curY := F.Y + F.H - F.top - asr;
   WHILE (L.next # F.trailer) & (curY >= botY) DO
@@ -231,7 +216,6 @@ PROCEDURE Show* (F: Frame; pos: INTEGER);
 VAR R: Texts.Reader; L, L0: Line;
     org: INTEGER; curY, botY, Y0: INTEGER;
 BEGIN
-  (*Host.ws("TextFrames.Show pos "); Host.wi(pos); Host.wsn(".");*)
   IF F.trailer.next # F.trailer THEN
     Validate(F.text, pos);
     IF pos < F.org THEN Mark(F, FALSE);
@@ -677,11 +661,9 @@ PROCEDURE Modify* (F: Frame; id, dY, Y, H: INTEGER);
 BEGIN
   Mark(F, FALSE); RemoveMarks(F); SetChangeMark(F,  FALSE);
   IF id = MenuViewers.extend THEN
-    (*Host.wsn("TextFrames.Modify(extend)");*)
     IF dY > 0 THEN Display.CopyBlock(F.X, F.Y, F.W, F.H, F.X, F.Y + dY, 0); F.Y := F.Y + dY END;
     Extend(F, Y)
   ELSIF id = MenuViewers.reduce THEN
-    (*Host.wsn("TextFrames.Modify(reduce)");*)
     Reduce(F, Y + dY);
     IF dY > 0 THEN Display.CopyBlock(F.X, F.Y, F.W, F.H, F.X, Y, 0); F.Y := Y END
   END;

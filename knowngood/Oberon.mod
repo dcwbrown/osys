@@ -9,8 +9,7 @@ CONST (*message ids*)
   BasicCycle = 20;
   ESC = 1BX; SETSTAR = 1AX;
 
-TYPE
-  Painter* = PROCEDURE (x, y: INTEGER);
+TYPE Painter* = PROCEDURE (x, y: INTEGER);
   Marker*  = RECORD Fade*, Draw*: Painter END;
 
   Cursor* = RECORD
@@ -287,13 +286,9 @@ BEGIN
 END SetPar;
 
 PROCEDURE Call* (name: ARRAY OF CHAR; VAR res: INTEGER);
-VAR
-  mod:   Modules.Module;
-  P:     Modules.Command;
-  i, j:  INTEGER;
-  ch:    CHAR;
-  Mname: ARRAY 32 OF CHAR;
-  Cname: ARRAY 32 OF CHAR;
+VAR mod: Modules.Module;  P: Modules.Command;
+  i, j: INTEGER;  ch: CHAR;
+  Mname, Cname: ARRAY 32 OF CHAR;
 BEGIN i := 0; ch := name[0];
   WHILE (ch # ".") & (ch # 0X) DO Mname[i] := ch; INC(i); ch := name[i] END;
   IF ch = "." THEN
@@ -321,7 +316,6 @@ END GetSelection;
 PROCEDURE GC;
 VAR mod: Modules.Module;
 BEGIN
-  (*H.wsn("(GC)");*)
   (*
   IF (Kernel.ActCnt <= 0) OR (Kernel.allocated >= Kernel.heapLim - Kernel.heapOrg - 10000H) THEN
     mod := Modules.root; LED(21H);
@@ -336,7 +330,6 @@ BEGIN
   END
   *)
 END GC;
-
 
 PROCEDURE NewTask*(h: Handler; period: INTEGER): Task;
 VAR t: Task;
@@ -383,8 +376,7 @@ BEGIN
     Input.Mouse(keys, X, Y);
     IF Input.Available() > 0 THEN Input.Read(ch);
       IF ch = ESC THEN
-        N.id := neutralize; Viewers.Broadcast(N); FadeCursor(Pointer);
-        (*LED(0)*)
+        N.id := neutralize; Viewers.Broadcast(N); FadeCursor(Pointer); (*LED(0)*)
       ELSIF ch = SETSTAR THEN
         N.id := mark; N.X := X; N.Y := Y; V := Viewers.This(X, Y); V.handle(V, N)
       ELSE M.id := consume; M.ch := ch; M.fnt := CurFnt; M.col := CurCol; M.voff := CurOff;
@@ -398,15 +390,9 @@ BEGIN
       Kernel.Collect(Kernel.ActCnt - 1)
     ELSE
       IF (X # prevX) OR (Y # prevY) OR ~Mouse.on THEN
-        M.id := track;
-        M.X   := X;
+        M.id := track;   M.X := X;
         IF Y >= Display.Height THEN Y := Display.Height END;
-        M.Y    := Y;
-        M.keys := keys;
-        V      := Viewers.This(X, Y);
-        V.handle(V, M);
-        prevX := X;
-        prevY := Y
+        M.Y := Y;  M.keys := keys;  V := Viewers.This(X, Y);  V.handle(V, M);  prevX := X;  prevY := Y
       END;
       IF CurTask # NIL THEN
         CurTask := CurTask.next; t := Kernel.Time();
@@ -417,8 +403,7 @@ BEGIN
         END
       END
     END
-  UNTIL WinGui.WmQuit;
-  H.wsn("Oberon.Loop completed (WM_QUIT).")
+  UNTIL WinGui.WmQuit
 END Loop;
 
 PROCEDURE Reset*;
@@ -428,10 +413,7 @@ BEGIN
   Loop
 END Reset;
 
-BEGIN
-  IF Fonts.Default = NIL THEN H.Trap(-1, "Default font not available") END;
-
-  User[0] := 0X;
+BEGIN User[0] := 0X;
   Arrow.Fade := FlipArrow; Arrow.Draw := FlipArrow;
   Star.Fade := FlipStar; Star.Draw := FlipStar;
   OpenCursor(Mouse); OpenCursor(Pointer);
@@ -439,16 +421,13 @@ BEGIN
   DW := Display.Width; DH := Display.Height; CL := DW;
   OpenDisplay(DW DIV 8 * 5, DW DIV 8 * 3, DH);
   FocusViewer := Viewers.This(0, 0);
+  IF Fonts.Default = NIL THEN H.Trap(-1, "Default font not available") END;
   CurFnt := Fonts.Default; CurCol := Display.white; CurOff := 0;
 
   CurTask := NewTask(GC, 1000); Install(CurTask);
-
   Texts.SetGetSelection(GetSelection);
-
   NEW(Par);
-
   Modules.Load("System", Mod);
-
   IF Mod = NIL THEN
     H.wsn("**** Load failed. ****");
     IF Mod = NIL THEN

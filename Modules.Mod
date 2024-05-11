@@ -133,8 +133,7 @@ BEGIN
     size       := (header.vars + header.varsize + 15) DIV 16 * 16;
     fileoffset := filepos + header.size;
 
-    (* Load list of imported modules *)
-    Files.Set(R, F, filepos + header.vars);
+    (* Load list of imported modules (immediately follows module header) *)
     Files.ReadString(R, impname);
     WHILE (impname[0] # 0X) & (res = 0) DO
       Files.ReadInt(R, impkey);
@@ -230,6 +229,10 @@ BEGIN
         & (PreloadOffset > 0)
         & (PreloadOffset < Files.Length(PreloadExe)) DO
       LoadModule(PreloadExe, PreloadOffset, mod);
+      IF res # 0 THEN
+        H.ws("LoadModule failure in Preload. res "); H.wi(res);
+        H.ws(", importing "); H.ws(importing); H.wsn(".");
+      END;
       ASSERT(res = 0);
     END;
     IF PreloadOffset # 0 THEN

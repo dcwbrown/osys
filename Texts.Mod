@@ -1,6 +1,6 @@
 MODULE Texts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 18.11.2014 / 10.1.2019*)
 
-IMPORT SYSTEM, Files, Fonts, H := WinHost;
+IMPORT SYSTEM, H := WinHost, Files, Fonts;
 
 CONST (*scanner symbol classes*)
   Inval*  = 0;  (* invalid symbol                     *)
@@ -10,20 +10,15 @@ CONST (*scanner symbol classes*)
   Real*   = 4;  (* real number x                      *)
   Char*   = 6;  (* special character c                *)
 
-  (* TextBlock = TextTag offset run {run} "0" len {AsciiCode}. *)
-  (* run       = fnt [name] col voff len.                          *)
+  (* TextBlock = TextTag offset run {run} "0" len {AsciiCode}.
+     run       = fnt [name] col voff len. *)
 
-  TAB      = 9X;
-  CR       = 0DX;
+  TAB = 9X;  CR = 0DX;
   LF       = 0AX;
   TextTag  = 0F1X;
-  replace* = 0; (*op-codes*)
-  insert*  = 1;
-  delete*  = 2;
-  unmark*  = 3;
+  replace* = 0;  insert* = 1;  delete* = 2;  unmark* = 3;  (*op-codes*)
 
-TYPE
-  Piece = POINTER TO PieceDesc;
+TYPE Piece = POINTER TO PieceDesc;
   PieceDesc = RECORD
     f:          Files.File;
     off, len:   INTEGER;
@@ -86,36 +81,11 @@ TYPE
   END;
   GetSelectionProc = PROCEDURE(VAR text: Text; VAR beg, end, time: INTEGER);
 
-VAR
-  TrailerFile: Files.File;
+VAR TrailerFile: Files.File;
 
   Log*:          Text;
   Par*:          Params;
   GetSelection*: GetSelectionProc;
-
-
-
-(* -------------------- Debug ------------------------*)
-
-PROCEDURE DumpBuffer(B: Buffer);
-BEGIN
-  H.ws("at ");          H.wh(ORD(B));
-  H.ws("H, .len ");     H.wh(B.len);
-  H.ws("H, .header ");  H.wh(ORD(B.header));
-  H.ws("H, .last ");    H.wh(ORD(B.last));
-  H.ws("H")
-END DumpBuffer;
-
-PROCEDURE DumpWriter(W: Writer);
-BEGIN
-  H.ws("at ");            H.wh(SYSTEM.ADR(W));
-  H.ws("H, .buf (");      DumpBuffer(W.buf);
-  H.ws("), .fnt at ");    H.wh(ORD(W.fnt));
-  H.ws("H, .col ");       H.wh(W.col);
-  H.ws("H, .rider at ");  H.wh(SYSTEM.ADR(W.rider));
-  H.ws("H")
-END DumpWriter;
-
 
 (* -------------------- Filing ------------------------*)
 
@@ -127,12 +97,11 @@ END Trailer;
 
 PROCEDURE Load* (VAR R: Files.Rider; T: Text);
 VAR Q, q, p: Piece;
-    off:     INTEGER;
-    N, fno:  INTEGER;
-    bt:      BYTE;
-    f:       Files.File;
-    FName:   ARRAY 32 OF CHAR;
-    Dict:    ARRAY 32 OF Fonts.Font;
+    off:    INTEGER;
+    N, fno: INTEGER;  bt: BYTE;
+    f:      Files.File;
+    FName:  ARRAY 32 OF CHAR;
+    Dict:   ARRAY 32 OF Fonts.Font;
 BEGIN f := Files.Base(R); N := 1; Q := Trailer(); p := Q;
   Files.ReadInt(R, off); Files.ReadByte(R, bt); fno := bt;
   WHILE fno # 0 DO
@@ -152,21 +121,14 @@ BEGIN f := Files.Base(R); N := 1; Q := Trailer(); p := Q;
   T.trailer := Q; Files.ReadInt(R, T.len); (*Files.Set(R, f, Files.Pos(R) + T.len)*)
 END Load;
 
-PROCEDURE OpenFile* (T: Text;  f: Files.File);
-VAR
-  R:    Files.Rider;
-  Q, q: Piece;
-  tag:  CHAR;
-  len:  INTEGER;
-BEGIN
+PROCEDURE Open* (T: Text; name: ARRAY OF CHAR);
+VAR f: Files.File;  R: Files.Rider;  Q, q: Piece;
+  tag: CHAR;  len: INTEGER;
+BEGIN f := Files.Old(name);
   IF f # NIL THEN
     Files.Set(R, f, 0); Files.Read(R, tag);
-    (*H.ws("  read tag: "); H.wh(ORD(tag)); H.wsn("H.");*)
-    IF tag = TextTag THEN
-      (*H.wsn("  Tag matches - this is an Oberon formatted text file.");*)
-      Load(R, T)
+    IF tag = TextTag THEN Load(R, T)
     ELSE (*Ascii file*)
-      (*H.wsn("  Ascii text file.");*)
       len := Files.Length(f); Q := Trailer();
       NEW(q); q.fnt := Fonts.Default; q.col := 1; q.voff := 0; q.f := f; q.off := 0; q.len := len;
       Q.next := q; q.prev := Q; q.next := Q; Q.prev := q; T.trailer := Q; T.len := len
@@ -175,19 +137,12 @@ BEGIN
     Q := Trailer(); Q.next := Q; Q.prev := Q; T.trailer := Q; T.len := 0
   END;
   T.changed := FALSE; T.org := -1; T.pce := T.trailer (*init cache*)
-END OpenFile;
-
-PROCEDURE Open* (T: Text;  name: ARRAY OF CHAR);
-VAR f: Files.File;
-BEGIN f := Files.Old(name);  OpenFile(T, f) END Open;
+END Open;
 
 PROCEDURE Store* (VAR W: Files.Rider; T: Text);
-VAR
-  p, q: Piece;
+VAR p, q: Piece;
   R:    Files.Rider;
-  off:  INTEGER;
-  rlen: INTEGER;
-  pos:  INTEGER;
+  off, rlen, pos:  INTEGER;
   N, n: INTEGER;
   ch:   CHAR;
   Dict: ARRAY 32, 32 OF CHAR;
@@ -227,11 +182,8 @@ END Close;
 (* -------------------- Editing ----------------------- *)
 
 PROCEDURE OpenBuf* (B: Buffer);
-BEGIN
-  (*H.ws("OpenBuf(B): "); DumpBuffer(B); H.wn;*)
-  NEW(B.header); (*null piece*)
-  B.last := B.header;  B.len := 0;
-  (*H.ws("OpenBuf returning: ");  DumpBuffer(B); H.wn;*)
+BEGIN NEW(B.header); (*null piece*)
+  B.last := B.header;  B.len := 0
 END OpenBuf;
 
 PROCEDURE FindPiece (T: Text; pos: INTEGER; VAR org: INTEGER; VAR pce: Piece);
@@ -293,9 +245,7 @@ VAR pl, pr, p, qb, qe: Piece; org, end: INTEGER;
 BEGIN
   FindPiece(T, pos, org, p); SplitPiece(p, pos - org, pr);
   IF T.org >= org THEN T.org := org - p.prev.len; T.pce := p.prev END;
-  pl := pr.prev;
-  ASSERT(B.header # NIL);
-  qb := B.header.next;
+  pl := pr.prev;  qb := B.header.next;
   IF (qb # NIL) & (qb.f = pl.f) & (qb.off = pl.off + pl.len)
       & (qb.fnt = pl.fnt) & (qb.col = pl.col) & (qb.voff = pl.voff) THEN
     pl.len := pl.len + qb.len; qb := qb.next
@@ -310,16 +260,7 @@ BEGIN
 END Insert;
 
 PROCEDURE Append* (T: Text; B: Buffer);
-BEGIN
-  (*
-  H.ws("Texts.Append(T, B at "); H.wh(ORD(B));
-  H.ws("H by val, ");            H.wh(SYSTEM.ADR(B));
-  H.ws("H by adr), B.len ");     H.wh(B.len);
-  H.ws("H, B.header ");          H.wh(ORD(B.header));
-  H.ws("H, B.last ");            H.wh(ORD(B.last));
-  H.wsn("H.");
-  *)
-  Insert(T, T.len, B)
+BEGIN Insert(T, T.len, B)
 END Append;
 
 PROCEDURE Delete* (T: Text; beg, end: INTEGER; B: Buffer);
@@ -413,8 +354,7 @@ END Ten;
 
 PROCEDURE Scan* (VAR S: Scanner);
 CONST maxExp = 38; maxM = 16777216; (*2^24*)
-VAR
-  ch: CHAR;
+VAR ch: CHAR;
   neg, negE, hex: BOOLEAN;
   i, j, h, d, e, n, s: INTEGER;
   (*x: REAL;*)
@@ -482,17 +422,9 @@ END Scan;
 (* --------------- Access: Writers (NW) ------------------ *)
 
 PROCEDURE OpenWriter* (VAR W: Writer);
-BEGIN
-  (*H.wsn("Texts.OpenWriter creating W.buf.");*)
-  NEW(W.buf);
-  OpenBuf(W.buf);
-  (*H.ws("OpenBuf returned buffer "); DumpBuffer(W.buf); H.wsn(".");*)
-  W.fnt := Fonts.Default;
-  W.col := 15;
-  W.voff := 0;
-  (*H.ws("After W.voff :=, W "); DumpWriter(W); H.wsn(".");*)
-  Files.Set(W.rider, Files.New(""), 0);
-  (*H.ws("OpenWriter returning W "); DumpWriter(W); H.wsn(".");*)
+BEGIN NEW(W.buf);
+  OpenBuf(W.buf);  W.fnt := Fonts.Default;  W.col := 15;  W.voff := 0;
+  Files.Set(W.rider, Files.New(""), 0)
 END OpenWriter;
 
 PROCEDURE SetFont* (VAR W: Writer; fnt: Fonts.Font);
@@ -510,15 +442,9 @@ END SetOffset;
 PROCEDURE Write* (VAR W: Writer; ch: CHAR);
 VAR p: Piece;
 BEGIN
-  (*H.ws("Texts.Write(W, '"); H.wc(ch); H.ws("'). W.buf: "); DumpBuffer(W.buf); H.wn;*)
   IF (W.buf.last.fnt # W.fnt) OR (W.buf.last.col # W.col) OR (W.buf.last.voff # W.voff) THEN
-    NEW(p);
-    p.f   := Files.Base(W.rider);
-    p.off := Files.Pos(W.rider);
-    p.len := 0;
-    p.fnt := W.fnt;
-    p.col := W.col;
-    p.voff:= W.voff;
+    NEW(p);  p.f := Files.Base(W.rider);  p.off := Files.Pos(W.rider);  p.len := 0;
+    p.fnt := W.fnt;  p.col := W.col;  p.voff := W.voff;
     p.next := NIL;         W.buf.last.next := p;
     p.prev := W.buf.last;  W.buf.last      := p
   END;
@@ -532,8 +458,7 @@ END WriteLn;
 
 PROCEDURE WriteString* (VAR W: Writer; s: ARRAY OF CHAR);
 VAR i: INTEGER;
-BEGIN
-  i := 0;
+BEGIN i := 0;
   WHILE s[i] >= " " DO Write(W, s[i]); INC(i) END
 END WriteString;
 
@@ -632,24 +557,6 @@ BEGIN
   WritePair(W, ":", d MOD 40H)  (*sec*)
 END WriteClock;
 
-
-(*---
-PROCEDURE WriteDigits(VAR W: Writer; x, n: INTEGER);
-BEGIN
-  IF n > 1 THEN WriteDigits(W, x DIV 10, n - 1) END;
-  Write(W, CHR(x MOD 10 + 30H))
-END WriteDigits;
-
-PROCEDURE WriteExtClock* (VAR W: Writer; d: INTEGER);
-BEGIN
-  WriteDigits(W, d DIV 1000000000H MOD 8000H, 4); (*year*)  Write(W, "-");
-  WriteDigits(W, d DIV 100000000H MOD 10H,    2); (*month*) Write(W, "-");
-  WriteDigits(W, d DIV 8000000H MOD 20H,      2); (*day*)   Write(W, " ");
-  WriteDigits(W, d DIV 400000H MOD 20H,       2); (*hour*)  Write(W, ":");
-  WriteDigits(W, d DIV 10000H MOD 40H,        2); (*min*)   Write(W, ":");
-  WriteDigits(W, d DIV 400H MOD 40H,          2)  (*sec*)
-END WriteExtClock;
----*)
 
 (* -------------------------- Command line access --------------------------- *)
 (* --------- Moved here from Oberon.Mod to support non-gui programs --------- *)

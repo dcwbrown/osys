@@ -897,7 +897,7 @@ END Link;
 
 
 BEGIN
-  Texts.OpenWriter(W); Texts.WriteString(W, "Linker DCWB 9th May 2024");
+  Texts.OpenWriter(W); Texts.WriteString(W, "Linker DCWB 2024-05-10");
   Texts.WriteLn(W); Texts.Append(Texts.Log, W.buf);
   Embeddings    := NIL;
   LastEmbedding := NIL;

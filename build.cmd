@@ -65,8 +65,15 @@ goto noprebuild
 ::
 @Link.Link Oberon                                                   || goto end
 
+@echo.
+@echo --------------------------- Run Oberon system ----------------------------
+@echo.
+::
+::
+@copy /Y ..\*.Tool
+@copy /Y ..\*.Fnt
+Oberon
 ::
 ::
 :end
 @cd ..
-build\Oberon

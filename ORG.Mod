@@ -3113,17 +3113,6 @@ BEGIN
     X64.Patch(VarFix[i], 4, X64.Peek(VarFix[i], 4, FALSE) + reslen)
   END;
 
-  (* Emit imported module names and keys *)
-  obj := ORB.topScope.next;
-  WHILE (obj # NIL) & (obj.class = ORB.Mod) DO  (* imports *)
-    IF obj.dsc # ORB.system THEN
-      X64.EmitString(obj(ORB.Module).orgname);  (* name *)
-      X64.EmitBytes(8, obj.val)                 (* key  *)
-    END;
-    obj := obj.next
-  END;
-  X64.Emit(0);
-
   (* Emit imports *)
   X64.Align(16);
   Hdr.imprefs := X64.PC;

@@ -43,6 +43,9 @@ BEGIN
 (* ch := kbdTab[kbdCode]; *)
   SYSTEM.GET(KTabAdr + kbdCode, ch);
   IF Ctrl THEN ch := CHR(ORD(ch) MOD 20H) END;
+
+  IF ch = 1BX THEN WinGui.Quit END; (* Convenience during testing *)
+
   Recd := FALSE
 END Read;
 

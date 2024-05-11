@@ -1,17 +1,11 @@
 MODULE Viewers; (*JG 14.9.90 / NW 15.9.2013*)
 
+IMPORT Display;
 
-IMPORT SYSTEM, H := WinHost, Display;
-
-CONST
-  restore* = 0;  (*message ids*)
-  modify*  = 1;
-  suspend* = 2;
-
+CONST restore* = 0;  modify* = 1;  suspend* = 2;  (*message ids*)
   inf = 65535;
 
-TYPE
-  Viewer* =     POINTER TO ViewerDesc;
+TYPE Viewer* = POINTER TO ViewerDesc;
   ViewerDesc* = RECORD (Display.FrameDesc) state*: INTEGER END;
 
   (*state > 1: displayed; state = 1: filler; state = 0: closed; state < 0: suspended*)
@@ -32,32 +26,23 @@ VAR curW*, minH*, DH: INTEGER;
 PROCEDURE Open* (V: Viewer; X, Y: INTEGER);
 VAR T, u, v: Display.Frame; M: ViewerMsg;
 BEGIN
-  (*H.ws("Viewer.Open: X "); H.wi(X); H.ws(", Y "); H.wi(Y); H.wsn(".");*)
   IF (V.state = 0) & (X < inf) THEN
     IF Y > DH THEN Y := DH END;
     T := FillerTrack.next;
     WHILE X >= T.X + T.W DO T := T.next END;
-    u := T.dsc;
-    v := u.next;
+    u := T.dsc;  v := u.next;
     WHILE Y > v.Y + v.H DO u := v; v := u.next END;
     IF Y < v.Y + minH THEN Y := v.Y + minH END;
-    V.X := T.X;
-    V.W := T.W;
-    V.Y := v.Y;
     IF (v.next.Y # 0) & (Y > v.Y + v.H - minH) THEN
-      V.H     := v.H;
-      M.id    := suspend;  M.state := 0;  v.handle(v, M);
-      v(Viewer).state := 0;
-      V.next  := v.next
-    ELSE
-      V.H  := Y - v.Y;
-      M.id := modify;  M.Y  := Y;  M.H  := v.Y + v.H - Y;  v.handle(v, M);
-      v.Y     := M.Y;
-      v.H     := M.H;
-      V.next  := v;
-    END;
-    u.next  := V;
-    V.state := 2
+      V.X := T.X;  V.W := T.W;  V.Y := v.Y;  V.H := v.H;
+      M.id := suspend;  M.state := 0;
+      v.handle(v, M);  v(Viewer).state := 0;
+      V.next := v.next;  u.next := V;  V.state := 2
+    ELSE V.X := T.X;  V.W := T.W;  V.Y := v.Y;  V.H := Y - v.Y;
+      M.id := modify;  M.Y  := Y;  M.H  := v.Y + v.H - Y;
+      v.handle(v, M);  v.Y  := M.Y;  v.H  := M.H;
+      V.next  := v;  u.next := V;  V.state := 2
+    END
   END
 END Open;
 
@@ -115,7 +100,7 @@ BEGIN V := backup
 END Recall;
 
 PROCEDURE This* (X, Y: INTEGER): Viewer;
-VAR T, V: Display.Frame; i: INTEGER;
+VAR T, V: Display.Frame;
 BEGIN
   IF (X < inf) & (Y < DH) THEN
     T := FillerTrack;
@@ -124,24 +109,6 @@ BEGIN
     REPEAT V := V.next UNTIL Y < V.Y + V.H
   ELSE V := NIL
   END;
-  (*
-  IF V = NIL THEN H.wcn; H.wsn("Viewers.This result is NIL.") END;
-  IF V IS Viewer THEN
-    H.wcn; H.wsn("V IS Viewer.")
-  ELSE
-    H.wcn; H.ws("Viewers.This() result is not a Viewer, v ");
-    H.wh(ORD(V)); H.wsn(".");
-    IF V IS Display.Frame THEN H.wsn(".. V IS Display.FrameDesc.") END;
-    H.ws("  X,Y: ");     H.wi(X);   H.wc(","); H.wi(Y);
-    H.ws(", V.X,V.Y: "); H.wi(V.X); H.wc(","); H.wi(V.Y);
-    H.ws(", V.W,V.H: "); H.wi(V.W); H.wc(","); H.wi(V.H); H.wsn(".");
-  END;
-  H.wsn("V: ");
-  H.DumpMem(2, SYSTEM.ADR(V^)-16, SYSTEM.ADR(V^)-16, SYSTEM.SIZE(ViewerDesc)+16);
-  H.wsn("Type descriptor:");
-  SYSTEM.GET(SYSTEM.ADR(V^)-16, i);
-  H.DumpMem(2, i, i, 96);
-  *)
   RETURN V(Viewer)
 END This;
 

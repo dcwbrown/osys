@@ -7,8 +7,7 @@ CONST
   StandardMenu = "System.Close System.Copy System.Grow Edit.Search Edit.Store";
   LogMenu      = "Edit.Locate Edit.Search System.Copy System.Grow System.Clear";
 
-VAR
-  W:   Texts.Writer;
+VAR W:   Texts.Writer;
   pat: ARRAY 32 OF CHAR;
 
 PROCEDURE GetArg(VAR S: Texts.Scanner);
@@ -58,15 +57,13 @@ END SetOffset;
 PROCEDURE Date*;
 VAR S: Texts.Scanner;
     dt, hr, min, sec, yr, mo, day: INTEGER;
-BEGIN
-  Texts.OpenScanner(S, Oberon.Par.text, Oberon.Par.pos); Texts.Scan(S);
+BEGIN Texts.OpenScanner(S, Oberon.Par.text, Oberon.Par.pos); Texts.Scan(S);
   IF S.class = Texts.Int THEN (*set clock*)
     day := S.i; Texts.Scan(S); mo := S.i; Texts.Scan(S); yr := S.i; Texts.Scan(S);
     hr := S.i; Texts.Scan(S); min := S.i; Texts.Scan(S); sec := S.i;
     dt := ((((yr*16 + mo)*32 + day)*32 + hr)*64 + min)*64 + sec;
     Kernel.SetClock(dt)
-  ELSE
-    (*read clock*) Texts.WriteString(W, "System.Clock ");
+  ELSE (*read clock*) Texts.WriteString(W, "System.Clock ");
     dt := Oberon.Clock(); Texts.WriteClock(W, dt); EndLine
   END
 END Date;
@@ -98,10 +95,7 @@ PROCEDURE Clear*;  (*clear Log*)
 VAR T: Texts.Text; F: Display.Frame; buf: Texts.Buffer;
 BEGIN F := Oberon.Par.frame;
   IF (F # NIL) & (F.next IS TextFrames.Frame) & (F = Oberon.Par.vwr.dsc) THEN
-    NEW(buf);
-    Texts.OpenBuf(buf);
-    T := F.next(TextFrames.Frame).text;
-    Texts.Delete(T, 0, T.len, buf)
+    NEW(buf);  Texts.OpenBuf(buf);  T := F.next(TextFrames.Frame).text;  Texts.Delete(T, 0, T.len, buf)
   END
 END Clear;
 
@@ -185,14 +179,6 @@ PROCEDURE List(info: FileDir.FileInfo; VAR cont: BOOLEAN);
 VAR i0, i, j0, j: INTEGER;
 BEGIN
   i := 0;
-  (*
-  H.ws("List, info at "); H.wh(SYSTEM.ADR(info)); H.wsn("H:");
-  H.DumpMem(2, SYSTEM.ADR(info), SYSTEM.ADR(info), SYSTEM.SIZE(FileDir.FileInfo));
-  H.ws("pat at "); H.wh(SYSTEM.ADR(pat));
-  H.ws("H, pat[0] "); H.wc(pat[0]);
-  H.ws(", info.name[0] "); H.wc(info.name[0]);
-  H.wsn(".");
-  *)
   WHILE (pat[i] > "*") & (pat[i] = info.name[i]) DO INC(i) END ;
   IF (pat[i] = 0X) & (info.name[i] = 0X) THEN i0 := i; j0 := i
   ELSIF pat[i] = "*" THEN
@@ -246,7 +232,6 @@ BEGIN Texts.OpenReader(R, Oberon.Par.text, Oberon.Par.pos); Texts.Read(R, ch);
     TextFrames.NewText(t, 0), TextFrames.menuH, X, Y);
   FileDir.Enumerate(pre, List); Texts.Append(t, W.buf)
 END Directory;
-
 
 PROCEDURE CopyFiles*;
 VAR f, g: Files.File; Rf, Rg: Files.Rider; ch: CHAR;
@@ -316,10 +301,8 @@ END DeleteFiles;
 (* ------------- Toolbox for system inspection ---------------*)
 
 PROCEDURE Watch*;
-VAR
-  moduleusage: INTEGER;
-BEGIN
-  moduleusage := H.AllocPtr - H.ModuleSpace;
+VAR moduleusage: INTEGER;
+BEGIN moduleusage := H.AllocPtr - H.ModuleSpace;
   Texts.WriteString(W, "System.Watch"); Texts.WriteLn(W);
   Texts.WriteString(W, "  Modules space (bytes)"); Texts.WriteInt(W, moduleusage, 8);
   Texts.WriteInt(W, moduleusage * 100 DIV 100000000H, 4); Texts.Write(W, "%"); EndLine;
@@ -336,7 +319,7 @@ END Watch;
 PROCEDURE ShowModules*;
 VAR T: Texts.Text;
     V: Viewers.Viewer;
-    M: H.Module;
+    M: Modules.Module;
     X, Y: INTEGER;
 BEGIN T := TextFrames.Text("");
   Oberon.AllocateSystemViewer(Oberon.Par.vwr.X, X, Y);
@@ -353,7 +336,6 @@ BEGIN T := TextFrames.Text("");
   END;
   Texts.Append(T, W.buf)
 END ShowModules;
-
 
 PROCEDURE ShowCommands*;
 VAR M: Modules.Module;
@@ -397,12 +379,10 @@ VAR logV, toolV: Viewers.Viewer;
 BEGIN
   Texts.WriteString(W, "Oberon V5  NW 14.4.2013  DB 30.3.2024"); EndLine;
   Oberon.AllocateSystemViewer(0, X, Y);
-  (*H.ws("Allocating system log viewer at "); H.wi(X); H.wc(","); H.wi(Y); H.wsn(".");*)
   menu := TextFrames.NewMenu("System.Log", LogMenu);
   main := TextFrames.NewText(Oberon.Log, 0);
   logV := MenuViewers.New(menu, main, TextFrames.menuH, X, Y);
   Oberon.AllocateSystemViewer(0, X, Y);
-  (*H.ws("Allocating system tool viewer at "); H.wi(X); H.wc(","); H.wi(Y); H.wsn(".");*)
   menu := TextFrames.NewMenu("System.Tool", StandardMenu);
   main := TextFrames.NewText(TextFrames.Text("System.Tool"), 0);
   toolV := MenuViewers.New(menu, main, TextFrames.menuH, X, Y)
@@ -445,14 +425,11 @@ BEGIN n := SYSTEM.REG(15); Texts.WriteString(W, "  ABORT  "); Texts.WriteHex(W, 
 END Abort;
 *)
 
-BEGIN
-  Texts.OpenWriter(W);
-  Oberon.OpenLog(TextFrames.Text(""));
-  OpenViewers;
+BEGIN Texts.OpenWriter(W);
+  Oberon.OpenLog(TextFrames.Text("")); OpenViewers;
 
   (*
-  Kernel.Install(SYSTEM.ADR(Trap), 20H);
-  Kernel.Install(SYSTEM.ADR(Abort), 0);
+  Kernel.Install(SYSTEM.ADR(Trap), 20H); Kernel.Install(SYSTEM.ADR(Abort), 0);
   *)
 
   Oberon.Loop
