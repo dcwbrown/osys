@@ -11,7 +11,7 @@ VAR W:   Texts.Writer;
   pat: ARRAY 32 OF CHAR;
 
 PROCEDURE GetArg(VAR S: Texts.Scanner);
-VAR T: Texts.Text; beg, end, time: INTEGER;
+VAR T: Texts.Text; beg, end, time: LONGINT;
 BEGIN Texts.OpenScanner(S, Oberon.Par.text, Oberon.Par.pos); Texts.Scan(S);
   IF (S.class = Texts.Char) & (S.c = "^") THEN
     Oberon.GetSelection(T, beg, end, time);
@@ -56,7 +56,7 @@ END SetOffset;
 
 PROCEDURE Date*;
 VAR S: Texts.Scanner;
-    dt, hr, min, sec, yr, mo, day: INTEGER;
+    dt, hr, min, sec, yr, mo, day: LONGINT;
 BEGIN Texts.OpenScanner(S, Oberon.Par.text, Oberon.Par.pos); Texts.Scan(S);
   IF S.class = Texts.Int THEN (*set clock*)
     day := S.i; Texts.Scan(S); mo := S.i; Texts.Scan(S); yr := S.i; Texts.Scan(S);
@@ -154,7 +154,7 @@ END Free1;
 
 PROCEDURE Free*;
 VAR T: Texts.Text;
-    beg, end, time: INTEGER;
+    beg, end, time: LONGINT;
     S: Texts.Scanner;
 BEGIN Texts.WriteString(W, "System.Free"); EndLine;
   Texts.OpenScanner(S, Oberon.Par.text, Oberon.Par.pos); Texts.Scan(S);
@@ -208,7 +208,7 @@ VAR X, Y, i: INTEGER; ch: CHAR;
     R: Texts.Reader;
     T, t: Texts.Text;
     V: Viewers.Viewer;
-    beg, end, time: INTEGER;
+    beg, end, time: LONGINT;
     pre: ARRAY 32 OF CHAR;
 BEGIN Texts.OpenReader(R, Oberon.Par.text, Oberon.Par.pos); Texts.Read(R, ch);
   WHILE ch = " " DO Texts.Read(R, ch) END;
@@ -306,8 +306,8 @@ BEGIN moduleusage := H.AllocPtr - H.ModuleSpace;
   Texts.WriteString(W, "System.Watch"); Texts.WriteLn(W);
   Texts.WriteString(W, "  Modules space (bytes)"); Texts.WriteInt(W, moduleusage, 8);
   Texts.WriteInt(W, moduleusage * 100 DIV 100000000H, 4); Texts.Write(W, "%"); EndLine;
-  Texts.WriteString(W, "  Heap space"); Texts.WriteInt(W, Kernel.Allocated, 8);
-  Texts.WriteInt(W, Kernel.Allocated * 100 DIV (Kernel.HeapLimit - Kernel.HeapOrg), 4); Texts.Write(W, "%"); EndLine;
+  Texts.WriteString(W, "  Heap space"); Texts.WriteInt(W, Kernel.allocated, 8);
+  Texts.WriteInt(W, Kernel.allocated * 100 DIV (Kernel.heapLim - Kernel.heapOrg), 4); Texts.Write(W, "%"); EndLine;
   (*
   Texts.WriteString(W, "  Disk sectors "); Texts.WriteInt(W, Kernel.NofSectors, 4);
   Texts.WriteInt(W, Kernel.NofSectors * 100 DIV 10000H, 4); Texts.Write(W, "%"); EndLine;
@@ -339,7 +339,7 @@ END ShowModules;
 
 PROCEDURE ShowCommands*;
 VAR M: Modules.Module;
-    comadr: INTEGER; ch: CHAR;
+    comadr: LONGINT; ch: CHAR;
     T: Texts.Text;
     S: Texts.Scanner;
     V: Viewers.Viewer;

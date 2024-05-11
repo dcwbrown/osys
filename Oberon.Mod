@@ -26,9 +26,9 @@ TYPE Painter* = PROCEDURE (x, y: INTEGER);
   END;
 
   SelectionMsg* = RECORD (Display.FrameMsg)
-    time*: INTEGER;
+    time*: LONGINT;
     text*: Texts.Text;
-    beg*, end*: INTEGER
+    beg*, end*: LONGINT
   END;
 
   ControlMsg* = RECORD (Display.FrameMsg)
@@ -55,9 +55,7 @@ TYPE Painter* = PROCEDURE (x, y: INTEGER);
     frame*: Display.Frame
   END;
 
-VAR
-  User*:          ARRAY 8 OF CHAR;
-  Password*:      INTEGER;
+VAR User*: ARRAY 8 OF CHAR;  Password*: LONGINT;
   Arrow*, Star*:  Marker;
   Mouse, Pointer: Cursor;
   FocusViewer*:   Viewers.Viewer;
@@ -74,8 +72,8 @@ VAR
 
 (*user identification*)
 
-PROCEDURE Code(VAR s: ARRAY OF CHAR): INTEGER;
-VAR i: INTEGER; a, b, c: INTEGER;
+PROCEDURE Code(VAR s: ARRAY OF CHAR): LONGINT;
+VAR i: INTEGER; a, b, c: LONGINT;
 BEGIN
   a := 0; b := 0; i := 0;
   WHILE s[i] # 0X DO
@@ -90,17 +88,17 @@ PROCEDURE SetUser* (VAR user, password: ARRAY OF CHAR);
 BEGIN User := user; Password := Code(password)
 END SetUser;
 
-PROCEDURE Clock*(): INTEGER;
+PROCEDURE Clock*(): LONGINT;
 BEGIN RETURN Kernel.Clock()
 END Clock;
 
 (*
-PROCEDURE SetClock* (d: INTEGER);
+PROCEDURE SetClock* (d: LONGINT);
 BEGIN Kernel.SetClock(d)
 END SetClock;
 *)
 
-PROCEDURE Time*(): INTEGER;
+PROCEDURE Time*(): LONGINT;
 BEGIN RETURN Kernel.Time()
 END Time;
 
@@ -278,11 +276,9 @@ BEGIN Log := T;  Texts.OpenLog(T);
 END OpenLog;
 
 (*command interpretation*)
-PROCEDURE SetPar*(F: Display.Frame; T: Texts.Text; pos: INTEGER);
-BEGIN
-  Par.vwr   := Viewers.This(F.X, F.Y);
-  Par.frame := F; Par.text := T; Par.pos := pos;
-  Texts.SetPar(Par)
+PROCEDURE SetPar*(F: Display.Frame; T: Texts.Text; pos: LONGINT);
+BEGIN Par.vwr := Viewers.This(F.X, F.Y);  Par.frame := F;  Par.text := T;  Par.pos := pos
+  ;Texts.SetPar(Par)
 END SetPar;
 
 PROCEDURE Call* (name: ARRAY OF CHAR; VAR res: INTEGER);
@@ -305,13 +301,12 @@ BEGIN i := 0; ch := name[0];
   END
 END Call;
 
-PROCEDURE GetSelection* (VAR text: Texts.Text; VAR beg, end, time: INTEGER);
+PROCEDURE GetSelection* (VAR text: Texts.Text; VAR beg, end, time: LONGINT);
 VAR M: SelectionMsg;
 BEGIN
   M.time := -1; Viewers.Broadcast(M); time := M.time;
   IF time >= 0 THEN text := M.text; beg := M.beg; end := M.end END
 END GetSelection;
-
 
 PROCEDURE GC;
 VAR mod: Modules.Module;

@@ -1,8 +1,16 @@
-MODULE Files;  (* DCWB 2024-01-11..2024-02-10 *)
+MODULE Files;  (* DCWB 2024-01-11..2024-05-11 *)
+
+(* Meaning of result codes used by Wirth Files.Check/Delete/Rename:
+
+   -1 - Empty filename ("")
+    0 - OK
+    2 - File not found
+    3 - Starts with non-letter
+    4 - Too long
+    5 - Contains other than letter, digit or "."
+*)
 
 IMPORT SYSTEM, Kernel, H := WinHost;
-
-(* DCWB 10.02.2023 *)
 
 CONST MaxPath = H.MaxPath;
 
@@ -114,9 +122,7 @@ PROCEDURE UnregisterByName(name: ARRAY OF CHAR);
 VAR f: File;
 BEGIN f := first;
   WHILE f # NIL DO
-    IF f.registered & (f.name = name) THEN
-      Unregister(f)
-    END;
+    IF f.registered & (f.name = name) THEN Unregister(f) END;
     f := f.next;
   END;
 END UnregisterByName;
@@ -148,20 +154,22 @@ END Register;
 
 
 PROCEDURE Rename*(old, new: ARRAY OF CHAR; VAR res: INTEGER);
-VAR
-  winresult:  INTEGER;
-  f:          File;
+(* Returns
+   0 - success
+   2 - old name not found
+*)
+VAR f: File;
 BEGIN
-  winresult := H.MoveFile(old, new);
-  IF winresult = 0 THEN
-    res := 2
-  ELSE
-    f := first;
-    WHILE f # NIL DO
-      IF f.registered & (f.name = old) THEN f.name := new END;
-      f := f.next
-    END;
-    res := 0
+  UnregisterByName(new);
+  f := first;  WHILE (f # NIL) & (f.name # old) DO f := f.next END;
+  IF f # NIL THEN
+    IF f.registered THEN ASSERT(H.CloseHandle(f.handle) # 0)
+    ELSE f := NIL END
+  END;
+  res := H.MoveFile(old, new);
+  IF (res = 0) & (f # NIL) THEN
+    f.registered := TRUE;
+    f.name := new
   END
 END Rename;
 

@@ -13,8 +13,7 @@ VAR
   M:             Module;     (* Loaded module 'Oberon' *)
   P:             Command;
   res*:          INTEGER;
-  importing*:    ModuleName;
-  imported*:     ModuleName;
+  importing*, imported*: ModuleName;
   PreloadExe:    Files.File;
   PreloadOffset: INTEGER;
   Load*:         PROCEDURE(name: ARRAY OF CHAR;  VAR newmod: Module);

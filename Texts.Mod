@@ -21,21 +21,21 @@ CONST (*scanner symbol classes*)
 TYPE Piece = POINTER TO PieceDesc;
   PieceDesc = RECORD
     f:          Files.File;
-    off, len:   INTEGER;
+    off, len:   LONGINT;
     fnt:        Fonts.Font;
     col, voff:  INTEGER;
     prev, next: Piece
   END;
 
   Text* = POINTER TO TextDesc;
-  Notifier* = PROCEDURE (T: Text; op: INTEGER; beg, end: INTEGER);
+  Notifier* = PROCEDURE (T: Text; op: INTEGER; beg, end: LONGINT);
   TextDesc* = RECORD
-    len*:     INTEGER;
+    len*:     LONGINT;
     changed*: BOOLEAN;
     notify*:  Notifier;
     trailer:  Piece;
     pce:      Piece;   (* cache *)
-    org:      INTEGER  (* cache *)
+    org:      LONGINT  (* cache *)
   END;
 
   Reader* = RECORD
@@ -43,15 +43,15 @@ TYPE Piece = POINTER TO PieceDesc;
     fnt*:        Fonts.Font;
     col*, voff*: INTEGER;
     ref:         Piece;
-    org:         INTEGER;
-    off:         INTEGER;
+    org:         LONGINT;
+    off:         LONGINT;
     rider:       Files.Rider
   END;
 
   Scanner* = RECORD (Reader)
     nextCh*:       CHAR;
     line*, class*: INTEGER;
-    i*:            INTEGER;
+    i*:            LONGINT;
     (*---
     x*:            REAL;
     y*:            REAL;
@@ -63,7 +63,7 @@ TYPE Piece = POINTER TO PieceDesc;
 
   Buffer* = POINTER TO BufDesc;
   BufDesc* = RECORD
-    len*:         INTEGER;
+    len*:         LONGINT;
     header, last: Piece
   END;
 
@@ -97,7 +97,7 @@ END Trailer;
 
 PROCEDURE Load* (VAR R: Files.Rider; T: Text);
 VAR Q, q, p: Piece;
-    off:    INTEGER;
+    off:    LONGINT;
     N, fno: INTEGER;  bt: BYTE;
     f:      Files.File;
     FName:  ARRAY 32 OF CHAR;
@@ -123,7 +123,7 @@ END Load;
 
 PROCEDURE Open* (T: Text; name: ARRAY OF CHAR);
 VAR f: Files.File;  R: Files.Rider;  Q, q: Piece;
-  tag: CHAR;  len: INTEGER;
+  tag: CHAR;  len: LONGINT;
 BEGIN f := Files.Old(name);
   IF f # NIL THEN
     Files.Set(R, f, 0); Files.Read(R, tag);
@@ -142,7 +142,7 @@ END Open;
 PROCEDURE Store* (VAR W: Files.Rider; T: Text);
 VAR p, q: Piece;
   R:    Files.Rider;
-  off, rlen, pos:  INTEGER;
+  off, rlen, pos:  LONGINT;
   N, n: INTEGER;
   ch:   CHAR;
   Dict: ARRAY 32, 32 OF CHAR;
@@ -186,8 +186,8 @@ BEGIN NEW(B.header); (*null piece*)
   B.last := B.header;  B.len := 0
 END OpenBuf;
 
-PROCEDURE FindPiece (T: Text; pos: INTEGER; VAR org: INTEGER; VAR pce: Piece);
-VAR p: Piece; porg: INTEGER;
+PROCEDURE FindPiece (T: Text; pos: LONGINT; VAR org: LONGINT; VAR pce: Piece);
+VAR p: Piece; porg: LONGINT;
 BEGIN p := T.pce; porg := T.org;
   IF pos >= porg THEN
     WHILE pos >= porg + p.len DO INC(porg, p.len); p := p.next END
@@ -198,7 +198,7 @@ BEGIN p := T.pce; porg := T.org;
   pce := p; org := porg
 END FindPiece;
 
-PROCEDURE SplitPiece (p: Piece; off: INTEGER; VAR pr: Piece);
+PROCEDURE SplitPiece (p: Piece; off: LONGINT; VAR pr: Piece);
 VAR q: Piece;
 BEGIN
   IF off > 0 THEN NEW(q);
@@ -213,8 +213,8 @@ BEGIN
   END
 END SplitPiece;
 
-PROCEDURE Save* (T: Text; beg, end: INTEGER; B: Buffer);
-VAR p, q, qb, qe: Piece; org: INTEGER;
+PROCEDURE Save* (T: Text; beg, end: LONGINT; B: Buffer);
+VAR p, q, qb, qe: Piece; org: LONGINT;
 BEGIN
   IF end > T.len THEN end := T.len END;
   FindPiece(T, beg, org, p);
@@ -240,8 +240,8 @@ BEGIN p := SB.header; Q := DB.last;
   DB.last := Q; DB.len := DB.len + SB.len
 END Copy;
 
-PROCEDURE Insert* (T: Text;  pos: INTEGER;  B: Buffer);
-VAR pl, pr, p, qb, qe: Piece; org, end: INTEGER;
+PROCEDURE Insert* (T: Text;  pos: LONGINT;  B: Buffer);
+VAR pl, pr, p, qb, qe: Piece; org, end: LONGINT;
 BEGIN
   FindPiece(T, pos, org, p); SplitPiece(p, pos - org, pr);
   IF T.org >= org THEN T.org := org - p.prev.len; T.pce := p.prev END;
@@ -263,8 +263,8 @@ PROCEDURE Append* (T: Text; B: Buffer);
 BEGIN Insert(T, T.len, B)
 END Append;
 
-PROCEDURE Delete* (T: Text; beg, end: INTEGER; B: Buffer);
-VAR pb, pe, pbr, per: Piece; orgb, orge: INTEGER;
+PROCEDURE Delete* (T: Text; beg, end: LONGINT; B: Buffer);
+VAR pb, pe, pbr, per: Piece; orgb, orge: LONGINT;
 BEGIN
   IF end > T.len THEN end := T.len END;
   FindPiece(T, beg, orgb, pb); SplitPiece(pb, beg - orgb, pbr);
@@ -281,8 +281,8 @@ BEGIN
   IF T.notify # NIL THEN T.notify(T, delete, beg, end) END
 END Delete;
 
-PROCEDURE ChangeLooks* (T: Text; beg, end: INTEGER; sel: SET; fnt: Fonts.Font; col, voff: INTEGER);
-VAR pb, pe, p: Piece; org: INTEGER;
+PROCEDURE ChangeLooks* (T: Text; beg, end: LONGINT; sel: SET; fnt: Fonts.Font; col, voff: INTEGER);
+VAR pb, pe, p: Piece; org: LONGINT;
 BEGIN
   IF end > T.len THEN end := T.len END;
   FindPiece(T, beg, org, p); SplitPiece(p, beg - org, pb);
@@ -298,15 +298,15 @@ BEGIN
   IF T.notify # NIL THEN T.notify(T, replace, beg, end) END
 END ChangeLooks;
 
-PROCEDURE Attributes*(T: Text; pos: INTEGER; VAR fnt: Fonts.Font; VAR col, voff: INTEGER);
-VAR p: Piece; org: INTEGER;
+PROCEDURE Attributes*(T: Text; pos: LONGINT; VAR fnt: Fonts.Font; VAR col, voff: INTEGER);
+VAR p: Piece; org: LONGINT;
 BEGIN FindPiece(T, pos, org, p); fnt := p.fnt; col := p.col; voff := p.voff
 END Attributes;
 
 (* ------------------ Access: Readers ------------------------- *)
 
-PROCEDURE OpenReader* (VAR R: Reader; T: Text; pos: INTEGER);
-VAR p: Piece; org: INTEGER;
+PROCEDURE OpenReader* (VAR R: Reader; T: Text; pos: LONGINT);
+VAR p: Piece; org: LONGINT;
 BEGIN FindPiece(T, pos, org, p);
   R.ref := p; R.org := org; R.off := pos - org;
   Files.Set(R.rider, p.f, p.off + R.off); R.eot := FALSE
@@ -323,7 +323,7 @@ BEGIN Files.Read(R.rider, ch);
   END
 END Read;
 
-PROCEDURE Pos* (VAR R: Reader): INTEGER;
+PROCEDURE Pos* (VAR R: Reader): LONGINT;
 BEGIN RETURN R.org + R.off
 END Pos;
 
@@ -332,7 +332,7 @@ BEGIN RETURN Files.Base(r.rider) END Base;
 
 (* ------------------ Access: Scanners (NW) ------------------------- *)
 
-PROCEDURE OpenScanner* (VAR S: Scanner; T: Text; pos: INTEGER);
+PROCEDURE OpenScanner* (VAR S: Scanner; T: Text; pos: LONGINT);
 BEGIN OpenReader(S, T, pos); S.line := 0; S.nextCh := " "
 END OpenScanner;
 
@@ -462,8 +462,8 @@ BEGIN i := 0;
   WHILE s[i] >= " " DO Write(W, s[i]); INC(i) END
 END WriteString;
 
-PROCEDURE WriteInt* (VAR W: Writer; x, n: INTEGER);
-VAR i: INTEGER; x0: INTEGER;
+PROCEDURE WriteInt* (VAR W: Writer; x, n: LONGINT);
+VAR i: INTEGER; x0: LONGINT;
     a: ARRAY 20 OF CHAR;
 BEGIN
   IF ROR(x, 63) = 1 THEN WriteString(W, " -9223372036854775808")
@@ -478,8 +478,8 @@ BEGIN
   END
 END WriteInt;
 
-PROCEDURE WriteHex* (VAR W: Writer; x: INTEGER);
-VAR i: INTEGER; y: INTEGER;
+PROCEDURE WriteHex* (VAR W: Writer; x: LONGINT);
+VAR i: INTEGER; y: LONGINT;
     a: ARRAY 20 OF CHAR;
 BEGIN i := 0; Write(W, " ");
   REPEAT y := x MOD 10H;
@@ -542,12 +542,12 @@ BEGIN
 END WriteRealFix;
 ---*)
 
-PROCEDURE WritePair(VAR W: Writer; ch: CHAR; x: INTEGER);
+PROCEDURE WritePair(VAR W: Writer; ch: CHAR; x: LONGINT);
 BEGIN Write(W, ch);
   Write(W, CHR(x DIV 10 + 30H)); Write(W, CHR(x MOD 10 + 30H))
 END WritePair;
 
-PROCEDURE WriteClock* (VAR W: Writer; d: INTEGER);
+PROCEDURE WriteClock* (VAR W: Writer; d: LONGINT);
 BEGIN
   WritePair(W, " ", d DIV 20000H MOD 20H);   (*day*)
   WritePair(W, ".", d DIV 400000H MOD 10H); (*month*)

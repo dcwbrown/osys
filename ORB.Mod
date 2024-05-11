@@ -84,7 +84,7 @@ TYPE
     dsc*:     Object;
     type*:    Type;
     name*:    ORS.Ident;
-    val*:     INTEGER
+    val*:     LONGINT
   END;
 
   ModDesc* = RECORD (ObjDesc) orgname*: ORS.Ident END;
@@ -105,14 +105,14 @@ TYPE
     ref*:    INTEGER;  (* Only used for import/export                      *)
     nofpar*: INTEGER;  (* For procedures: parameter count                  *)
                        (* For records:    extension level                  *)
-    len*:    INTEGER;  (* For arrays:     element count, < 0 => open array *)
+    len*:    LONGINT;  (* For arrays:     element count, < 0 => open array *)
                        (* For records:    adr of descriptor                *)
                        (* For procedures: size of params                   *)
     dsc*:    Object;   (* For procedure:  params & local vars              *)
                        (* For records:    fields                           *)
     typobj*: Object;   (* For Typ:        object representing type         *)
     base*:   Type;     (* For arrays, records, pointers, fn procedures     *)
-    size*:   INTEGER;  (* In bytes. For procedures: 8                      *)
+    size*:   LONGINT;  (* In bytes. For procedures: 8                      *)
     native*: BOOLEAN   (* procedure using native abi or record without GC  *)
   END;
 
@@ -206,7 +206,7 @@ BEGIN i := 0; j := 0;  (*assume name suffix less than 4 characters*)
   FName[i] := 0X
 END MakeFileName;
 
-PROCEDURE ThisModule(name, orgname: ORS.Ident; decl: BOOLEAN; key: INTEGER): Object;
+PROCEDURE ThisModule(name, orgname: ORS.Ident; decl: BOOLEAN; key: LONGINT): Object;
 VAR mod: Module; obj, obj1: Object;
 BEGIN obj1 := topScope; obj := obj1.next;  (*search for module*)
   WHILE (obj # NIL) & (obj(Module).orgname # orgname) DO obj1 := obj; obj := obj1.next END;
@@ -236,7 +236,7 @@ BEGIN Files.ReadByte(R, b);
 END Read;
 
 PROCEDURE InType(VAR R: Files.Rider; thismod: Object; VAR T: Type);
-VAR key: INTEGER;
+VAR key: LONGINT;
     ref, class, form, np, readonly: INTEGER;
     fld, par, obj, mod, last: Object;
     t: Type;
@@ -265,7 +265,7 @@ BEGIN Read(R, ref);
       END;
       IF last = NIL THEN t.dsc := obj ELSE last.next := obj END
     ELSIF form = Proc THEN
-      InType(R, thismod, t.base);  
+      InType(R, thismod, t.base);
       Files.ReadNum(R, t.len);  Files.ReadByte(R, b);  t.native := b # 0;
       obj := NIL; np := 0; Read(R, class);
       WHILE class # 0 DO  (*parameters*)
@@ -292,7 +292,7 @@ BEGIN Read(R, ref);
 END InType;
 
 PROCEDURE Import*(VAR modid, modid1: ORS.Ident);
-VAR key: INTEGER; class, k: INTEGER;
+VAR key: LONGINT; class, k: INTEGER;
     obj: Object;  t: Type;
     thismod: Object;
     modname, fname: ORS.Ident;
@@ -352,8 +352,8 @@ VAR obj, mod, fld, bot: Object;
     END
   END OutPar;
 
-  PROCEDURE FindHiddenPointers(VAR R: Files.Rider; typ: Type; offset: INTEGER);
-    VAR fld: Object; i, n: INTEGER;
+  PROCEDURE FindHiddenPointers(VAR R: Files.Rider; typ: Type; offset: LONGINT);
+    VAR fld: Object; i, n: LONGINT;
   BEGIN
     IF (typ.form = Pointer) OR (typ.form = NilTyp) THEN Write(R, Fld); Write(R, 0); Files.WriteNum(R, offset)
     ELSIF typ.form = Record THEN fld := typ.dsc;
@@ -383,7 +383,7 @@ BEGIN
         fld := fld.next
       END;
       Write(R, 0)
-    ELSIF t.form = Proc THEN OutType(R, t.base); 
+    ELSIF t.form = Proc THEN OutType(R, t.base);
       Files.WriteNum(R, t.len);  Files.WriteByte(R, ORD(t.native));
       OutPar(R, t.dsc, t.nofpar); Write(R, 0)
     END;
@@ -398,9 +398,8 @@ BEGIN
   END
 END OutType;
 
-
-PROCEDURE Export*(VAR modid: ORS.Ident; VAR newSF: BOOLEAN; VAR key: INTEGER);
-VAR x, sum, oldkey: INTEGER;
+PROCEDURE Export*(VAR modid: ORS.Ident; VAR newSF: BOOLEAN; VAR key: LONGINT);
+VAR x, sum, oldkey: LONGINT;
     obj, obj0: Object;
     filename: ORS.Ident;
     F, F1: Files.File; R, R1: Files.Rider;
@@ -454,13 +453,13 @@ PROCEDURE Init*;
 BEGIN topScope := universe; nofmod := 1
 END Init;
 
-PROCEDURE type(ref, form: INTEGER; size: INTEGER): Type;
+PROCEDURE type(ref, form: INTEGER; size: LONGINT): Type;
 VAR tp: Type;
 BEGIN NEW(tp); tp.form := form; tp.size := size; tp.ref := ref; tp.base := NIL;
   typtab[ref] := tp; RETURN tp
 END type;
 
-PROCEDURE enter(name: ARRAY OF CHAR; cl: INTEGER; type: Type; n: INTEGER);
+PROCEDURE enter(name: ARRAY OF CHAR; cl: INTEGER; type: Type; n: LONGINT);
 VAR obj: Object;
 BEGIN NEW(obj); obj.name := name; obj.class := cl; obj.type := type; obj.val := n; obj.dsc := NIL;
   IF cl = Typ THEN type.typobj := obj END;
@@ -485,8 +484,8 @@ BEGIN
   strType    := type(String, String, 16);
 
 (*initialize universe with data types and in-line procedures;
-  LONGREAL is synonym to REAL.
-  LED, ADC, SBC; LDPSR, LDREG, REG, COND are not in language definition*)
+   LONGINT is synonym to INTEGER, LONGREAL to REAL.
+   LED, ADC, SBC; LDPSR, LDREG, REG, COND are not in language definition*)
   system := NIL;  (*n = procno*10 + nofpar*)
   enter("UML",      SFunc, intType,  132);  (*functions*)
   enter("SBC",      SFunc, intType,  122);
@@ -516,9 +515,10 @@ BEGIN
   enter("CHAR",     Typ,   charType, 0);
   enter("LONGREAL", Typ,   realType, 0);
   enter("REAL",     Typ,   realType, 0);
+  enter("LONGINT",  Typ,   intType,  0);
   enter("INTEGER",  Typ,   intType,  0);
-
   topScope := NIL; OpenScope; topScope.next := system; universe := topScope;
+
   system   := NIL;  (* initialize "unsafe" pseudo-module SYSTEM*)
   enter("COND",   SFunc, boolType,   191);  (*functions*)
   enter("SIZE",   SFunc, intType,    181);

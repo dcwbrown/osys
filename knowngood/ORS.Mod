@@ -33,16 +33,15 @@ CONST IdLen* = 32;
 
 TYPE Ident* = ARRAY IdLen OF CHAR;
 
-VAR
-  ival*, slen*: INTEGER;  (* results of Get *)
+VAR ival*, slen*: LONGINT;  (* results of Get *)
   rval*:        REAL;
   id*:          Ident;    (* for identifiers *)
   str*:         ARRAY stringBufSize OF CHAR;
   errcnt*:      INTEGER;
   W:            Texts.Writer;
 
-  ch:       CHAR;      (* Last character read *)
-  errpos:   INTEGER;
+  ch:       CHAR;      (* last character read *)
+  errpos:   LONGINT;
   linebeg*: INTEGER;   (* Position at start of current line *)
   linenum*: INTEGER;   (* Line number of current line *)
   R:        Texts.Reader;
@@ -77,7 +76,7 @@ BEGIN
 END GetCh;
 
 PROCEDURE Mark*(msg: ARRAY OF CHAR);
-VAR p: INTEGER;
+VAR p: LONGINT;
 BEGIN p := Pos();
   IF (p > errpos) & (errcnt < 25) THEN
     Texts.WriteLn(W);
@@ -148,7 +147,7 @@ BEGIN i := 0; GetCh;
 END HexString;
 
 (*---
-PROCEDURE Ten(e: INTEGER): REAL;
+PROCEDURE Ten(e: LONGINT): REAL;
   VAR x, t: REAL;
 BEGIN x := 1.0; t := 10.0;
   WHILE e > 0 DO
@@ -161,7 +160,7 @@ END Ten;
 
 PROCEDURE Number(VAR sym: INTEGER);
   CONST max = 2147483647 (*2^31 - 1*);
-  VAR i, k, e, n, s, h: INTEGER; (*--- x: REAL; ---*)
+  VAR i, k, e, n, s, h: LONGINT; (*--- x: REAL; ---*)
     d: ARRAY 32 OF INTEGER;
     negE: BOOLEAN;
 BEGIN ival := 0; i := 0; n := 0; k := 0;
@@ -330,7 +329,7 @@ BEGIN
 END Get;
 
 
-PROCEDURE Init*(T: Texts.Text; pos: INTEGER);
+PROCEDURE Init*(T: Texts.Text; pos: LONGINT);
 BEGIN
   ListCodegen  := FALSE;
   ListAssembly := FALSE;

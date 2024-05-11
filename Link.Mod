@@ -831,10 +831,19 @@ BEGIN
   prev1 := ExeFile.name; H.Append(".-1", prev1);
   prev2 := ExeFile.name; H.Append(".-2", prev2);
   prev3 := ExeFile.name; H.Append(".-3", prev3);
+  (*
   res   := H.MoveFile(prev2, prev3);
   res   := H.MoveFile(prev1, prev2);
   res   := H.MoveFile(ExeFile.name, prev1);
-  IF (res # 0) & (res # 2) THEN H.AssertWinError(res) END;
+  *)
+  Files.Rename(prev2,        prev3, res);
+  Files.Rename(prev1,        prev2, res);
+  Files.Rename(ExeFile.name, prev1, res);
+
+  IF (res # 0) & (res # 2) THEN
+    WHILE TRUE DO END;
+    H.AssertWinError(res)
+  END;
 
   Files.Register(ExeFile);
 END Generate;

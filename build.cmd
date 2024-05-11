@@ -70,8 +70,8 @@ goto noprebuild
 @echo.
 ::
 ::
-@copy /Y ..\*.Tool
-@copy /Y ..\*.Fnt
+@copy /Y ..\*.Tool >NUL 2>NUL
+@copy /Y ..\*.Fnt >NUL 2>NUL
 Oberon
 ::
 ::

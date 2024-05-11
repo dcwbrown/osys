@@ -14,9 +14,9 @@ TYPE PtrBase = POINTER TO PtrBaseDesc;
   END;
 
 VAR sym:   INTEGER;    (* last symbol read *)
-  dc:      INTEGER;    (* data counter *)
+  dc:      LONGINT;    (* data counter *)
   level:   INTEGER;
-  NewSF:   BOOLEAN;    (* option flag *)
+  newSF:   BOOLEAN;    (* option flag *)
   expression:  PROCEDURE(VAR x: X64.Item);  (* to avoid forward reference *)
   Type:        PROCEDURE(VAR type: ORB.Type);
   FormalType:  PROCEDURE(VAR typ: ORB.Type;  dim: INTEGER);
@@ -286,8 +286,8 @@ BEGIN par := x.type.dsc;  n := 0;
   END
 END ParamList;
 
-PROCEDURE StandFunc(VAR x: X64.Item;  fct: INTEGER;  restyp: ORB.Type);
-VAR y: X64.Item;  n, npar: INTEGER;
+PROCEDURE StandFunc(VAR x: X64.Item;  fct: LONGINT;  restyp: ORB.Type);
+VAR y: X64.Item;  n, npar: LONGINT;
 BEGIN Check(ORS.lparen, "no (");
   npar := fct MOD 10;  fct := fct DIV 10;  expression(x);  n := 1;
   WHILE sym = ORS.comma DO ORS.Get(sym);  expression(y);  INC(n) END;
@@ -476,8 +476,8 @@ END expression0;
 
 (* statements *)
 
-PROCEDURE StandProc(pno: INTEGER);
-VAR nap, npar: INTEGER;  (*nof actual/formal parameters*)
+PROCEDURE StandProc(pno: LONGINT);
+VAR nap, npar: LONGINT;  (*nof actual/formal parameters*)
     x, y, z: X64.Item;
 BEGIN Check(ORS.lparen, "no (");
   npar := pno MOD 10;  pno := pno DIV 10;  expression(x);  nap := 1;
@@ -1224,10 +1224,10 @@ BEGIN
 END Module;
 
 PROCEDURE Option(VAR S: Texts.Scanner);
-BEGIN NewSF := FALSE;
+BEGIN newSF := FALSE;
   IF S.nextCh = "/" THEN
     Texts.Scan(S); Texts.Scan(S);
-    IF (S.class = Texts.Name) & (S.s[0] = "s") THEN NewSF := TRUE END
+    IF (S.class = Texts.Name) & (S.s[0] = "s") THEN newSF := TRUE END
   END
 END Option;
 
@@ -1240,21 +1240,21 @@ BEGIN Texts.OpenScanner(S, Texts.Par.text, Texts.Par.pos); Texts.Scan(S);
   IF S.class = Texts.Char THEN
     IF S.c = "@" THEN
       Option(S); Texts.GetSelection(T, beg, end, time);
-      IF time >= 0 THEN ORS.Init(T, beg); Module(NewSF) END
+      IF time >= 0 THEN ORS.Init(T, beg); Module(newSF) END
     ELSIF S.c = "^" THEN
       Option(S); Texts.GetSelection(T, beg, end, time);
       IF time >= 0 THEN
         Texts.OpenScanner(S, T, beg); Texts.Scan(S);
         IF S.class = Texts.Name THEN
           Texts.WriteString(W, S.s); NEW(T); Texts.Open(T, S.s);
-          IF T.len > 0 THEN ORS.Init(T, 0); Module(NewSF) END
+          IF T.len > 0 THEN ORS.Init(T, 0); Module(newSF) END
         END
       END
     END
   ELSE
     WHILE S.class = Texts.Name DO
       NEW(T); Texts.Open(T, S.s);
-      IF T.len > 0 THEN Option(S); ORS.Init(T, 0); Module(NewSF)
+      IF T.len > 0 THEN Option(S); ORS.Init(T, 0); Module(newSF)
       ELSE Texts.WriteString(W, S.s); Texts.WriteString(W, " not found");
         Texts.WriteLn(W); Texts.Append(Texts.Log, W.buf)
       END ;
