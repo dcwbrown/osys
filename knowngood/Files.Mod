@@ -443,10 +443,12 @@ VAR f, g: File;
   PROCEDURE finalise(f: File);
   VAR res: INTEGER;
   BEGIN
+    (*
     H.ws("* Finalising file at "); H.wh(ORD(f)); H.ws("H, name ");
     H.ws(f.name); H.ws(" ("); IF ~f.registered THEN H.ws("un") END;
     H.wsn("registered).");
     ASSERT(getmark(f) = 0);
+    *)
     IF f.registered THEN CloseHostHandle(f) END
   END finalise;
 

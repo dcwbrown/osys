@@ -332,16 +332,17 @@ BEGIN
     scan := H.Time();
 
     H.ws("GC timing: mark ");    H.wi((mark - start) DIV 10);
-    H.ws(", files "); H.wi((files - mark) DIV 10);
-    H.ws(", scan ");  H.wi((scan - files) DIV 10);
-    H.ws(", total "); H.wi((scan - start) DIV 10);
+    H.ws("us, files "); H.wi((files - mark) DIV 10);
+    H.ws("us, scan ");  H.wi((scan - files) DIV 10);
+    H.ws("us, total "); H.wi((scan - start) DIV 10);
     H.wsn("us.");
 
     Modules.Collect(BasicCycle);
 
-    (* Files following garbage collection. *)
+    (*
     H.wsn("List of files following GC:");
     Files.ListFiles
+    *)
   END
 END GC;
 
