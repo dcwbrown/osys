@@ -17,6 +17,7 @@ VAR
   PreloadExe:    Files.File;
   PreloadOffset: INTEGER;
   Load*:         PROCEDURE(name: ARRAY OF CHAR;  VAR newmod: Module);
+  ActCnt*:       INTEGER;  (* Action count for scheduling garbage collection *)
 
 
 PROCEDURE ThisFile(name: ARRAY OF CHAR): Files.File;
@@ -83,7 +84,7 @@ PROCEDURE ReadVar(VAR r: Files.Rider;  VAR var: ARRAY OF BYTE);
 BEGIN Files.ReadBytes(r, var, LEN(var)) END ReadVar;
 
 
-PROCEDURE LoadModule*(F: Files.File; VAR fileoffset: INTEGER; VAR newmod: Module);
+PROCEDURE LoadModule*(VAR F: Files.File; VAR fileoffset: INTEGER; VAR newmod: Module);
   (*search module in list;  if not found, load module.
     res = 0: already present or loaded;
     res = 1: file not available;
@@ -118,7 +119,6 @@ VAR
 BEGIN
   nofimps    := 0;
   filepos    := fileoffset;
-  fileoffset := 0;
 
   Files.Set(R, F, filepos);
   H.ZeroFill(header);
@@ -126,11 +126,17 @@ BEGIN
   IF header.magic # "Oberon5" THEN
     res := 4
   ELSE
-    name1      := header.name;
-    importing  := name1;
-    key        := header.key;
-    size       := (header.vars + header.varsize + 15) DIV 16 * 16;
-    fileoffset := filepos + header.size;
+    name1     := header.name;
+    importing := name1;
+    key       := header.key;
+    size      := (header.vars + header.varsize + 15) DIV 16 * 16;
+
+    (*
+    IF fileoffset > 0 THEN
+      H.ws("LoadModule preloading "); H.ws(header.name);
+      H.ws(" from "); H.wh(fileoffset); H.wsn("H.")
+    END;
+    *)
 
     (* Load list of imported modules (immediately follows module header) *)
     Files.ReadString(R, impname);
@@ -184,9 +190,9 @@ BEGIN
     mod.exports := header.exports;
     mod.lines   := header.lines;
     mod.varsize := header.varsize;
+    mod.ptr     := header.ptr;
     mod.vars    := ORD(mod) + header.vars;
     mod.cmd     := ORD(mod) + header.cmd;
-    mod.ptr     := ORD(mod) + header.ptr;
 
     (* Link imports *)
 
@@ -198,12 +204,23 @@ BEGIN
     END;
 
     (* Relocate pointer addresses *)
-    p := mod.ptr;
+    p := ORD(mod) + mod.ptr;
     SYSTEM.GET(p, ptroff);
     WHILE ptroff >= 0 DO
       SYSTEM.PUT(p, mod.vars + ptroff);
       INC(p, 8);
       SYSTEM.GET(p, ptroff)
+    END;
+
+    (* Manage preloading *)
+    IF fileoffset > 0 THEN  (* Advance preload state *)
+      IF fileoffset + header.size < Files.Length(F) THEN
+        INC(fileoffset, header.size)
+      ELSE
+        (* We've reached the end of the exe, close it before initialising the module. *)
+        Files.CloseHostHandle(F);  F := NIL;
+        fileoffset := 0;
+      END
     END;
 
     (* Initialize module *)
@@ -220,38 +237,16 @@ BEGIN
 END LoadModule;
 
 
-PROCEDURE Preload;
-VAR mod: Module;
-BEGIN
-  IF (res = 0) & (PreloadOffset < Files.Length(PreloadExe)) THEN
-    WHILE (res = 0)
-        & (PreloadOffset > 0)
-        & (PreloadOffset < Files.Length(PreloadExe)) DO
-      LoadModule(PreloadExe, PreloadOffset, mod);
-      IF res # 0 THEN
-        H.ws("LoadModule failure in Preload. res "); H.wi(res);
-        H.ws(", importing "); H.ws(importing); H.wsn(".");
-      END;
-      ASSERT(res = 0);
-    END;
-    IF PreloadOffset # 0 THEN
-      ASSERT(PreloadOffset = Files.Length(PreloadExe))
-    END;
-    PreloadOffset := 0  (* Preloading complete. *)
-  END
-END Preload;
-
-
 PROCEDURE LoadImpl(name: ARRAY OF CHAR;  VAR newmod: Module);
 VAR mod: Module;  F: Files.File;  offset: INTEGER;
 BEGIN
   res := 0;
-  mod := H.Root;
-  WHILE (mod # NIL) & (name # mod.name) DO mod := mod.next END;
+  mod := H.Root;  WHILE (mod # NIL) & (name # mod.name) DO mod := mod.next END;
   IF (mod = NIL) & (PreloadOffset # 0) THEN
-    Preload;
-    mod := H.Root;
-    WHILE (mod # NIL) & (name # mod.name) DO mod := mod.next END;
+    WHILE (res = 0) & (PreloadExe # NIL) DO
+      LoadModule(PreloadExe, PreloadOffset, mod);  ASSERT(res = 0)
+    END;
+    mod := H.Root;  WHILE (mod # NIL) & (name # mod.name) DO mod := mod.next END;
   END;
   IF mod = NIL THEN
     Check(name);
@@ -266,7 +261,6 @@ BEGIN
   END;
   newmod := mod
 END LoadImpl;
-
 
 
 PROCEDURE ThisCommand*(mod: Module;  name: ARRAY OF CHAR): Command;
@@ -304,6 +298,22 @@ BEGIN mod := H.Root;  res := 0;
 END Free;
 
 
+(* --------------------------- Garbage collection --------------------------- *)
+
+(* Garbage collection trigger moved here from Oberon.Mod so that programs
+   can be compiled without Obeorn.Mod and work both as command line tools
+   and within the Oberon system. Note that the Oberon system only collects
+   garbage within the GC task which only runs after command completion, so
+   the hosted command line implementation never runs garbage collection,
+   the effect of garbage collection provided by the hosted OS process exit.
+*)
+PROCEDURE Collect* (count: INTEGER);
+BEGIN ActCnt := count
+END Collect;
+
+
+(* ----------------------------- Initialisation ----------------------------- *)
+
 PROCEDURE Init;
 VAR
   fn16:  ARRAY H.MaxPath OF SYSTEM.CARD16;
@@ -313,6 +323,7 @@ BEGIN
   Load          := LoadImpl;
   PreloadExe    := NIL;
   PreloadOffset := 0;
+  ActCnt        := 0;
   IF H.Preload.FileOfs # 0 THEN
     ASSERT(H.GetModuleFileNameW(0, SYSTEM.ADR(fn16), H.MaxPath) # 0);
     ASSERT(H.Utf16ToUtf8(fn16, fn8) # 0);

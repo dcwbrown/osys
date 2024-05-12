@@ -7,7 +7,7 @@ CONST
   StandardMenu = "System.Close System.Copy System.Grow Edit.Search Edit.Store";
   LogMenu      = "Edit.Locate Edit.Search System.Copy System.Grow System.Clear";
 
-VAR W:   Texts.Writer;
+VAR W: Texts.Writer;
   pat: ARRAY 32 OF CHAR;
 
 PROCEDURE GetArg(VAR S: Texts.Scanner);
@@ -69,7 +69,7 @@ BEGIN Texts.OpenScanner(S, Oberon.Par.text, Oberon.Par.pos); Texts.Scan(S);
 END Date;
 
 PROCEDURE Collect*;
-BEGIN Oberon.Collect(0)
+BEGIN Modules.Collect(0)
 END Collect;
 
 PROCEDURE Quit*;
@@ -166,7 +166,7 @@ BEGIN Texts.WriteString(W, "System.Free"); EndLine;
   ELSE
     WHILE S.class = Texts.Name DO Free1(S); Texts.Scan(S) END
   END ;
-  Oberon.Collect(0)
+  Modules.Collect(0)
 END Free;
 
 PROCEDURE FreeFonts*;

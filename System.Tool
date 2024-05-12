@@ -13,7 +13,7 @@ System.CopyFiles ~
 System.RenameFiles ~
 System.DeleteFiles ~
 
-System.ShowModules  System.ShowCommands ^ 
+System.ShowModules  System.ShowCommands ^
 
 PCLink1.Run
 Hilbert.Draw  Sierpinski.Draw  Blink.Run  Stars.Open

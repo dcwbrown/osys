@@ -689,30 +689,19 @@ BEGIN
   END;
 
   (* Relocate pointer addresses *)
-  ptradr := ORD(mod) + mod.ptr;
+  ptradr := ORD(mod) + mod.ptr;  (* Address witihin Mem *)
   SYSTEM.GET(ptradr, ptroff);
   WHILE ptroff >= 0 DO
-    SYSTEM.PUT(ptradr, ptroff + ModuleBase + ORD(mod) + mod.vars);
+    SYSTEM.PUT(ptradr, ModuleBase + ModuleSize + mod.vars + ptroff);
     INC(ptradr, 8);
     SYSTEM.GET(ptradr, ptroff)
   END;
 
-  INC(mod.ptr, ModuleBase + ModuleSize);
   INC(mod.cmd, ModuleBase + ModuleSize);
-
-  (*
-  H.ws("Link.Link Loaded module "); H.wi(ModCount);
-  H.ws(" '");             H.ws(ModAdr[ModCount].name);
-  H.ws("' key ");         H.wh(ModAdr[ModCount].key);
-  H.ws("H at ");          H.wh(ModAdr[ModCount].adr);
-  H.ws("H nimports ");    H.wh(mod.vars);
-  H.ws("H varsize ");     H.wh(mod.varsize);  H.wsn("H.");
-  *)
-
   mod.size := (mod.vars + mod.varsize + 16) DIV 16 * 16;
   INC(mod.vars, ModuleBase + ModuleSize);
   INC(ModuleSize, mod.size);
-  INC(ModCount);
+  INC(ModCount)
 RETURN mod END LoadModule;
 
 
@@ -831,21 +820,12 @@ BEGIN
   prev1 := ExeFile.name; H.Append(".-1", prev1);
   prev2 := ExeFile.name; H.Append(".-2", prev2);
   prev3 := ExeFile.name; H.Append(".-3", prev3);
-  (*
+
   res   := H.MoveFile(prev2, prev3);
   res   := H.MoveFile(prev1, prev2);
   res   := H.MoveFile(ExeFile.name, prev1);
-  *)
-  Files.Rename(prev2,        prev3, res);
-  Files.Rename(prev1,        prev2, res);
-  Files.Rename(ExeFile.name, prev1, res);
 
-  IF (res # 0) & (res # 2) THEN
-    WHILE TRUE DO END;
-    H.AssertWinError(res)
-  END;
-
-  Files.Register(ExeFile);
+  Files.Register(ExeFile)
 END Generate;
 
 

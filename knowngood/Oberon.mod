@@ -6,7 +6,7 @@ IMPORT SYSTEM, H := WinHost, WinGui, Kernel, Files, Modules,
 CONST (*message ids*)
   consume* = 0; track* = 1; defocus* = 0; neutralize* = 1; mark* = 2;
   off = 0; idle = 1; active = 2;   (*task states*)
-  BasicCycle = 20;
+  BasicCycle = 20;  (* default number of UI loops between garbage collections *)
   ESC = 1BX; SETSTAR = 1AX;
 
 TYPE Painter* = PROCEDURE (x, y: INTEGER);
@@ -308,23 +308,45 @@ BEGIN
   IF time >= 0 THEN text := M.text; beg := M.beg; end := M.end END
 END GetSelection;
 
-PROCEDURE GC;
-VAR mod: Modules.Module;
+
+(* ------------------------ Garbage collection task ------------------------- *)
+
+PROCEDURE GC*;  (* Regular garbage collection task *)
+VAR mod: Modules.Module;  start, mark, files, scan: INTEGER;
 BEGIN
-  (*
-  IF (Kernel.ActCnt <= 0) OR (Kernel.allocated >= Kernel.heapLim - Kernel.heapOrg - 10000H) THEN
-    mod := Modules.root; LED(21H);
+  IF (Modules.ActCnt <= 0)
+  OR (Kernel.allocated >= Kernel.heapLim - Kernel.heapOrg - 10000H) THEN
+    mod := H.Root;
+    start := H.Time();
     WHILE mod # NIL DO
-      IF mod.name[0] # 0X THEN Kernel.Mark(mod.ptr) END;
+      IF mod.name[0] # 0X THEN
+        Kernel.Mark(ORD(mod) + mod.ptr)
+      END;
       mod := mod.next
     END;
-    LED(23H);
-    Files.RestoreList; LED(27H);
-    Kernel.Scan; LED(20H);
-    Kernel.Collect(BasicCycle)
+    (*LED(23H);*)
+    mark := H.Time();
+    Files.CloseCollectableFiles; (*LED(27H);*)
+    files := H.Time();
+    Kernel.Scan; (*LED(20H);*)
+    scan := H.Time();
+
+    H.ws("GC timing: mark ");    H.wi((mark - start) DIV 10);
+    H.ws(", files "); H.wi((files - mark) DIV 10);
+    H.ws(", scan ");  H.wi((scan - files) DIV 10);
+    H.ws(", total "); H.wi((scan - start) DIV 10);
+    H.wsn("us.");
+
+    Modules.Collect(BasicCycle);
+
+    (* Files following garbage collection. *)
+    H.wsn("List of files following GC:");
+    Files.ListFiles
   END
-  *)
 END GC;
+
+
+(* ---------------------------- Task management ----------------------------- *)
 
 PROCEDURE NewTask*(h: Handler; period: INTEGER): Task;
 VAR t: Task;
@@ -347,9 +369,11 @@ BEGIN
   END
 END Remove;
 
+(* Moved to Modules.Mod
 PROCEDURE Collect* (count: INTEGER);
 BEGIN Kernel.Collect(count) (* ActCnt := count *)
 END Collect;
+*)
 
 PROCEDURE SetFont* (fnt: Fonts.Font);
 BEGIN CurFnt := fnt
@@ -376,13 +400,13 @@ BEGIN
         N.id := mark; N.X := X; N.Y := Y; V := Viewers.This(X, Y); V.handle(V, N)
       ELSE M.id := consume; M.ch := ch; M.fnt := CurFnt; M.col := CurCol; M.voff := CurOff;
         FocusViewer.handle(FocusViewer, M);
-        Kernel.Collect(Kernel.ActCnt - 1)
+        Modules.Collect(Modules.ActCnt - 1)
       END
     ELSIF keys # {} THEN
       M.id := track; M.X := X; M.Y := Y; M.keys := keys;
       REPEAT V := Viewers.This(M.X, M.Y); V.handle(V, M); Input.Mouse(M.keys, M.X, M.Y)
       UNTIL M.keys = {};
-      Kernel.Collect(Kernel.ActCnt - 1)
+      Modules.Collect(Modules.ActCnt - 1)
     ELSE
       IF (X # prevX) OR (Y # prevY) OR ~Mouse.on THEN
         M.id := track;   M.X := X;

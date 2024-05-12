@@ -101,10 +101,15 @@ BEGIN IF f # NIL THEN res := H.FlushFileBuffers(f.handle) END
 END Close;
 
 
+PROCEDURE CloseHostHandle*(f: File);  (* Do not use the file after calling this *)
+BEGIN ASSERT(H.CloseHandle(f.handle) # 0); f.handle := -1;
+END CloseHostHandle;
+
+
 PROCEDURE Unregister(f: File);
 VAR disposition, res: INTEGER;
 BEGIN
-  ASSERT(H.CloseHandle(f.handle) # 0);
+  CloseHostHandle(f);
   MakeTempFile(f.tempname);
   res := H.MoveFile(f.name, f.tempname);
   IF (res # 0) & (res # 2) THEN  (* any failure other than 'not found' *)
@@ -138,7 +143,7 @@ BEGIN
   IF (f # NIL) & (f.name[0] # 0X) & ~f.registered THEN
     disposition := 0;  (* Remove delete on close flag *)
     ASSERT(H.SetFileInformationByHandle(f.handle, 4, SYSTEM.ADR(disposition), 8) # 0);
-    ASSERT(H.CloseHandle(f.handle) # 0);
+    CloseHostHandle(f);
     UnregisterByName(f.name);
     IF H.MoveFile(f.tempname, f.name) # 0 THEN
       err := H.GetLastError();
@@ -153,6 +158,20 @@ BEGIN
 END Register;
 
 
+PROCEDURE ListFiles*;
+VAR f: File; h: INTEGER;
+BEGIN f := first;
+  WHILE f # NIL DO
+    H.ws("  at "); H.wh(ORD(f));
+    H.ws("H, name '");  H.ws(f.name);
+    H.ws("', "); IF ~f.registered THEN H.ws("un") END;
+    H.ws("registered, handle "); h := f.handle;
+    IF h < 0 THEN H.wc("-"); h := -h END; H.wh(h); H.wsn("H.");
+    f := f.next
+  END
+END ListFiles;
+
+
 PROCEDURE Rename*(old, new: ARRAY OF CHAR; VAR res: INTEGER);
 (* Returns
    0 - success
@@ -162,22 +181,34 @@ VAR f: File;
 BEGIN
   UnregisterByName(new);
   f := first;  WHILE (f # NIL) & (f.name # old) DO f := f.next END;
+
   IF f # NIL THEN
-    IF f.registered THEN ASSERT(H.CloseHandle(f.handle) # 0)
+    IF f.registered THEN CloseHostHandle(f)
     ELSE f := NIL END
   END;
+
+
+  (*
+  H.ws("Files.Rename("); H.ws(old); H.ws(", "); H.ws(new); H.wsn(", active registered files:");
+  ListFiles;
+  *)
   res := H.MoveFile(old, new);
   IF (res = 0) & (f # NIL) THEN
     f.registered := TRUE;
     f.name := new
-  END
+  END;
 END Rename;
 
 
 PROCEDURE Length*(f: File): INTEGER;
 VAR res, size: INTEGER;
 BEGIN
-  ASSERT(H.GetFileSizeEx(f.handle, SYSTEM.ADR(size)) # 0)
+  res := H.GetFileSizeEx(f.handle, SYSTEM.ADR(size));
+  IF res = 0 THEN
+    H.ws("Files.Length: GetFileSizeEx failed, f.name '"); H.ws(f.name);
+    H.ws("', f.handle: "); H.wh(f.handle); H.wsn("H.");
+    ASSERT(FALSE);
+  END;
 RETURN size END Length;
 
 
@@ -208,7 +239,9 @@ BEGIN
   IF pos # f.pos THEN
     res := H.SetFilePointerEx(f.handle, pos, 0, 0);
     IF res = 0 THEN
-      H.ws("SetFilePos failed. File handle "); H.wh(f.handle);
+      H.ws("SetFilePos failed. File at ");
+      H.wh(ORD(f)); H.ws("H, name ");
+      H.ws(f.name); H.ws(", File handle "); H.wh(f.handle);
       H.ws("H, pos "); H.wi(pos); H.wsn(".");
       H.AssertWinError(H.GetLastError())
     END;
@@ -410,11 +443,11 @@ VAR f, g: File;
   PROCEDURE finalise(f: File);
   VAR res: INTEGER;
   BEGIN
-    H.ws("* Finalising ");
+    H.ws("* Finalising file at "); H.wh(ORD(f)); H.ws("H, name ");
     H.ws(f.name); H.ws(" ("); IF ~f.registered THEN H.ws("un") END;
     H.wsn("registered).");
     ASSERT(getmark(f) = 0);
-    IF f.registered THEN res := H.CloseHandle(f.handle) END
+    IF f.registered THEN CloseHostHandle(f) END
   END finalise;
 
 BEGIN

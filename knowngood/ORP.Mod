@@ -1,6 +1,6 @@
 MODULE ORP;  (*N. Wirth 1.7.97 / 8.3.2020  Oberon compiler for RISC in Oberon-07*)
 
-IMPORT SYSTEM, H := WinHost, Kernel, Files, Texts, ORS, ORB, X64, l := Listing, ORG;
+IMPORT SYSTEM, H := WinHost, Kernel, Files, Modules, Texts, ORS, ORB, X64, l := Listing, ORG;
 
   (*Author: Niklaus Wirth, 2014.
     Parser of Oberon-RISC compiler. Uses Scanner ORS to obtain symbols (tokens),
@@ -1261,7 +1261,7 @@ BEGIN Texts.OpenScanner(S, Texts.Par.text, Texts.Par.pos); Texts.Scan(S);
       IF (T.len # 0) & (ORS.errcnt = 0) THEN Texts.Scan(S) ELSE S.class := 0 END
     END
   END ;
-  Kernel.Collect(0)
+  Modules.Collect(0)  (* Trigger immediate garbage collection when ORP exits *)
 END Compile;
 
 

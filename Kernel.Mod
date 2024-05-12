@@ -8,7 +8,6 @@ VAR allocated*: INTEGER;
   (* Every free block starts 64/length, 64/-1, 64/nextfree      *)
   heapOrg*, heapLim*: INTEGER;
   list0, list1, list2, list3: INTEGER;  (*lists of free blocks of size n*512, 256, 128, 64 bytes*)
-  ActCnt*: INTEGER;  (* Action count for scheduling garbage collection *)
 
 
 (* -------------------------- New: heap allocation -------------------------- *)
@@ -105,15 +104,12 @@ END New;
 
 
 (* --------------------------- Garbage collector ---------------------------- *)
-(* ------------------------- Called from Oberon.GC -------------------------- *)
-
-PROCEDURE Collect*(count: LONGINT);
-BEGIN ActCnt := count
-END Collect;
+(* ------------------------- Called from Modules.GC ------------------------- *)
 
 PROCEDURE Mark*(pref: LONGINT);
 VAR pvadr, offadr, offset, tag, p, q, r: LONGINT;
-BEGIN SYSTEM.GET(pref, pvadr);  (* pointers < heapOrg considered NIL *)
+BEGIN
+  SYSTEM.GET(pref, pvadr);  (* pointers < heapOrg considered NIL *)
   WHILE pvadr >= 0 DO
     IF pvadr < 100000000H THEN H.Trap(56, "Mark: pref -> too low address") END;
     SYSTEM.GET(pvadr, p);
@@ -182,10 +178,6 @@ BEGIN p := heapOrg;
 END Scan;
 
 
-PROCEDURE Halt*(exitCode: INTEGER);
-BEGIN (*Heap.Finalise;*)  H.ExitProcess(exitCode) END Halt;
-
-
 (*-------- Miscellaneous procedures----------*)
 
 PROCEDURE Time*(): INTEGER;
@@ -212,8 +204,6 @@ CONST
   commit  = 2000000H;   (* Initially commit 32MB  *)
 BEGIN
   H.Init;
-
-  ActCnt := 0;
 
   (* Initialize heap *)
   heapOrg := H.VirtualAlloc(200000000H, reserve, MEMRESERVE, PAGEREADWRITE);
