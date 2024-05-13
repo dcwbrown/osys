@@ -1077,6 +1077,11 @@ BEGIN
 
 END InitMemory;
 
+PROCEDURE SetWriteLog*(wl: PROCEDURE(s: ARRAY OF BYTE));
+(* NOTE - Setting another write log stops wcn from detsctin start of line *)
+BEGIN Log := wl
+END SetWriteLog;
+
 PROCEDURE Init*;  (* Called from Kernel.init *)
 BEGIN
   HWnd           := 0;
