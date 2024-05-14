@@ -1737,8 +1737,12 @@ BEGIN Trace(TraceAny, "Bit(x: "); l.Item(x, Tr); l.s(", y: ", Tr); l.Item(y, Tr)
 END Bit;
 
 PROCEDURE REG*(VAR x: Item);
+VAR r: INTEGER;
 BEGIN Trace(TraceAny, "REG(x "); l.Item(x, Tr); l.sn(")", Tr);
-  ASSERT(FALSE)
+  ASSERT(x.mode = Const);
+  r := Reserve(x.n, {});
+  MoveReg(r, x.n);
+  x.n := r;  x.mode := Reg
 END REG;
 
 PROCEDURE Adr*(VAR x: Item);
@@ -1862,7 +1866,8 @@ PROCEDURE LDREG*(VAR x, y: Item);
 BEGIN
   Trace(TraceAny, "LDREG(x: "); l.Item(x, Tr);
   l.s(", y: ", Tr);            l.Item(y, Tr); l.n(Tr);
-  ASSERT(FALSE)
+  ASSERT(x.mode = Const);
+  LoadRegUnreserved(x.n, y)
 END LDREG;
 
 PROCEDURE Copy*(VAR x, y, z: Item);

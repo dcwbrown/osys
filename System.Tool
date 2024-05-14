@@ -32,3 +32,7 @@ ORP.Compile FileDir.Mod/s WinGui.Mod/s Input.Mod/s Display.Mod/s ~
 ORP.Compile Viewers.Mod/s Oberon.Mod/s MenuViewers.Mod/s ~
 ORP.Compile TextFrames.Mod/s Edit.Mod/s System.Mod/s ~
 Link.Link Oberon
+
+ORP.Compile Test.Mod/s ~
+Test.RunArrayIndexTest
+Test.RunNilDereferenceTest

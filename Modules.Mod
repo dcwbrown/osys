@@ -18,6 +18,7 @@ VAR
   PreloadOffset: INTEGER;
   Load*:         PROCEDURE(name: ARRAY OF CHAR;  VAR newmod: Module);
   ActCnt*:       INTEGER;  (* Action count for scheduling garbage collection *)
+  StackOrg*:     INTEGER;
 
 
 PROCEDURE ThisFile(name: ARRAY OF CHAR): Files.File;
@@ -333,9 +334,8 @@ BEGIN
   END
 END Init;
 
-
 BEGIN Init;
-
+  StackOrg := SYSTEM.REG(4);
   Load(H.CmdModule, M);
   IF (res = 0) & (H.CmdCommand[0] # 0X) THEN
     P := ThisCommand(M, H.CmdCommand);
@@ -354,6 +354,6 @@ BEGIN Init;
     H.SetExitCode(res)
   END;
 
-  H.Exit
+  H.ExitToHost
   (*LED(res);  REPEAT UNTIL FALSE*)  (*only if load fails*)
 END Modules.

@@ -425,12 +425,23 @@ BEGIN n := SYSTEM.REG(15); Texts.WriteString(W, "  ABORT  "); Texts.WriteHex(W, 
 END Abort;
 *)
 
+
+PROCEDURE Syslog(s: ARRAY OF BYTE);
+VAR i: INTEGER;  eatlf: BOOLEAN;
+BEGIN i := 0;  eatlf := FALSE;
+  WHILE (i < LEN(s)) & (s[i] # 0) DO
+    IF    s[i] = 0DH THEN EndLine; eatlf := TRUE
+    ELSIF s[i] = 0AH THEN IF eatlf THEN eatlf := FALSE ELSE EndLine END
+    ELSE eatlf := FALSE; Texts.Write(W, CHR(s[i])) END;
+    INC(i)
+  END
+END Syslog;
+
+
 BEGIN Texts.OpenWriter(W);
   Oberon.OpenLog(TextFrames.Text("")); OpenViewers;
-
+  H.SetSyslog(Syslog);
   (*
   Kernel.Install(SYSTEM.ADR(Trap), 20H); Kernel.Install(SYSTEM.ADR(Abort), 0);
   *)
-
-  Oberon.Loop
 END System.

@@ -195,19 +195,19 @@ VAR
   (* Linker expects handlers to follow immediately after pre-loaded vars *)
   Handlers*: ARRAY HandlerCount OF PROCEDURE;
 
-  Stdin:  INTEGER;
-  Stdout: INTEGER;
-  crlf*:  ARRAY 3 OF CHAR;
-  Log:    PROCEDURE(s: ARRAY OF BYTE);
-  Sol:    BOOLEAN;   (* True only at start of line *)
-  HWnd:   INTEGER;   (* Set if a window has been created *)
+  Stdin:   INTEGER;
+  Stdout:  INTEGER;
+  crlf*:   ARRAY 3 OF CHAR;
+  Syslog*: PROCEDURE(s: ARRAY OF BYTE);  (* Logging to Oberon system *)
+  Sol:     BOOLEAN;   (* True only at start of line *)
+  HWnd:    INTEGER;   (* Set if a window has been created *)
 
   ModuleSpace*: INTEGER;   (* Start of module space *)
   AllocPtr*:    INTEGER;   (* Start of remaining free module space *)
   CommitLen*:   INTEGER;   (* Committed module space memory *)
   Root*:        Module;    (* List of loaded and free'd modules *)
 
-  ExceptionDepth: INTEGER;
+  TrapDepth: INTEGER;
 
   (* Partially parsed command line *)
   CommandLine*: ARRAY 1024 OF CHAR;
@@ -216,9 +216,8 @@ VAR
   ArgStart*:    INTEGER;
 
   ExitCode: INTEGER;
+  Reset:    PROCEDURE;
 
-
-PROCEDURE NoLog(s: ARRAY OF BYTE); BEGIN END NoLog;
 
 PROCEDURE Min*(a, b: INTEGER): INTEGER;
 BEGIN IF a < b THEN b := a END;  RETURN b END Min;
@@ -280,6 +279,18 @@ BEGIN FOR i := 0 TO LEN(buf)-1 DO buf[i] := 0 END END ZeroFill;
 (* -------------------------------------------------------------------------- *)
 (* ---------------- Simple logging/debugging console output ----------------- *)
 (* -------------------------------------------------------------------------- *)
+
+PROCEDURE SetSyslog*(sl: PROCEDURE(s: ARRAY OF BYTE));
+BEGIN Syslog := sl END SetSyslog;
+
+PROCEDURE Log(s: ARRAY OF BYTE);
+VAR len, written, result: INTEGER;
+BEGIN
+  len := Length(s);
+  IF len > 0 THEN Sol := s[len-1] = 0AH END;
+  result := WriteFile(Stdout, SYSTEM.ADR(s), len, SYSTEM.ADR(written), 0);
+  IF Syslog # NIL THEN Syslog(s) END
+END Log;
 
 PROCEDURE wc*(c: CHAR); BEGIN Log(c) END wc;
 
@@ -514,6 +525,22 @@ BEGIN
 END GetUnsigned;
 
 
+(* ----------------------------- Exit handling ------------------------------ *)
+
+PROCEDURE SetExitCode*(code: INTEGER);
+BEGIN ExitCode := code END SetExitCode;
+
+PROCEDURE ExitToHost*;
+BEGIN ExitProcess(ExitCode) END ExitToHost;
+
+PROCEDURE Abort();
+BEGIN IF Reset # NIL THEN TrapDepth := 0; Reset ELSE ExitProcess(99) END
+END Abort;
+
+PROCEDURE SetReset*(r: PROCEDURE);
+BEGIN Reset := r
+END SetReset;
+
 (* ----------------------- Windows exception handling ----------------------- *)
 
 PROCEDURE LocateModule(adr: INTEGER): Module;
@@ -584,7 +611,7 @@ END LocateAddress;
 PROCEDURE- ExceptionHandler(p: ExceptionPointers);  (* Called by Windows *)
 VAR modadr, excpadr, excpcode: INTEGER;
 BEGIN
-  INC(ExceptionDepth);
+  INC(TrapDepth);
   excpcode := p.exception.ExceptionCode;
   excpadr  := p.exception.ExceptionAddress;
 
@@ -601,12 +628,12 @@ BEGIN
   ELSE ws("  Trap: Exception ");  wh(excpcode);  wc("H")
   END;
 
-  IF ExceptionDepth < 2 THEN
+  IF TrapDepth < 2 THEN
     LocateAddress(excpadr, p)
   ELSE
     wsn(": nested exception.")
   END;
-  ExitProcess(99)
+  Abort
 END ExceptionHandler;
 
 
@@ -615,11 +642,16 @@ END ExceptionHandler;
 PROCEDURE Trap*(retoffset: INTEGER; desc: ARRAY OF CHAR);
 VAR adr, modadr: INTEGER;
 BEGIN  (* retoffset is callers local var size *)
+  INC(TrapDepth);
   wcn;  ws("  Trap: ");  ws(desc);
-  IF retoffset < 0 THEN retoffset := -32 END;  (* Address our own return address *)
-  SYSTEM.GET(SYSTEM.ADR(LEN(desc)) + 16 + retoffset, adr);
-  LocateAddress(adr, NIL);
-  ExitProcess(99)
+  IF TrapDepth < 2 THEN
+    IF retoffset < 0 THEN retoffset := -32 END;  (* Address our own return address *)
+    SYSTEM.GET(SYSTEM.ADR(LEN(desc)) + 16 + retoffset, adr);
+    LocateAddress(adr, NIL);
+  ELSE
+    wsn(": nested exception.")
+  END;
+  Abort
 END Trap;
 
 PROCEDURE NewPointerHandler();
@@ -653,15 +685,6 @@ BEGIN
   Handlers[NilPointerDereferenceProc] := NilPointerDereferenceHandler;
   Handlers[TypeGuardFailureProc]      := TypeGuardFailureHandler
 END InitSysHandlers;
-
-
-(* ----------------------------- Exit handling ------------------------------ *)
-
-PROCEDURE SetExitCode*(code: INTEGER);
-BEGIN ExitCode := code END SetExitCode;
-
-PROCEDURE Exit*;
-BEGIN ExitProcess(ExitCode) END Exit;
 
 
 (* -------------------------------------------------------------------------- *)
@@ -901,17 +924,6 @@ RETURN info.write END FileTime;
 
 (* -------------------------------------------------------------------------- *)
 
-PROCEDURE WriteStdout(s: ARRAY OF BYTE);
-VAR len, written, result: INTEGER;
-BEGIN
-  len := Length(s);
-  IF len > 0 THEN Sol := s[len-1] = 0AH END;
-  result := WriteFile(Stdout, SYSTEM.ADR(s), len, SYSTEM.ADR(written), 0);
-END WriteStdout;
-
-
-(* -------------------------------------------------------------------------- *)
-
 PROCEDURE SetRoot*(r: Module); BEGIN
   (*
   ws("* Change Root from "); wh(ORD(Root));
@@ -973,11 +985,6 @@ BEGIN HWnd := h END SetHWnd;
 
 
 (* -------------------------------------------------------------------------- *)
-
-PROCEDURE GetRSP*(): INTEGER;
-VAR result: INTEGER;
-BEGIN result := SYSTEM.ADR(result) + 8
-RETURN result END GetRSP;
 
 PROCEDURE PressKeyToContinue;
 VAR ch: CHAR;
@@ -1077,17 +1084,12 @@ BEGIN
 
 END InitMemory;
 
-PROCEDURE SetWriteLog*(wl: PROCEDURE(s: ARRAY OF BYTE));
-(* NOTE - Setting another write log stops wcn from detsctin start of line *)
-BEGIN Log := wl
-END SetWriteLog;
-
 PROCEDURE Init*;  (* Called from Kernel.init *)
 BEGIN
   HWnd           := 0;
-  Log            := NoLog;
+  Syslog         := NIL;
   Sol            := FALSE;
-  ExceptionDepth := 0;
+  TrapDepth := 0;
   ExitCode       := 0;
 
   (* Initialise console input/output *)
@@ -1095,7 +1097,6 @@ BEGIN
   Stdout := GetStdHandle(-11);  (* -11:   StdOutputHandle *)
   SetConsoleOutputCP(65001);    (* 65001: UTF8            *)
   crlf := $0D 0A 00$;
-  Log := WriteStdout;
 
   InitMemory;
 

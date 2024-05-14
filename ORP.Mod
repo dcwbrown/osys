@@ -197,7 +197,7 @@ BEGIN com := TRUE;
   IF (t0.base = t1.base) & (t0.nofpar = t1.nofpar) THEN
     p0 := t0.dsc;  p1 := t1.dsc;
     WHILE p0 # NIL DO
-      IF (p0.class = p1.class) &  (p0.rdo = p1.rdo) &
+      IF (p0.class = p1.class) & (p0.rdo = p1.rdo) &
         ((p0.type = p1.type) OR
         (p0.type.form = ORB.Array) & (p1.type.form = ORB.Array) & (p0.type.len = p1.type.len) & (p0.type.base = p1.type.base) OR
         (p0.type.form = ORB.Proc) & (p1.type.form = ORB.Proc) & EqualSignatures(p0.type, p1.type))

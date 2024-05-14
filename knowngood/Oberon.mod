@@ -423,13 +423,15 @@ BEGIN
         END
       END
     END
-  UNTIL WinGui.WmQuit
+  UNTIL WinGui.WmQuit;
+  H.ExitToHost
 END Loop;
+
 
 PROCEDURE Reset*;
 BEGIN
   IF CurTask.state = active THEN Remove(CurTask) END;
-  (* SYSTEM.LDREG(14, Kernel.stackOrg); (*reset stack pointer*) *)
+  SYSTEM.LDREG(4, Modules.StackOrg); (*reset stack pointer*)
   Loop
 END Reset;
 
@@ -464,6 +466,6 @@ BEGIN User[0] := 0X;
       END
     END
   END;
-  Mod := NIL; (*Loop*)
-
+  H.SetReset(Reset);
+  Mod := NIL; Loop
 END Oberon.
