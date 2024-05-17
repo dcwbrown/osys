@@ -9,8 +9,8 @@
 @copy ..\knowngood\Link.Link.exe >NUL 2>NUL
 ::
 ::
-:: @fc ..\Link.Mod ..\knowngood\Link.Mod >NUL && goto noprebuild
-goto noprebuild
+@fc ..\Link.Mod ..\knowngood\Link.Mod >NUL && goto noprebuild
+:: goto noprebuild
 ::
 ::
 @echo.

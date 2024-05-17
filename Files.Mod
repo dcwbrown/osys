@@ -112,10 +112,13 @@ BEGIN
   CloseHostHandle(f);
   MakeTempFile(f.tempname);
   res := H.MoveFile(f.name, f.tempname);
+  (*
   IF (res # 0) & (res # 2) THEN  (* any failure other than 'not found' *)
     H.ws("** Unregister: Could not move '"); H.ws(f.name); H.ws("' to '");
     H.ws(f.tempname); H.ws("':"); H.AssertWinError(res);
   END;
+  *)
+  ASSERT((res = 0) OR (res = 2));
   ASSERT(H.FileOpen(f.tempname, H.OpenRW, f.handle) = 0);
   disposition := 1;  (* 1 = DeleteFile on close *)
   res := H.SetFileInformationByHandle(f.handle, 4, SYSTEM.ADR(disposition), 8);
@@ -145,31 +148,11 @@ BEGIN
     ASSERT(H.SetFileInformationByHandle(f.handle, 4, SYSTEM.ADR(disposition), 8) # 0);
     CloseHostHandle(f);
     UnregisterByName(f.name);
-    IF H.MoveFile(f.tempname, f.name) # 0 THEN
-      err := H.GetLastError();
-      res := H.Utf8ToUtf16(f.tempname, nameW);  (* Couldn't move temp file, so delete it *)
-      res := H.DeleteFileW(SYSTEM.ADR(nameW));
-      H.wn; H.ws("** Cannot register "); H.ws(f.name); H.ws(" as it is already in use: **");
-      H.AssertWinError(err);
-    END;
+    ASSERT(H.MoveFile(f.tempname, f.name) = 0);
     ASSERT(H.FileOpen(f.name, H.OpenRW, f.handle) = 0);
     f.registered := TRUE;
   END
 END Register;
-
-
-PROCEDURE ListFiles*;
-VAR f: File; h: INTEGER;
-BEGIN f := first;
-  WHILE f # NIL DO
-    H.ws("  at "); H.wh(ORD(f));
-    H.ws("H, name '");  H.ws(f.name);
-    H.ws("', "); IF ~f.registered THEN H.ws("un") END;
-    H.ws("registered, handle "); h := f.handle;
-    IF h < 0 THEN H.wc("-"); h := -h END; H.wh(h); H.wsn("H.");
-    f := f.next
-  END
-END ListFiles;
 
 
 PROCEDURE Rename*(old, new: ARRAY OF CHAR; VAR res: INTEGER);
@@ -187,11 +170,6 @@ BEGIN
     ELSE f := NIL END
   END;
 
-
-  (*
-  H.ws("Files.Rename("); H.ws(old); H.ws(", "); H.ws(new); H.wsn(", active registered files:");
-  ListFiles;
-  *)
   res := H.MoveFile(old, new);
   IF (res = 0) & (f # NIL) THEN
     f.registered := TRUE;
@@ -202,13 +180,7 @@ END Rename;
 
 PROCEDURE Length*(f: File): INTEGER;
 VAR res, size: INTEGER;
-BEGIN
-  res := H.GetFileSizeEx(f.handle, SYSTEM.ADR(size));
-  IF res = 0 THEN
-    H.ws("Files.Length: GetFileSizeEx failed, f.name '"); H.ws(f.name);
-    H.ws("', f.handle: "); H.wh(f.handle); H.wsn("H.");
-    ASSERT(FALSE);
-  END;
+BEGIN ASSERT(H.GetFileSizeEx(f.handle, SYSTEM.ADR(size)) # 0)
 RETURN size END Length;
 
 
@@ -237,15 +209,7 @@ PROCEDURE SetFilePos(f: File; pos: INTEGER);
 VAR res: INTEGER;
 BEGIN
   IF pos # f.pos THEN
-    res := H.SetFilePointerEx(f.handle, pos, 0, 0);
-    IF res = 0 THEN
-      H.ws("SetFilePos failed. File at ");
-      H.wh(ORD(f)); H.ws("H, name ");
-      H.ws(f.name); H.ws(", File handle "); H.wh(f.handle);
-      H.ws("H, pos "); H.wi(pos); H.wsn(".");
-      H.AssertWinError(H.GetLastError())
-    END;
-    ASSERT(res # 0);
+    ASSERT(H.SetFilePointerEx(f.handle, pos, 0, 0) # 0);
     f.pos := pos
   END
 END SetFilePos;
@@ -330,20 +294,18 @@ END ReadString;
 PROCEDURE ReadNum*(VAR r: Rider; VAR x: INTEGER);
 VAR n, y: INTEGER;  b: BYTE;
 BEGIN
-  (*H.ws("Files.ReadNum ");*)
   n := 0;
   y := 0;
-  ReadByte(r, b);  (*H.wh(b);  H.ws(" ");*)
+  ReadByte(r, b);
   WHILE b >= 80H DO
     INC(y, LSL(b - 80H, n));
     INC(n, 7);
-    ReadByte(r, b);  (*H.wh(b);  H.ws(" ");*)
+    ReadByte(r, b);
   END;
   INC(y, LSL(b, n));
   IF n < 57 THEN
     y := ASR(LSL(y, 57-n), 57-n)  (* Sign extend *)
   END;
-  (*H.ws(" -> ");  H.wh(y);  H.wsn("H.");  ASSERT(FALSE);*)
   x := y;
 END ReadNum;
 
@@ -406,25 +368,6 @@ BEGIN
 END WriteNum;
 
 
-(* ------------------------------- Debugging -------------------------------- *)
-
-PROCEDURE DumpFiles*;
-VAR f: File;
-BEGIN
-  f:= first;
-  WHILE f # NIL DO
-    H.ws("File '"); H.ws(f.name);  H.ws("' ");
-    H.wh(f.handle); H.ws("H ");
-    IF ~f.registered THEN
-      H.ws("temp name "); H.ws(f.tempname); H.wsn(".")
-    ELSE
-      H.wsn("registered.");
-    END;
-    f := f.next
-  END;
-END DumpFiles;
-
-
 (* -------------- Files list cleanup during garbage collection -------------- *)
 
 PROCEDURE CloseCollectableFiles*;  (* Only for calling between GC mark and scan *)
@@ -441,15 +384,7 @@ VAR f, g: File;
   RETURN mark END getmark;
 
   PROCEDURE finalise(f: File);
-  VAR res: INTEGER;
-  BEGIN
-    (*
-    H.ws("* Finalising file at "); H.wh(ORD(f)); H.ws("H, name ");
-    H.ws(f.name); H.ws(" ("); IF ~f.registered THEN H.ws("un") END;
-    H.wsn("registered).");
-    ASSERT(getmark(f) = 0);
-    *)
-    IF f.registered THEN CloseHostHandle(f) END
+  BEGIN IF f.registered THEN CloseHostHandle(f) END
   END finalise;
 
 BEGIN

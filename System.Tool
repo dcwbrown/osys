@@ -33,6 +33,11 @@ ORP.Compile Viewers.Mod/s Oberon.Mod/s MenuViewers.Mod/s ~
 ORP.Compile TextFrames.Mod/s Edit.Mod/s System.Mod/s ~
 Link.Link Oberon
 
+ORP.Compile Graphics.Mod/s GraphicFrames.Mod/s Draw.Mod/s ~
+ORP.Compile Curves.Mod/s Rectangles.Mod/s ~
+ORP.Compile Splines.Mod/s ~
+
+
 ORP.Compile Test.Mod/s ~
 Test.RunArrayIndexTest
 Test.RunNilDereferenceTest

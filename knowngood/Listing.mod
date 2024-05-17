@@ -1,5 +1,5 @@
 MODULE Listing;
-IMPORT SYSTEM, H := WinHost, Files, ORS, ORB, X64;
+IMPORT SYSTEM, H := WinHost, Files, Texts, ORS, ORB, X64;
 
 CONST
   RCX = X64.RCX;
@@ -21,6 +21,7 @@ VAR
   Inst*:    Buffer;
   Args*:    Buffer;
   Comment*: Buffer;
+  W:        Texts.Writer;
 
   Sourcefile: Files.File;
   Source:     Files.Rider;
@@ -32,16 +33,17 @@ VAR
 
 (* -------- Local implementation of write fns with line suppression --------- *)
 
-PROCEDURE wc*(c: CHAR); BEGIN IF ~Skip THEN H.wc(c) END END wc;
+PROCEDURE wc*(c: CHAR); BEGIN IF ~Skip THEN Texts.Write(W, c) END END wc;
 
-PROCEDURE wn*; BEGIN IF Skip THEN Skip := FALSE ELSE H.wn END END wn;
+PROCEDURE wn*; BEGIN IF Skip THEN Skip := FALSE
+                     ELSE Texts.WriteLn(W); Texts.Append(Texts.Log, W.buf) END END wn;
 
-PROCEDURE ws*(s: ARRAY OF CHAR); BEGIN IF ~Skip THEN H.ws(s) END END ws;
+PROCEDURE ws*(s: ARRAY OF CHAR); BEGIN IF ~Skip THEN Texts.WriteString(W, s) END END ws;
 
 PROCEDURE wsr*(s: ARRAY OF CHAR; w: INTEGER);  (* Right justified with leading spaces *)
 BEGIN DEC(w, H.Length(s)); WHILE w > 0 DO wc(" "); DEC(w) END; ws(s) END wsr;
 
-PROCEDURE wsn*(s: ARRAY OF CHAR); BEGIN ws(s); ws(H.crlf) END wsn;
+PROCEDURE wsn*(s: ARRAY OF CHAR); BEGIN Texts.WriteString(W, s); wn END wsn;
 
 PROCEDURE wi*(n: INTEGER);
 VAR dec: ARRAY 32 OF CHAR;
@@ -1310,5 +1312,5 @@ BEGIN
 END Init;
 
 
-BEGIN Skip := FALSE
+BEGIN Skip := FALSE;  Texts.OpenWriter(W);
 END Listing.

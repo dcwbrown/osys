@@ -569,7 +569,8 @@ VAR ch: CHAR;  r: Reader;
 BEGIN
   OpenReader(r, Log, beg);
   WHILE ~r.eot & (beg < end) DO
-    Read(r, ch);  IF ch = 0DX THEN H.wn ELSE H.wc(ch) END;  INC(beg)
+    Read(r, ch);
+    IF ch = 0DX THEN H.Log(H.crlf) ELSE H.Log(ch) END;  INC(beg)
   END;
 END LogNotify;
 

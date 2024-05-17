@@ -13,7 +13,7 @@ MODULE ORG;  (* DCWB Jun 2023 to Feb 2024; Code generator for X64 *)
     applied.
 *)
 
-IMPORT SYSTEM, H := WinHost, Files, ORS, ORB, X64, l := Listing, K := Kernel;
+IMPORT SYSTEM, H := WinHost, Files, Texts, ORS, ORB, X64, l := Listing, K := Kernel;
 
 CONST
   WordSize* = ORB.WordSize;
@@ -93,6 +93,7 @@ TYPE
   *)
 
 VAR
+  W:        Texts.Writer;
   Hdr*:     ModuleDesc;
 
   Str:      ARRAY 8192 OF CHAR;  (* Max bytes of string per module body *)
@@ -117,6 +118,15 @@ VAR
   Trflags:  SET;      (* Listing trace options *)
   Tr*:      l.Buffer;
   Disasmpc: INTEGER;
+
+
+PROCEDURE wn; BEGIN Texts.WriteLn(W); Texts.Append(Texts.Log, W.buf) END wn;
+
+PROCEDURE ws (s: ARRAY OF CHAR); BEGIN Texts.WriteString(W, s)     END ws;
+PROCEDURE wsn(s: ARRAY OF CHAR); BEGIN Texts.WriteString(W, s); wn END wsn;
+PROCEDURE wh (i: INTEGER);       BEGIN Texts.WriteHex(W, i)        END wh;
+PROCEDURE wi (i: INTEGER);       BEGIN Texts.WriteInt(W, i, 1)     END wi;
+PROCEDURE wir(i, n: INTEGER);    BEGIN Texts.WriteInt(W, i, n)     END wir;
 
 
 PROCEDURE Trace*(kind: INTEGER; str: ARRAY OF CHAR);
@@ -201,9 +211,9 @@ BEGIN
     l.s(", Free: ", Tr); l.Set(Free, Tr);
     l.s(", SPO ",   Tr); l.i(X64.SPO, Tr); l.sn(".", Tr)
   END;
-  IF Free # AllFree           THEN ORS.Mark("Reg Stack"); ClearRegs;      H.wn; H.Trap(0, "Free # AllFree")           END;
-  IF X64.PC >= X64.MaxPC - 40 THEN ORS.Mark("program too long");          H.wn; H.Trap(0, "X64.PC >= X64.MaxPC - 40") END;
-  IF X64.SPO # 0              THEN ORS.Mark("SPO error"); X64.ClearStack; H.wn; H.Trap(0, "X64.SPO # 0")              END
+  IF Free # AllFree           THEN ORS.Mark("Reg Stack"); ClearRegs;      wn; H.Trap(0, "Free # AllFree")           END;
+  IF X64.PC >= X64.MaxPC - 40 THEN ORS.Mark("program too long");          wn; H.Trap(0, "X64.PC >= X64.MaxPC - 40") END;
+  IF X64.SPO # 0              THEN ORS.Mark("SPO error"); X64.ClearStack; wn; H.Trap(0, "X64.SPO # 0")              END
 END CheckRegs;
 
 PROCEDURE UsesReg(x: Item; reg: INTEGER): BOOLEAN;
@@ -361,7 +371,7 @@ PROCEDURE OpModRegRm(op, mode, reg, size, n, index, scale, offset, immsize: INTE
 VAR iprelreg: INTEGER;
 BEGIN
   IF ~(mode IN {Reg, Eadr, Code, String, Global, Import, Impcode}) THEN
-    H.ws("** mode "); H.wi(mode); H.wsn(" **");
+    ws("** mode "); wi(mode); wsn(" **");
     ORS.Mark("Unexpected x.mode")
   END;
   ASSERT(mode IN {Reg, Eadr, Code, String, Global, Import, Impcode});
@@ -569,7 +579,7 @@ BEGIN
     IF (x.mode = Eadr) & (x.n = RSP) THEN INC(offset, X64.SPO * 8) END;
     LoadMem(reg, x.mode, X64.IsSigned(x.type), x.type.size, x.n, x.index, x.scale, offset)
   ELSE
-    H.wn; H.ws("** LoadRegUnreserved, x.mode "); H.wi(x.mode); H.wsn(".");
+    wn; ws("** LoadRegUnreserved, x.mode "); wi(x.mode); wsn(".");
     ASSERT(FALSE)
   END
 END LoadRegUnreserved;
@@ -1405,7 +1415,7 @@ BEGIN
   END;
   ASSERT(x.type.form = ORB.Proc);
   IF ~(x.mode IN {Eadr, Global, Code, Import, Impcode}) THEN
-    H.ws("** x.mode ");  H.wi(x.mode);  H.wsn(" **");
+    ws("** x.mode ");  wi(x.mode);  wsn(" **");
     ORS.Mark("Didn't expect such an x.mode.")
   END;
   ASSERT(x.mode IN {Eadr, Global, Code, Import, Impcode});
@@ -3022,7 +3032,7 @@ BEGIN
   WHILE bodyan # NIL DO
     linean := bodyan.firstline;
     IF linean = NIL THEN
-      H.wn; H.ws("** Warning: body with no lines: "); H.ws(bodyan.name); H.wsn(" **");
+      wn; ws("** Warning: body with no lines: "); ws(bodyan.name); wsn(" **");
       ASSERT(FALSE);
     ELSE
       X64.EmitString(bodyan.name);
@@ -3031,15 +3041,15 @@ BEGIN
       X64.EmitBytes(8, line);
       X64.EmitBytes(8, pc);
       (*
-      H.ws("Emit body annotation for '"); H.ws(bodyan.name);
-      H.ws("', first line "); H.wi(line);
-      H.ws(", first PC "); H.wh(pc); H.wsn("H.");
+      ws("Emit body annotation for '"); ws(bodyan.name);
+      ws("', first line "); wi(line);
+      ws(", first PC "); wh(pc); wsn("H.");
       *)
       linean := linean.next;
       WHILE linean # NIL DO
         (*
-        H.ws("  line "); H.wi(linean.line);
-        H.ws(", PC "); H.wh(linean.pc); H.wsn("H.");
+        ws("  line "); wi(linean.line);
+        ws(", PC "); wh(linean.pc); wsn("H.");
         *)
         ASSERT(linean.pc > pc);
         EmitUnsigned(linean.pc   - pc);    pc   := linean.pc;
@@ -3052,7 +3062,7 @@ BEGIN
   END;
   X64.Emit(0);
   (*
-  H.ws("Annotations took "); H.wi(X64.PC - Hdr.lines); H.wsn(" bytes.");
+  ws("Annotations took "); wi(X64.PC - Hdr.lines); wsn(" bytes.");
   *)
 
 
@@ -3153,5 +3163,5 @@ END Close;
 
 (* ---- Initialisation ---- *)
 
-BEGIN
+BEGIN Texts.OpenWriter(W);
 END ORG.

@@ -137,10 +137,7 @@ RETURN result END Peek;
 
 PROCEDURE Patch*(adr, size, value: INTEGER);
 BEGIN
-  IF (adr < 0) OR (adr + size >= MaxPC) THEN
-    H.ws("** Patch address $"); H.wh(adr); H.wsn(" out of range **");
-    ASSERT(FALSE)
-  END;
+  ASSERT((adr >= 0) & (adr + size < MaxPC));
   ASSERT(size IN {1, 2, 4, 8});
   SYSTEM.COPY(SYSTEM.ADR(value), SYSTEM.ADR(Text) + adr, size)
 END Patch;

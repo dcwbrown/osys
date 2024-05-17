@@ -60,6 +60,7 @@ VAR User*: ARRAY 8 OF CHAR;  Password*: LONGINT;
   Mouse, Pointer: Cursor;
   FocusViewer*:   Viewers.Viewer;
   Log*:           Texts.Text;
+  W:              Texts.Writer;
   Par*:           Params;
 
   CurFnt*: Fonts.Font;
@@ -69,6 +70,16 @@ VAR User*: ARRAY 8 OF CHAR;  Password*: LONGINT;
   CurTask:    Task;
   DW, DH, CL: INTEGER;
   Mod:        Modules.Module;
+
+(* Convenience *)
+PROCEDURE wn; BEGIN Texts.WriteLn(W); Texts.Append(Log, W.buf) END wn;
+
+PROCEDURE ws (s: ARRAY OF CHAR); BEGIN Texts.WriteString(W, s)     END ws;
+PROCEDURE wsn(s: ARRAY OF CHAR); BEGIN Texts.WriteString(W, s); wn END wsn;
+PROCEDURE wh (i: INTEGER);       BEGIN Texts.WriteHex(W, i)        END wh;
+PROCEDURE wi (i: INTEGER);       BEGIN Texts.WriteInt(W, i, 1)     END wi;
+PROCEDURE wir(i, n: INTEGER);    BEGIN Texts.WriteInt(W, i, n)     END wir;
+
 
 (*user identification*)
 
@@ -331,16 +342,16 @@ BEGIN
     Kernel.Scan; (*LED(20H);*)
     scan := H.Time();
 
-    H.ws("GC timing: mark ");    H.wi((mark - start) DIV 10);
-    H.ws("us, files "); H.wi((files - mark) DIV 10);
-    H.ws("us, scan ");  H.wi((scan - files) DIV 10);
-    H.ws("us, total "); H.wi((scan - start) DIV 10);
-    H.wsn("us.");
+    ws("GC timing: mark ");    wi((mark - start) DIV 10);
+    ws("us, files "); wi((files - mark) DIV 10);
+    ws("us, scan ");  wi((scan - files) DIV 10);
+    ws("us, total "); wi((scan - start) DIV 10);
+    wsn("us.");
 
     Modules.Collect(BasicCycle);
 
     (*
-    H.wsn("List of files following GC:");
+    wsn("List of files following GC:");
     Files.ListFiles
     *)
   END
@@ -409,7 +420,8 @@ BEGIN
       UNTIL M.keys = {};
       Modules.Collect(Modules.ActCnt - 1)
     ELSE
-      IF (X # prevX) OR (Y # prevY) OR ~Mouse.on THEN
+      IF ~Input.MouseInWindow() THEN FadeMouse
+      ELSIF (X # prevX) OR (Y # prevY) OR ~Mouse.on THEN
         M.id := track;   M.X := X;
         IF Y >= Display.Height THEN Y := Display.Height END;
         M.Y := Y;  M.keys := keys;  V := Viewers.This(X, Y);  V.handle(V, M);  prevX := X;  prevY := Y
@@ -435,7 +447,8 @@ BEGIN
   Loop
 END Reset;
 
-BEGIN User[0] := 0X;
+BEGIN Texts.OpenWriter(W);
+  User[0] := 0X;
   Arrow.Fade := FlipArrow; Arrow.Draw := FlipArrow;
   Star.Fade := FlipStar; Star.Draw := FlipStar;
   OpenCursor(Mouse); OpenCursor(Pointer);
@@ -451,18 +464,18 @@ BEGIN User[0] := 0X;
   NEW(Par);
   Modules.Load("System", Mod);
   IF Mod = NIL THEN
-    H.wsn("**** Load failed. ****");
+    wsn("**** Load failed. ****");
     IF Mod = NIL THEN
-      H.wsn("**** Load failed. ****");
-      H.ws("**** Full Oberon init load error: "); H.ws(Modules.importing);
-      IF    Modules.res = 1 THEN H.wsn(" module not found")
-      ELSIF Modules.res = 2 THEN H.wsn(" bad version")
-      ELSIF Modules.res = 3 THEN H.ws(" imports ");
-                                 H.ws(Modules.imported);
-                                 H.wsn(" with bad key");
-      ELSIF Modules.res = 4 THEN H.wsn(" corrupted obj file")
-      ELSIF Modules.res = 5 THEN H.wsn(" command not found")
-      ELSIF Modules.res = 7 THEN H.wsn(" insufficient space")
+      wsn("**** Load failed. ****");
+      ws("**** Full Oberon init load error: "); ws(Modules.importing);
+      IF    Modules.res = 1 THEN wsn(" module not found")
+      ELSIF Modules.res = 2 THEN wsn(" bad version")
+      ELSIF Modules.res = 3 THEN ws(" imports ");
+                                 ws(Modules.imported);
+                                 wsn(" with bad key");
+      ELSIF Modules.res = 4 THEN wsn(" corrupted obj file")
+      ELSIF Modules.res = 5 THEN wsn(" command not found")
+      ELSIF Modules.res = 7 THEN wsn(" insufficient space")
       END
     END
   END;

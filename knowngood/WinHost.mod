@@ -151,28 +151,39 @@ VAR
   CreateDCA*:                      PROCEDURE-(drive, device, port, devmode: INTEGER): INTEGER;
   CreateDIBSection*:               PROCEDURE-(dc, bi, us, bs, sc, of: INTEGER): INTEGER;
   CreateFontA*:                    PROCEDURE-(cHeight,  cWidth,        cEscapement,    cOrientation,
-                                             cWeight,  bItalic,       bUnderline,     bStrikeOut,
-                                             iCharSet, iOutPrecision, iClipPrecision, iQuality,
-                                             iPitchAndFamily,         pszFaceName: INTEGER): INTEGER;
+                                              cWeight,  bItalic,       bUnderline,     bStrikeOut,
+                                              iCharSet, iOutPrecision, iClipPrecision, iQuality,
+                                              iPitchAndFamily,         pszFaceName: INTEGER): INTEGER;
+  CreatePen*:                      PROCEDURE-(style, width, colour: INTEGER): INTEGER;
+  CreateRectRgn*:                  PROCEDURE-(x1, y1, x2, y2: INTEGER): INTEGER;
   DeleteObject*:                   PROCEDURE-(ob: INTEGER): INTEGER;
   GetGlyphOutlineW*:               PROCEDURE-(hdc, uChar, fuFormat, lpgm, cjBuffer, pvBuffer, lpmat2: INTEGER): INTEGER;
   GetCharABCWidthsW*:              PROCEDURE-(hdc, first, last, abcadr: INTEGER): INTEGER;
   GetDeviceCaps*:                  PROCEDURE-(hdc, index: INTEGER): INTEGER;
   GetOutlineTextMetricsW*:         PROCEDURE-(hdc, bufsize, buffer: INTEGER): INTEGER;
+  GetStockObject*:                 PROCEDURE-(typ: INTEGER): INTEGER;
+  Rectangle*:                      PROCEDURE-(dc, l, t, r, b: INTEGER): INTEGER;
   SelectObject*:                   PROCEDURE-(dc, ob: INTEGER): INTEGER;
+  SetDCPenColor*:                  PROCEDURE-(dc, col: INTEGER): INTEGER;
+  SetDCBrushColor*:                PROCEDURE-(dc, col: INTEGER): INTEGER;
 
 
   (* Pre-loaded User32 imports *)
+  AdjustWindowRectEx*:             PROCEDURE-(rect, style, menu, exstyle: INTEGER): INTEGER;
   BeginPaint*:                     PROCEDURE-(wn, ps: INTEGER): INTEGER;
   CreateIconIndirect*:             PROCEDURE-(ic: INTEGER): INTEGER;
   CreateWindowExW*:                PROCEDURE-(es, cn, wn, st, x, y, w, h, pa, me, in, lp: INTEGER): INTEGER;
   DefWindowProcW*:                 PROCEDURE-(wn, ms, wp, lp: INTEGER): INTEGER;
   DispatchMessageW*:               PROCEDURE-(ms: INTEGER): INTEGER;
   EndPaint*:                       PROCEDURE-(wn, ps: INTEGER): INTEGER;
+  GetClientRect*:                  PROCEDURE-(wn, rec: INTEGER): INTEGER;
   GetClipboardFormatNameW*:        PROCEDURE-(format, name, maxcount: INTEGER): INTEGER;
+  GetDCEx*:                        PROCEDURE-(wn, clip, flags: INTEGER): INTEGER;
   GetDpiForWindow*:                PROCEDURE-(wn: INTEGER): INTEGER;
   GetMessageW*:                    PROCEDURE-(lm, wn, mn, mx: INTEGER): INTEGER;
   GetQueueStatus*:                 PROCEDURE-(fl: INTEGER): INTEGER;
+  GetWindowDC*:                    PROCEDURE-(wn: INTEGER): INTEGER;
+  GetWindowRect*:                  PROCEDURE-(wn, rec: INTEGER): INTEGER;
   LoadCursorW*:                    PROCEDURE-(in, cn: INTEGER): INTEGER;
   MessageBoxA*:                    PROCEDURE-(w, t, c, u: INTEGER)(*: INTEGER*);
   MessageBoxW*:                    PROCEDURE-(w, t, c, u: INTEGER): INTEGER;
@@ -183,10 +194,13 @@ VAR
   PostQuitMessage*:                PROCEDURE-(rc: INTEGER);
   RegisterClassExW*:               PROCEDURE-(wc: INTEGER): INTEGER;
   ReleaseCapture*:                 PROCEDURE-;
+  ReleaseDC*:                      PROCEDURE-(wn, dc: INTEGER): INTEGER;
   SetCapture*:                     PROCEDURE-(wn: INTEGER);
   SetProcessDpiAwarenessContext*:  PROCEDURE-(cx: INTEGER): INTEGER;
+  SetWindowRgn*:                   PROCEDURE-(wn, rgn, redraw: INTEGER): INTEGER;
   ShowCursor*:                     PROCEDURE-(sh: INTEGER);
   ShowWindow*:                     PROCEDURE-(wn, cm: INTEGER);
+  TrackMouseEvent*:                PROCEDURE-(evtrk: INTEGER): INTEGER;
   TranslateMessage*:               PROCEDURE-(ms: INTEGER): INTEGER;
   InvalidateRect*:                 PROCEDURE-(wn, rc, er: INTEGER): INTEGER;
 
@@ -199,15 +213,13 @@ VAR
   Stdout:  INTEGER;
   crlf*:   ARRAY 3 OF CHAR;
   Syslog*: PROCEDURE(s: ARRAY OF BYTE);  (* Logging to Oberon system *)
-  Sol:     BOOLEAN;   (* True only at start of line *)
-  HWnd:    INTEGER;   (* Set if a window has been created *)
+  HWnd:    INTEGER;        (* Set when a window has been created *)
 
   ModuleSpace*: INTEGER;   (* Start of module space *)
   AllocPtr*:    INTEGER;   (* Start of remaining free module space *)
   CommitLen*:   INTEGER;   (* Committed module space memory *)
   Root*:        Module;    (* List of loaded and free'd modules *)
 
-  TrapDepth: INTEGER;
 
   (* Partially parsed command line *)
   CommandLine*: ARRAY 1024 OF CHAR;
@@ -215,8 +227,9 @@ VAR
   CmdCommand*:  ARRAY 32 OF CHAR;
   ArgStart*:    INTEGER;
 
-  ExitCode: INTEGER;
-  Reset:    PROCEDURE;
+  ExitCode:  INTEGER;
+  Reset:     PROCEDURE;
+  TrapDepth: INTEGER;
 
 
 PROCEDURE Min*(a, b: INTEGER): INTEGER;
@@ -283,59 +296,38 @@ BEGIN FOR i := 0 TO LEN(buf)-1 DO buf[i] := 0 END END ZeroFill;
 PROCEDURE SetSyslog*(sl: PROCEDURE(s: ARRAY OF BYTE));
 BEGIN Syslog := sl END SetSyslog;
 
-PROCEDURE Log(s: ARRAY OF BYTE);
-VAR len, written, result: INTEGER;
+PROCEDURE Log*(s: ARRAY OF BYTE);
+VAR written, res: INTEGER;
 BEGIN
-  len := Length(s);
-  IF len > 0 THEN Sol := s[len-1] = 0AH END;
-  result := WriteFile(Stdout, SYSTEM.ADR(s), len, SYSTEM.ADR(written), 0);
-  IF Syslog # NIL THEN Syslog(s) END
+  IF Syslog # NIL THEN Syslog(s)
+  ELSE res := WriteFile(Stdout, SYSTEM.ADR(s), Length(s), SYSTEM.ADR(written), 0);
+  END
 END Log;
 
-PROCEDURE wc*(c: CHAR); BEGIN Log(c) END wc;
+PROCEDURE wc(c: CHAR); BEGIN Log(c) END wc;
 
-PROCEDURE wn*; BEGIN Log(crlf) END wn;
+PROCEDURE wn; BEGIN Log(crlf) END wn;
 
-PROCEDURE wcn*; BEGIN IF ~Sol THEN wn END END wcn;  (* Conditional newline *)
+PROCEDURE ws(s: ARRAY OF CHAR); BEGIN Log(s) END ws;
 
-PROCEDURE ws*(s: ARRAY OF CHAR); BEGIN Log(s) END ws;
-
-PROCEDURE wsr*(s: ARRAY OF CHAR; w: INTEGER);  (* Right justified with leading spaces *)
-BEGIN DEC(w, Length(s));  WHILE w > 0 DO wc(" "); DEC(w) END; Log(s) END wsr;
-
-PROCEDURE wsz*(s: ARRAY OF CHAR; w: INTEGER);  (* Right justified with leading zeroes *)
+PROCEDURE wsz(s: ARRAY OF CHAR; w: INTEGER);  (* Right justified with leading zeroes *)
 BEGIN DEC(w, Length(s));  WHILE w > 0 DO wc("0"); DEC(w) END; Log(s) END wsz;
 
 PROCEDURE wsn*(s: ARRAY OF CHAR); BEGIN Log(s); Log(crlf) END wsn;
 
-
-PROCEDURE wh*(n: INTEGER);
+PROCEDURE wh(n: INTEGER);
 VAR hex: ARRAY 32 OF CHAR;
 BEGIN IntToHex(n, hex); Log(hex) END wh;
 
-PROCEDURE whr*(n, w: INTEGER);  (* Right justified with leading spaces *)
-VAR hex: ARRAY 32 OF CHAR;
-BEGIN IntToHex(n, hex); wsr(hex, w) END whr;
-
-PROCEDURE whz*(n, w: INTEGER);  (* Right justified with leading zeroes *)
+PROCEDURE whz(n, w: INTEGER);  (* Right justified with leading zeroes *)
 VAR hex: ARRAY 32 OF CHAR;
 BEGIN IntToHex(n, hex); wsz(hex, w) END whz;
 
-
-PROCEDURE wi*(n: INTEGER);
+PROCEDURE wi(n: INTEGER);
 VAR dec: ARRAY 32 OF CHAR;
 BEGIN IntToDecimal(n, dec); Log(dec) END wi;
 
-PROCEDURE wir*(n, w: INTEGER);  (* Right justified with leading spaces *)
-VAR dec: ARRAY 32 OF CHAR;
-BEGIN IntToDecimal(n, dec); wsr(dec, w) END wir;
-
-PROCEDURE wiz*(n, w: INTEGER);  (* Right justified with leading zeroes *)
-VAR dec: ARRAY 32 OF CHAR;
-BEGIN IntToDecimal(n, dec); wsz(dec, w) END wiz;
-
-
-PROCEDURE wb*(n: INTEGER);
+PROCEDURE wb(n: INTEGER);
 BEGIN WHILE n > 0 DO wc(" "); DEC(n) END END wb;
 
 
@@ -433,6 +425,7 @@ BEGIN
 END WriteClock;
 *)
 
+(*
 PROCEDURE WriteTime*(time: INTEGER);
 VAR clock: INTEGER;
 BEGIN
@@ -445,6 +438,7 @@ BEGIN
   wiz(clock DIV 400H MOD 40H,          2);  (*sec*)      wc(".");
   wiz(clock MOD 400H,                  3)
 END WriteTime;
+*)
 
 
 (* -------------------------------------------------------------------------- *)
@@ -615,7 +609,7 @@ BEGIN
   excpcode := p.exception.ExceptionCode;
   excpadr  := p.exception.ExceptionAddress;
 
-  wcn;
+  wn;
   IF    excpcode = 080000003H THEN ws("  Trap: Breakpoint (INT 3)");
   ELSIF excpcode = 080000004H THEN ws("  Trap: Single step (0F1H instr)");
   ELSIF excpcode = 0C0000005H THEN ws("  Trap: Access violation");
@@ -643,7 +637,7 @@ PROCEDURE Trap*(retoffset: INTEGER; desc: ARRAY OF CHAR);
 VAR adr, modadr: INTEGER;
 BEGIN  (* retoffset is callers local var size *)
   INC(TrapDepth);
-  wcn;  ws("  Trap: ");  ws(desc);
+  wn;  ws("  Trap: ");  ws(desc);
   IF TrapDepth < 2 THEN
     IF retoffset < 0 THEN retoffset := -32 END;  (* Address our own return address *)
     SYSTEM.GET(SYSTEM.ADR(LEN(desc)) + 16 + retoffset, adr);
@@ -655,36 +649,25 @@ BEGIN  (* retoffset is callers local var size *)
 END Trap;
 
 PROCEDURE NewPointerHandler();
-BEGIN wcn; Trap(0, "New pointer handler not istalled") END NewPointerHandler;
+BEGIN wn; Trap(0, "New pointer handler not istalled") END NewPointerHandler;
 
 PROCEDURE AssertionFailureHandler();
-BEGIN wcn; Trap(0, "Assertion failure")      END AssertionFailureHandler;
+BEGIN wn; Trap(0, "Assertion failure")      END AssertionFailureHandler;
 
 PROCEDURE ArraySizeMismatchHandler();
-BEGIN wcn; Trap(0, "Array size mismatch")     END ArraySizeMismatchHandler;
+BEGIN wn; Trap(0, "Array size mismatch")     END ArraySizeMismatchHandler;
 
 PROCEDURE UnterminatedStringHandler();
-BEGIN wcn; Trap(0, "Unterminated string")     END UnterminatedStringHandler;
+BEGIN wn; Trap(0, "Unterminated string")     END UnterminatedStringHandler;
 
 PROCEDURE IndexOutOfRangeHandler();
-BEGIN wcn; Trap(0, "Index out of range")      END IndexOutOfRangeHandler;
+BEGIN wn; Trap(0, "Index out of range")      END IndexOutOfRangeHandler;
 
 PROCEDURE NilPointerDereferenceHandler();
-BEGIN wcn; Trap(0, "NIL pointer dereference") END NilPointerDereferenceHandler;
+BEGIN wn; Trap(0, "NIL pointer dereference") END NilPointerDereferenceHandler;
 
 PROCEDURE TypeGuardFailureHandler();
-BEGIN wcn; Trap(0, "Type guard failure")      END TypeGuardFailureHandler;
-
-PROCEDURE InitSysHandlers;
-BEGIN
-  Handlers[NewProc]                   := NewPointerHandler;
-  Handlers[AssertionFailureProc]      := AssertionFailureHandler;
-  Handlers[ArraySizeMismatchProc]     := ArraySizeMismatchHandler;
-  Handlers[UnterminatedStringProc]    := UnterminatedStringHandler;
-  Handlers[IndexOutOfRangeProc]       := IndexOutOfRangeHandler;
-  Handlers[NilPointerDereferenceProc] := NilPointerDereferenceHandler;
-  Handlers[TypeGuardFailureProc]      := TypeGuardFailureHandler
-END InitSysHandlers;
+BEGIN wn; Trap(0, "Type guard failure")      END TypeGuardFailureHandler;
 
 
 (* -------------------------------------------------------------------------- *)
@@ -988,7 +971,7 @@ BEGIN HWnd := h END SetHWnd;
 
 PROCEDURE PressKeyToContinue;
 VAR ch: CHAR;
-BEGIN wcn; ws("Press any key to continue "); ch := GetChar(); wn
+BEGIN wn; ws("Press any key to continue "); ch := GetChar(); wn
 END PressKeyToContinue;
 
 (* -------------------------- Command line parsing -------------------------- *)
@@ -1011,7 +994,7 @@ BEGIN
   CmdModule[0]  := 0X;
   CmdCommand[0] := 0X;
 
-  (* Parse program name, if any. (CreateProcess can miss program name.) *)
+  (* Parse program name, if any. (CreateProcess can omit program name.) *)
   GetUtf16Mem(adr, ch);
   IF ch # 32 THEN
     modstart := 0;
@@ -1055,7 +1038,7 @@ BEGIN
 END ParseCommandLine;
 
 
-PROCEDURE InitMemory;
+PROCEDURE Init*;  (* Called from Kernel.init *)
 VAR
   res:        INTEGER;
   loadedlen:  INTEGER;
@@ -1063,9 +1046,27 @@ VAR
   reservelen: INTEGER;
   mod:        Module;
 BEGIN
+  HWnd      := 0;
+  Syslog    := NIL;
+  TrapDepth := 0;
+  ExitCode  := 0;
+
+  (* Initialise console input/output *)
+  Stdin  := GetStdHandle(-10);  (* -10:   StdInputHandle *)
+  Stdout := GetStdHandle(-11);  (* -11:   StdOutputHandle *)
+  SetConsoleOutputCP(65001);    (* 65001: UTF8            *)
+  crlf := $0D 0A 00$;
+
   ModuleSpace := ORD(Preload.ImgHeader);
   Root        := Preload.ImgHeader;
-  InitSysHandlers;
+
+  Handlers[NewProc]                   := NewPointerHandler;
+  Handlers[AssertionFailureProc]      := AssertionFailureHandler;
+  Handlers[ArraySizeMismatchProc]     := ArraySizeMismatchHandler;
+  Handlers[UnterminatedStringProc]    := UnterminatedStringHandler;
+  Handlers[IndexOutOfRangeProc]       := IndexOutOfRangeHandler;
+  Handlers[NilPointerDereferenceProc] := NilPointerDereferenceHandler;
+  Handlers[TypeGuardFailureProc]      := TypeGuardFailureHandler;
 
   mod := Preload.ImgHeader;
   WHILE mod # NIL DO
@@ -1081,24 +1082,6 @@ BEGIN
   reservelen := 80000000H - loadedlen;
   res := VirtualAlloc(reserveadr, reservelen, MEMRESERVE, PAGEEXECUTEREADWRITE);
   IF res = 0 THEN AssertWinError(GetLastError()) END;
-
-END InitMemory;
-
-PROCEDURE Init*;  (* Called from Kernel.init *)
-BEGIN
-  HWnd           := 0;
-  Syslog         := NIL;
-  Sol            := FALSE;
-  TrapDepth := 0;
-  ExitCode       := 0;
-
-  (* Initialise console input/output *)
-  Stdin  := GetStdHandle(-10);  (* -10:   StdInputHandle *)
-  Stdout := GetStdHandle(-11);  (* -11:   StdOutputHandle *)
-  SetConsoleOutputCP(65001);    (* 65001: UTF8            *)
-  crlf := $0D 0A 00$;
-
-  InitMemory;
 
   IF AddVectoredExceptionHandler(1, SYSTEM.ADR(ExceptionHandler)) = 0 THEN
     AssertWinError(GetLastError())

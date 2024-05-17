@@ -23,8 +23,8 @@ CONST
 
   BootstrapVarBytes   = 64;  (* size of WinHost PreLoadVars *)
   Kernel32ImportCount = 40;
-  Gdi32ImportCount    = 12;
-  User32ImportCount   = 26;
+  Gdi32ImportCount    = 18;
+  User32ImportCount   = 34;
 
 TYPE
   ModuleDesc = H.ModuleDesc;
@@ -176,6 +176,15 @@ VAR
 (* Convenience functions *)
 PROCEDURE spos(p: INTEGER);  BEGIN Files.Set(Exe, ExeFile, p) END spos;
 
+PROCEDURE wn; BEGIN Texts.WriteLn(W); Texts.Append(Texts.Log, W.buf) END wn;
+
+PROCEDURE ws (s: ARRAY OF CHAR); BEGIN Texts.WriteString(W, s)     END ws;
+PROCEDURE wsn(s: ARRAY OF CHAR); BEGIN Texts.WriteString(W, s); wn END wsn;
+PROCEDURE wh (i: INTEGER);       BEGIN Texts.WriteHex(W, i)        END wh;
+PROCEDURE wi (i: INTEGER);       BEGIN Texts.WriteInt(W, i, 1)     END wi;
+PROCEDURE wir(i, n: INTEGER);    BEGIN Texts.WriteInt(W, i, n)     END wir;
+
+
 
 (* -------------------------------------------------------------------------- *)
 (* -------------------------------------------------------------------------- *)
@@ -199,7 +208,7 @@ END FileAlign;
 PROCEDURE WriteImports;
 VAR
   i, dll, n:   INTEGER;
-  importhints: ARRAY 1500 OF BYTE;
+  importhints: ARRAY 2000 OF BYTE;
   hintsize:    INTEGER;
   target:      INTEGER;
   mod:         Modules.Module;
@@ -291,12 +300,18 @@ BEGIN
   AddImport(Idt.Gdi32Lookups, n, i, dll, importhints, "CreateDCA");
   AddImport(Idt.Gdi32Lookups, n, i, dll, importhints, "CreateDIBSection");
   AddImport(Idt.Gdi32Lookups, n, i, dll, importhints, "CreateFontA");
+  AddImport(Idt.Gdi32Lookups, n, i, dll, importhints, "CreatePen");
+  AddImport(Idt.Gdi32Lookups, n, i, dll, importhints, "CreateRectRgn");
   AddImport(Idt.Gdi32Lookups, n, i, dll, importhints, "DeleteObject");
   AddImport(Idt.Gdi32Lookups, n, i, dll, importhints, "GetGlyphOutlineW");
   AddImport(Idt.Gdi32Lookups, n, i, dll, importhints, "GetCharABCWidthsW");
   AddImport(Idt.Gdi32Lookups, n, i, dll, importhints, "GetDeviceCaps");
   AddImport(Idt.Gdi32Lookups, n, i, dll, importhints, "GetOutlineTextMetricsW");
+  AddImport(Idt.Gdi32Lookups, n, i, dll, importhints, "GetStockObject");
+  AddImport(Idt.Gdi32Lookups, n, i, dll, importhints, "Rectangle");
   AddImport(Idt.Gdi32Lookups, n, i, dll, importhints, "SelectObject");
+  AddImport(Idt.Gdi32Lookups, n, i, dll, importhints, "SetDCPenColor");
+  AddImport(Idt.Gdi32Lookups, n, i, dll, importhints, "SetDCBrushColor");
   ASSERT(n = Gdi32ImportCount);
   INC(target, 8 * n);
 
@@ -305,16 +320,21 @@ BEGIN
   Idt.User32Dllname     := "USER32.DLL";
   Idt.User32Target      := target;
   n := 0;  INC(dll);
+  AddImport(Idt.User32Lookups, n, i, dll, importhints, "AdjustWindowRectEx");
   AddImport(Idt.User32Lookups, n, i, dll, importhints, "BeginPaint");
   AddImport(Idt.User32Lookups, n, i, dll, importhints, "CreateIconIndirect");
   AddImport(Idt.User32Lookups, n, i, dll, importhints, "CreateWindowExW");
   AddImport(Idt.User32Lookups, n, i, dll, importhints, "DefWindowProcW");
   AddImport(Idt.User32Lookups, n, i, dll, importhints, "DispatchMessageW");
   AddImport(Idt.User32Lookups, n, i, dll, importhints, "EndPaint");
+  AddImport(Idt.User32Lookups, n, i, dll, importhints, "GetClientRect");
   AddImport(Idt.User32Lookups, n, i, dll, importhints, "GetClipboardFormatNameW");
+  AddImport(Idt.User32Lookups, n, i, dll, importhints, "GetDCEx");
   AddImport(Idt.User32Lookups, n, i, dll, importhints, "GetDpiForWindow");
   AddImport(Idt.User32Lookups, n, i, dll, importhints, "GetMessageW");
   AddImport(Idt.User32Lookups, n, i, dll, importhints, "GetQueueStatus");
+  AddImport(Idt.User32Lookups, n, i, dll, importhints, "GetWindowDC");
+  AddImport(Idt.User32Lookups, n, i, dll, importhints, "GetWindowRect");
   AddImport(Idt.User32Lookups, n, i, dll, importhints, "LoadCursorW");
   AddImport(Idt.User32Lookups, n, i, dll, importhints, "MessageBoxA");
   AddImport(Idt.User32Lookups, n, i, dll, importhints, "MessageBoxW");
@@ -325,10 +345,13 @@ BEGIN
   AddImport(Idt.User32Lookups, n, i, dll, importhints, "PostQuitMessage");
   AddImport(Idt.User32Lookups, n, i, dll, importhints, "RegisterClassExW");
   AddImport(Idt.User32Lookups, n, i, dll, importhints, "ReleaseCapture");
+  AddImport(Idt.User32Lookups, n, i, dll, importhints, "ReleaseDC");
   AddImport(Idt.User32Lookups, n, i, dll, importhints, "SetCapture");
   AddImport(Idt.User32Lookups, n, i, dll, importhints, "SetProcessDpiAwarenessContext");
+  AddImport(Idt.User32Lookups, n, i, dll, importhints, "SetWindowRgn");
   AddImport(Idt.User32Lookups, n, i, dll, importhints, "ShowCursor");
   AddImport(Idt.User32Lookups, n, i, dll, importhints, "ShowWindow");
+  AddImport(Idt.User32Lookups, n, i, dll, importhints, "TrackMouseEvent");
   AddImport(Idt.User32Lookups, n, i, dll, importhints, "TranslateMessage");
   AddImport(Idt.User32Lookups, n, i, dll, importhints, "InvalidateRect");
   ASSERT(n = User32ImportCount);
@@ -342,22 +365,8 @@ BEGIN
 
   ImportMSize := Align(Files.Pos(Exe), 16) - FadrImport;
   ASSERT(ImportMSize <= ImportVSize);
-
-
-  (*H.ws("IDT size "); H.wh(ImportMSize); H.wsn("H.");*)
-  IF FadrImport + ImportMSize >= FadrModules THEN
-    H.ws("FadrImport + ImportMSize: "); H.wh(FadrImport + ImportMSize); H.ws("H - increase FadrModules");
-    ASSERT(FALSE)
-  END;
-  IF RvaImport  + ImportMSize >= RvaModules THEN
-    H.ws("RvaImport  + ImportMSize: "); H.wh(RvaImport  + ImportMSize); H.ws("H - increase RvaModules");
-    ASSERT(FALSE)
-  END;
-
-  (*
-  H.wsn("Idt: ");
-  H.DumpMem(2, SYSTEM.ADR(Idt), SYSTEM.ADR(Idt), target - (RvaModules + mod.vars));
-  *)
+  ASSERT(FadrImport + ImportMSize < FadrModules); (* If fails increase FadrModules *)
+  ASSERT(RvaImport  + ImportMSize < RvaModules);  (* If fails increase RvaModules  *)
 END WriteImports;
 
 
@@ -412,13 +421,13 @@ VAR
 
 BEGIN
   (*
-  H.ws("Size of eMagic:     "); H.wh(SYSTEM.ADR(hdr.zeroes)     - SYSTEM.ADR(hdr.eMagic));     H.wsn("H.");
-  H.ws("Size of zeroes:     "); H.wh(SYSTEM.ADR(hdr.eLfanew)    - SYSTEM.ADR(hdr.zeroes));     H.wsn("H.");
-  H.ws("Size of eLfanew:    "); H.wh(SYSTEM.ADR(hdr.dosProgram) - SYSTEM.ADR(hdr.eLfanew));    H.wsn("H.");
-  H.ws("Size of dosProgram: "); H.wh(SYSTEM.ADR(hdr.signature)  - SYSTEM.ADR(hdr.dosProgram)); H.wsn("H.");
-  H.ws("Size of signature:  "); H.wh(SYSTEM.ADR(hdr.machine)    - SYSTEM.ADR(hdr.signature));  H.wsn("H.");
-  H.ws("Size of Zeroes58:   "); H.wh(SYSTEM.SIZE(Zeroes58));                                   H.wsn("H.");
-  H.ws("Size of PEheader:   "); H.wh(SYSTEM.SIZE(PEheader));                                   H.wsn("H.");
+  ws("Size of eMagic:     "); wh(SYSTEM.ADR(hdr.zeroes)     - SYSTEM.ADR(hdr.eMagic));     wsn("H.");
+  ws("Size of zeroes:     "); wh(SYSTEM.ADR(hdr.eLfanew)    - SYSTEM.ADR(hdr.zeroes));     wsn("H.");
+  ws("Size of eLfanew:    "); wh(SYSTEM.ADR(hdr.dosProgram) - SYSTEM.ADR(hdr.eLfanew));    wsn("H.");
+  ws("Size of dosProgram: "); wh(SYSTEM.ADR(hdr.signature)  - SYSTEM.ADR(hdr.dosProgram)); wsn("H.");
+  ws("Size of signature:  "); wh(SYSTEM.ADR(hdr.machine)    - SYSTEM.ADR(hdr.signature));  wsn("H.");
+  ws("Size of Zeroes58:   "); wh(SYSTEM.SIZE(Zeroes58));                                   wsn("H.");
+  ws("Size of PEheader:   "); wh(SYSTEM.SIZE(PEheader));                                   wsn("H.");
   *)
   H.ZeroFill(hdr);
 
@@ -495,9 +504,9 @@ BEGIN
                      SReadable + SWriteable + SExecutable + SCode);
 
   (*
-  H.ws("After PE header, Pos(Exe) ");                H.wh(Files.Pos(Exe));
-  H.ws("H, Align(Files.Pos(Exe), FileAlignment) ");  H.wh(Align(Files.Pos(Exe), FileAlignment));
-  H.ws("H, HeaderSize "); H.wh(HeaderSize); H.wsn("H.");
+  ws("After PE header, Pos(Exe) ");                wh(Files.Pos(Exe));
+  ws("H, Align(Files.Pos(Exe), FileAlignment) ");  wh(Align(Files.Pos(Exe), FileAlignment));
+  ws("H, HeaderSize "); wh(HeaderSize); wsn("H.");
   *)
 
   ASSERT(Align(Files.Pos(Exe), FileAlignment) = HeaderSize);
@@ -540,17 +549,23 @@ BEGIN
   IF ~IsEmbedded(name) THEN
     fn := name;  H.Append(".x64", fn);  f := Files.Old(fn);
     IF f = NIL THEN
-      H.ws("Link.Mod cannot find "); H.ws(fn); H.wsn(".");  ASSERT(FALSE)
+      ws("Link.Mod cannot find "); ws(fn);
+      wsn(".");  ASSERT(FALSE)
     ELSE
       Files.Set(r, f, 0);  ReadVar(r, hdr);
       IF hdr.magic # "Oberon5" THEN
-        H.ws("Link.Mod: "); H.ws(fn); H.wsn(" corrupt header.");  ASSERT(FALSE)
+        ws("Link.Mod: "); ws(fn);
+        wsn(" corrupt header.");
+        ASSERT(FALSE)
       ELSIF hdr.name # name THEN
-        H.ws("Link.Mod: "); H.ws(fn); H.wsn(" wrong module name.");  ASSERT(FALSE)
+        ws("Link.Mod: "); ws(fn);
+        wsn(" wrong module name.");
+        ASSERT(FALSE)
       ELSIF (reqkey # 0) & (reqkey # hdr.key) THEN
-        H.ws("Link.Mod: "); H.ws(fn); H.ws(" key ");
-        H.wh(hdr.key); H.ws("H not requested key ");
-        H.wh(reqkey); H.wsn("H.");
+        ws("Link.Mod: "); ws(fn);
+        ws(" key ");  wh(hdr.key);
+        ws("H not requested key ");  wh(reqkey);
+        wsn("H.");
         ASSERT(FALSE)
       ELSE
         Files.Set(r, f, (SYSTEM.SIZE(Modules.ModDesc) + 15) DIV 16 * 16);
@@ -789,14 +804,6 @@ BEGIN
     IF ~IsInnerCore(emb.name) THEN
       Files.Set(r, emb.file, 0);
       ReadVar(r, mod);
-      (*
-      H.ws("* Add embedded module '"); H.ws(emb.name);
-      H.ws("' from '");                H.ws(emb.file.name);
-      H.ws("' name '");                H.ws(mod.name);
-      H.ws("' key ");                  H.wh(mod.key);
-      H.ws("H at ");                   H.wh(Files.Pos(Exe));  H.wsn("H.");
-      *)
-
       size := Files.Length(emb.file);  ASSERT(size > 0);
       Files.Set(r, emb.file, 0);
       i := size DIV LEN(buf);
@@ -870,8 +877,7 @@ BEGIN
 
   ParseTarget(r, ch, target, modname);
   WHILE (target[0] # 0X) & (target # "~") DO
-    Texts.WriteString(W, "  linking ");  Texts.WriteString(W, target);
-    Texts.WriteLn(W);  Texts.Append(Texts.Log, W.buf);
+    ws("  linking ");  wsn(target);
 
     EmbedModule(modname, 0);
     (* Special knowledge: Oberon.Mod loads System.Mod *)
@@ -886,8 +892,7 @@ END Link;
 
 
 BEGIN
-  Texts.OpenWriter(W); Texts.WriteString(W, "Linker DCWB 2024-05-10");
-  Texts.WriteLn(W); Texts.Append(Texts.Log, W.buf);
+  Texts.OpenWriter(W); wsn("Linker DCWB 2024-05-10");
   Embeddings    := NIL;
   LastEmbedding := NIL;
 END Link.

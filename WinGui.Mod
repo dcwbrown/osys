@@ -1,5 +1,6 @@
 MODULE WinGui;
-IMPORT SYSTEM, H := WinHost;
+IMPORT SYSTEM, H := WinHost, Texts;
+
 
 CONST
   Width*     = 1536;
@@ -23,12 +24,16 @@ HostWindow* = POINTER TO HostWindowDesc;
   HostWindowDesc = RECORD
     hwnd:     INTEGER;
     bmp*:     HostBitmap;
+    (*
     x*:       INTEGER;
     y*:       INTEGER;
+    *)
     width*:   INTEGER;
     height*:  INTEGER;
+    (*
     DPI*:     INTEGER;
     highch:   INTEGER;  (* Leading/high surrogate codepoint of a pair *)
+    *)
   END;
 
   HostMessage* = RECORD-
@@ -43,6 +48,7 @@ HostWindow* = POINTER TO HostWindowDesc;
   END;
 
 VAR
+  W:       Texts.Writer;
   Window*: HostWindow;
 
   Keys:    ARRAY KeyBufSize OF BYTE;  (* Scancodes *)
@@ -52,13 +58,25 @@ VAR
 
   VKtoScn: INTEGER;
 
-  MouseState*: INTEGER;  (* 3/keys, 12/x, 12/y  *)
+  MouseState*: INTEGER;  (* 1/in-window, 3/keys, 12/x, 12/y  *)
   WmQuit*:     BOOLEAN;
 
   Dirtyleft:   INTEGER;  (* aka x     *)
   Dirtyright:  INTEGER;  (* aka x + w *)
   Dirtybottom: INTEGER;  (* aka y     *)
   Dirtytop:    INTEGER;  (* aka y + h *)
+  Tracking:    BOOLEAN;  (* Mouse tracking state to know when to call TrackMouseEvent *)
+
+
+PROCEDURE wn; BEGIN Texts.WriteLn(W); Texts.Append(Texts.Log, W.buf) END wn;
+
+PROCEDURE wc (c: CHAR);          BEGIN Texts.Write(W, c)           END wc;
+PROCEDURE ws (s: ARRAY OF CHAR); BEGIN Texts.WriteString(W, s)     END ws;
+PROCEDURE wsn(s: ARRAY OF CHAR); BEGIN Texts.WriteString(W, s); wn END wsn;
+PROCEDURE wh (i: INTEGER);       BEGIN Texts.WriteHex(W, i)        END wh;
+PROCEDURE wi (i: INTEGER);       BEGIN Texts.WriteInt(W, i, 1)     END wi;
+PROCEDURE wir(i, n: INTEGER);    BEGIN Texts.WriteInt(W, i, n)     END wir;
+
 
 PROCEDURE AddKey(key: BYTE);
 BEGIN
@@ -143,11 +161,6 @@ BEGIN
     bmi.colour0  := 0FF000000H; (*0FFFFFFFFH;*)
     bmi.colour1  := 0FFFFFFFFH; (*0FF000000H;*)
     bitmap.hdib  := H.CreateDIBSection(0, SYSTEM.ADR(bmi), 0, SYSTEM.ADR(bitmap.address), 0, 0);
-    (*
-    H.ws("Created DIB section: hdib "); H.wh(bitmap.hdib);
-    H.ws("H, bitmap address ");         H.wh(bitmap.address); H.wsn("H.");
-    *)
-
     ASSERT(bitmap.hdib    # 0);
     ASSERT(bitmap.address # 0);
     bitmap.width  := w;
@@ -155,11 +168,6 @@ BEGIN
 
     IF bitmap.context = 0 THEN  (* If no context to reuse *)
       bitmap.context := H.CreateCompatibleDC(0);  ASSERT(bitmap.context # 0);
-      (*
-      H.ws("Created compatible DC: w ");  H.wi(w);
-      H.ws(", h ");                       H.wi(h);
-      H.ws(", hdc ");                     H.wh(bitmap.context); H.wsn("H.");
-      *)
     END;
 
     bitmap.oldh := H.SelectObject(bitmap.context, bitmap.hdib)
@@ -197,30 +205,21 @@ BEGIN
   y      := ps.top;
   width  := ps.right  - ps.left + 1;
   height := ps.bottom - ps.top  + 1;
-  (*
-  H.ws("WM_PAINT handler: Paint(x ");   H.wi(x);
-  H.ws(", y ");       H.wi(y);
-  H.ws(", width ");   H.wi(width);
-  H.ws(", height ");  H.wi(height);  H.wsn(".");
-  *)
   res := H.BitBlt(ps.hdc, x, y, width, height, Window.bmp.context, x, y, 0CC0020H);  (* SRCCPY *)
   IF res = 0 THEN H.AssertWinError(H.GetLastError()) END;
   res := H.EndPaint(hwnd, SYSTEM.ADR(ps));
 END WmPaint;
 
 
-PROCEDURE WmSize(wi, h: INTEGER);
-BEGIN
-  IF (wi # Width) OR (h # Height) THEN
-    H.ws("size := "); H.wi(wi); H.wc(","); H.wi(h); H.wsn(".")
-  END
-END WmSize;
-
-
 PROCEDURE WmMouse(hwnd, msg, x, y: INTEGER; flags: SET);
+VAR track: RECORD- size, flags: SYSTEM.CARD32; hwnd: INTEGER; hovertm: SYSTEM.CARD32 END;
 BEGIN
   IF x > 32767 THEN x := x - 10000H END; (* Sign extend 16 bit value *)
   IF y > 32767 THEN y := y - 10000H END; (* Sign extend 16 bit value *)
+  IF ~Tracking THEN H.ShowCursor(0); (* Hide cursor when inside client window *)
+    track.size := 24;  track.flags   := 2; (* LEAVE *)  track.hwnd := hwnd;
+    Tracking := H.TrackMouseEvent(SYSTEM.ADR(track)) # 0
+  END;
   y := Window.height - 1 - y;
   ASSERT(Window.hwnd = hwnd);
   IF    msg = 201H (* WM_LBUTTONDOWN *) THEN H.SetCapture(hwnd)
@@ -235,7 +234,7 @@ BEGIN
        {1}  MM
        {2}  ML
   *)
-  MouseState := y MOD 1000H * 1000H + x MOD 1000H;
+  MouseState := 8000000H + y MOD 1000H * 1000H + x MOD 1000H;
   IF 1 IN flags THEN INC(MouseState, 1000000H) END; (* MR *)
   IF 4 IN flags THEN INC(MouseState, 2000000H) END; (* MM *)
   IF 0 IN flags THEN INC(MouseState, 4000000H) END; (* ML *)
@@ -461,7 +460,7 @@ BEGIN str := "";
       res := H.Utf16ToUtf8(name, str)
     END
   END;
-  IF str = "" THEN H.ws("WM "); H.wh(msg); H.wc("H") ELSE H.ws("WM"); H.ws(str) END
+  IF str = "" THEN ws("WM "); wh(msg); wc("H") ELSE ws("WM"); ws(str) END
 END WriteWindowsMessageName;
 
 
@@ -471,31 +470,38 @@ PROCEDURE- WndProc(hwnd, msg, wp, lp: INTEGER): INTEGER;
 VAR res: INTEGER;  scan: BYTE;
 BEGIN
   (*
-  H.ws("WndProc: hwnd "); H.wh(hwnd);
-  H.ws("H, msg "); WriteWindowsMessageName(msg); H.wsn(".");
+  ws("WndProc: hwnd "); wh(hwnd);
+  ws("H, msg "); WriteWindowsMessageName(msg); wsn(".");
   *)
 
   IF Window.hwnd = 0 THEN Window.hwnd := hwnd ELSE ASSERT(Window.hwnd = hwnd) END;
   res := 0;
   IF     msg =   02H  (* WM_DESTROY       *) THEN H.PostQuitMessage(0)
   ELSIF  msg =   0FH  (* WM_PAINT         *) THEN WmPaint(hwnd)
-  ELSIF  msg =   14H  (* WM_ERASEBKGND    *) THEN
-  ELSIF  msg =   05H  (* WM_SIZE          *) THEN WmSize(lp MOD 10000H, lp DIV 10000H MOD 10000H)
   ELSIF  msg =  100H  (* WM_KEYDOWN       *) THEN SYSTEM.GET(VKtoScn + wp, scan); AddKey(scan)
   ELSIF  msg =  101H  (* WM_KEYUP         *) THEN SYSTEM.GET(VKtoScn + wp, scan); AddKey(0F0H); AddKey(scan)
   ELSIF  msg =  102H  (* WM_CHAR          *) THEN (* Ignore WM_CHAR *)
   ELSIF (msg >= 200H) (* WM_MOUSEMOVE     *)
-     &  (msg <= 209H) (* WM_MBUTTONDBLCLK *) THEN WmMouse(hwnd, msg,
-                                                          lp MOD 10000H, lp DIV 10000H MOD 10000H,
+      & (msg <= 209H) (* WM_MBUTTONDBLCLK *) THEN WmMouse(hwnd, msg,
+                                                          lp MOD 10000H,
+                                                          lp DIV 10000H MOD 10000H,
                                                           SYSTEM.VAL(SET, wp))
+  ELSIF  msg =  2A3H  (* WM_MOUSELEAVE    *) THEN H.ShowCursor(1);  Tracking := FALSE;
+                                                  MouseState := MouseState MOD 8000000H
   ELSE res := H.DefWindowProcW(hwnd, msg, wp, lp);
-  END;
+  END
 RETURN res END WndProc;
 
 
 (* -------------------------- Host window creation -------------------------- *)
 
 PROCEDURE CreateWindow*(x, y, width, height: INTEGER);
+CONST
+  wstyle   = 80CA0000H;  (* POPUP, BORDER, CAPTION, SYSMENU, MINIMIZEBOX *)
+  (*
+  wstyle   = 80000000H;  (* WS_POPUP *)
+  *)
+  wexstyle = 0;
 TYPE
   wndclassexw = RECORD-
     cbsize:        SYSTEM.CARD32;
@@ -518,6 +524,9 @@ VAR
   classname:  ARRAY 16  OF SYSTEM.CARD16;
   windowname: ARRAY 256 OF SYSTEM.CARD16;
   i:          INTEGER;
+  rect:       RECORD- left, top, right, bottom: SYSTEM.INT32 END;
+  rgn:        INTEGER;
+
 BEGIN
   i := H.Utf8ToUtf16("Oberon", classname);
   i := H.Utf8ToUtf16("Oberon", windowname);
@@ -530,47 +539,37 @@ BEGIN
   classAtom       := H.RegisterClassExW(SYSTEM.ADR(class));
   ASSERT(classAtom # 0);
 
+  rect.left := x;  rect.right  := x + width;
+  rect.top  := y;  rect.bottom := y + height;
+  ASSERT(H.AdjustWindowRectEx(SYSTEM.ADR(rect), wstyle, 0, wexstyle) # 0);
+
   NEW(Window);
   Window.hwnd      := 0;
   Window.bmp       := NIL;
-  Window.x         := x;
-  Window.y         := y;
   Window.width     := width;
   Window.height    := height;
 
-  (*
-  H.ws("CreateWindowExW: x "); H.wi(x);
-  H.ws(", y ");                H.wi(y);
-  H.ws(", width ");            H.wi(width);
-  H.ws(", height ");           H.wi(height); H.wsn(".");
-  H.wsn("classname:");  H.DumpMem(2, SYSTEM.ADR(classname),  SYSTEM.ADR(classname),  16);
-  H.wsn("windowname:"); H.DumpMem(2, SYSTEM.ADR(windowname), SYSTEM.ADR(windowname), 16);
-  *)
-
   Window.hwnd := H.CreateWindowExW(
-    0,                       (* Extended window style *)
+    wexstyle,
     SYSTEM.ADR(classname),
     SYSTEM.ADR(windowname),
-    80000000H,               (* WS_POPUP *)
-    x, y, width, height,     (* Initial position *)
+    wstyle,
+    rect.left,  rect.top,   (* Initial position *)
+    rect.right - rect.left,  rect.bottom - rect.top,
     0, 0, 0, 0               (* hWndParent, hMenu, hInstance, lpParam *)
   );
   ASSERT(Window.hwnd # 0);
-  (*
-  H.ws("Created window. hwnd ");  H.wh(Window.hwnd);  H.wsn("H.");
-  *)
 
   H.SetHWnd(Window.hwnd);  (* Make sure kernel error message boxes stop the message pump *)
 
   EnsureBitmap(width, height, Window.bmp);
 
-  Window.DPI := H.GetDpiForWindow(Window.hwnd);
-  (*H.ws("GetDpiForWindow -> ");  H.wi(Window.DPI);  H.wsn(".");*)
+  (*Window.DPI := H.GetDpiForWindow(Window.hwnd);*)
 
-  H.ShowCursor(0);
+  rgn := H.CreateRectRgn(0, 0, rect.right - rect.left,  rect.bottom - rect.top);
+  ASSERT(rgn # 0);
+  ASSERT(H.SetWindowRgn(Window.hwnd, rgn, 0) # 0);
   H.ShowWindow(Window.hwnd, 1);
-
-  (*H.wsn("CreateWindow complete.");*)
 END CreateWindow;
 
 
@@ -591,23 +590,23 @@ BEGIN
       res := 0
     ELSE
       (*
-      IF    msg.message =   2H THEN H.wsn("* WM_DESTROY *")
-      ELSIF msg.message =   6H THEN H.wsn("* WM_ACTIVATE *")
-      ELSIF msg.message =   7H THEN H.wsn("* WM_SETFOCUS *")
-      ELSIF msg.message =   8H THEN H.wsn("* WM_KILLFOCUS *")
-      ELSIF msg.message =  10H THEN H.wsn("* WM_CLOSE *")
-      ELSIF msg.message =  11H THEN H.wsn("* WM_QUERYENDSESSION *")
-      ELSIF msg.message =  16H THEN H.wsn("* WM_ENDSESSION *")
-      ELSIF msg.message =  48H THEN H.wsn("* WM_POWER *")
-      ELSIF msg.message =  4EH THEN H.wsn("* WM_NOTIFY *")
-      ELSIF msg.message =  60H THEN H.wsn("* WM_60 *")
-      ELSIF msg.message = 101H THEN H.wsn("* WM_KEYUP *")
-      ELSIF msg.message = 104H THEN H.wsn("* WM_SYSKEYDOWN *")
-      ELSIF msg.message = 105H THEN H.wsn("* WM_SYSKEYUP *")
-      ELSIF msg.message = 106H THEN H.wsn("* WM_SYSCHAR *")
-      ELSIF msg.message = 109H THEN H.wsn("* WM_UNICHAR *")
-      ELSIF msg.message = 113H THEN H.wsn("* WM_TIMER *")
-      ELSE H.ws("Windows message "); H.wh(msg.message); H.wsn("H.");
+      IF    msg.message =   2H THEN wsn("* WM_DESTROY *")
+      ELSIF msg.message =   6H THEN wsn("* WM_ACTIVATE *")
+      ELSIF msg.message =   7H THEN wsn("* WM_SETFOCUS *")
+      ELSIF msg.message =   8H THEN wsn("* WM_KILLFOCUS *")
+      ELSIF msg.message =  10H THEN wsn("* WM_CLOSE *")
+      ELSIF msg.message =  11H THEN wsn("* WM_QUERYENDSESSION *")
+      ELSIF msg.message =  16H THEN wsn("* WM_ENDSESSION *")
+      ELSIF msg.message =  48H THEN wsn("* WM_POWER *")
+      ELSIF msg.message =  4EH THEN wsn("* WM_NOTIFY *")
+      ELSIF msg.message =  60H THEN wsn("* WM_60 *")
+      ELSIF msg.message = 101H THEN wsn("* WM_KEYUP *")
+      ELSIF msg.message = 104H THEN wsn("* WM_SYSKEYDOWN *")
+      ELSIF msg.message = 105H THEN wsn("* WM_SYSKEYUP *")
+      ELSIF msg.message = 106H THEN wsn("* WM_SYSCHAR *")
+      ELSIF msg.message = 109H THEN wsn("* WM_UNICHAR *")
+      ELSIF msg.message = 113H THEN wsn("* WM_TIMER *")
+      ELSE ws("Windows message "); wh(msg.message); wsn("H.");
       END;
       *)
       res := H.TranslateMessage(SYSTEM.ADR(msg));
@@ -647,10 +646,11 @@ RETURN MouseState END Mouse;
 
 (* ------------------------- Display initialisation ------------------------- *)
 
-BEGIN
+BEGIN Texts.OpenWriter(W);
   Dirtyleft   := Width;   Dirtyright := 0;
   Dirtybottom := Height;  Dirtytop   := 0;
-  WmQuit := FALSE;
+  Tracking    := FALSE;
+  WmQuit      := FALSE;
   ASSERT(H.SetProcessDpiAwarenessContext(-3) # 0);  (* DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE *)
   VKtoScn := SYSTEM.ADR($
     00 00 00 00 00 00 00 00  66 09 00 00 00 5A 00 00
@@ -670,5 +670,5 @@ BEGIN
     00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00
     00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00$);
   CreateWindow(512, 64, Width, Height);
-  (*H.wsn("WinGui initialisation complete.");*)
+  (*wsn("WinGui initialisation complete.");*)
 END WinGui.

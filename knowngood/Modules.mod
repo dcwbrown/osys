@@ -22,8 +22,7 @@ VAR
 
 
 PROCEDURE ThisFile(name: ARRAY OF CHAR): Files.File;
-    VAR i: INTEGER;
-      filename: ModuleName;
+VAR i: INTEGER;  filename: ModuleName;
 BEGIN i := 0;
   WHILE name[i] # 0X DO filename[i] := name[i];  INC(i) END;
     filename[i] := "."; filename[i+1] := "x"; filename[i+2] := "6"; filename[i+3] := "4"; filename[i+4] := 0X;
@@ -131,13 +130,6 @@ BEGIN
     importing := name1;
     key       := header.key;
     size      := (header.vars + header.varsize + 15) DIV 16 * 16;
-
-    (*
-    IF fileoffset > 0 THEN
-      H.ws("LoadModule preloading "); H.ws(header.name);
-      H.ws(" from "); H.wh(fileoffset); H.wsn("H.")
-    END;
-    *)
 
     (* Load list of imported modules (immediately follows module header) *)
     Files.ReadString(R, impname);
@@ -342,6 +334,8 @@ BEGIN Init;
     IF res = 0 THEN P END
   END;
 
+  ASSERT(res = 0);
+  (*
   IF res # 0 THEN
     H.ws("Load error: "); H.ws(importing);
     IF    res = 1 THEN H.wsn(" module not found")
@@ -353,6 +347,7 @@ BEGIN Init;
     END;
     H.SetExitCode(res)
   END;
+  *)
 
   H.ExitToHost
   (*LED(res);  REPEAT UNTIL FALSE*)  (*only if load fails*)
