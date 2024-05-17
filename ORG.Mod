@@ -652,7 +652,7 @@ BEGIN
     ELSE
       reg := Reserve(-1, {})
     END;
-    IF (x.mode = Code) & (x.type.form = ORB.Proc) THEN
+    IF (x.mode IN {Code, Import}) & (x.type.form = ORB.Proc) THEN
       LoadAddressReg(reg, x); FreeRegs(x);  x.mode := Reg;  x.n := reg;  ReserveReg(x.n);
     ELSE
       LoadReg(reg, x)
@@ -1045,8 +1045,8 @@ BEGIN
   x.readonly := y.rdo;
   IF y.class = ORB.Const THEN
     IF y.type.form = ORB.Proc THEN
-      IF y.lev >= 0 THEN x.mode := Code;    x.n := 0;    x.offset := y.val;
-      ELSE               x.mode := Import;  x.n := LSL(-y.lev, 16) + y.val;
+      IF y.lev >= 0 THEN x.mode := Code;   x.n := 0;    x.offset := y.val;
+      ELSE               x.mode := Import; x.n := LSL(-y.lev, 16) + y.val;
       END
     ELSIF y.type.form = ORB.String THEN
       x.mode := String;  x.readonly := TRUE;  x.n := y.lev;  x.offset := y.val;
