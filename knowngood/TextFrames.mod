@@ -140,9 +140,10 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
     F.hasMark := on
   END Mark;
 
+  (*
   PROCEDURE Restore* (F: Frame);
     VAR R: Texts.Reader; L, l: Line; curY, botY: INTEGER;
-  BEGIN  Display.ReplConst(F.col, F.X, F.Y, F.W, F.H, Display.replace);
+  BEGIN Display.ReplConst(F.col, F.X, F.Y, F.W, F.H, Display.replace);
     IF F.left >= barW THEN
       Display.ReplConst(Display.white, F.X + barW - 1, F.Y, 1, F.H, Display.invert)
     END;
@@ -158,6 +159,8 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
     L.next := F.trailer;
     F.markH := F.org * F.H DIV (F.text.len + 1)
   END Restore;
+  *)
+
 
   PROCEDURE Suspend* (F: Frame);
   BEGIN  F.trailer.next := F.trailer

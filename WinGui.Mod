@@ -24,12 +24,10 @@ HostWindow* = POINTER TO HostWindowDesc;
   HostWindowDesc = RECORD
     hwnd:     INTEGER;
     bmp*:     HostBitmap;
-    (*
-    x*:       INTEGER;
-    y*:       INTEGER;
-    *)
     width*:   INTEGER;
     height*:  INTEGER;
+    ncwidth:  INTEGER;
+    ncheight: INTEGER;
     (*
     DPI*:     INTEGER;
     highch:   INTEGER;  (* Leading/high surrogate codepoint of a pair *)
@@ -497,10 +495,10 @@ RETURN res END WndProc;
 
 PROCEDURE CreateWindow*(x, y, width, height: INTEGER);
 CONST
-  wstyle   = 80CA0000H;  (* POPUP, BORDER, CAPTION, SYSMENU, MINIMIZEBOX *)
   (*
-  wstyle   = 80000000H;  (* WS_POPUP *)
+  wstyle   = 80CA0000H;  (* POPUP, BORDER, CAPTION, SYSMENU, MINIMIZEBOX *)
   *)
+  wstyle   = 80000000H;  (* WS_POPUP *)
   wexstyle = 0;
 TYPE
   wndclassexw = RECORD-
@@ -544,10 +542,12 @@ BEGIN
   ASSERT(H.AdjustWindowRectEx(SYSTEM.ADR(rect), wstyle, 0, wexstyle) # 0);
 
   NEW(Window);
-  Window.hwnd      := 0;
-  Window.bmp       := NIL;
-  Window.width     := width;
-  Window.height    := height;
+  Window.hwnd     := 0;
+  Window.bmp      := NIL;
+  Window.ncwidth  := rect.right - rect.left;
+  Window.ncheight := rect.bottom - rect.top;
+  Window.width    := width;  (* client *)
+  Window.height   := height; (* client *)
 
   Window.hwnd := H.CreateWindowExW(
     wexstyle,
@@ -566,9 +566,12 @@ BEGIN
 
   (*Window.DPI := H.GetDpiForWindow(Window.hwnd);*)
 
+  (*
   rgn := H.CreateRectRgn(0, 0, rect.right - rect.left,  rect.bottom - rect.top);
   ASSERT(rgn # 0);
   ASSERT(H.SetWindowRgn(Window.hwnd, rgn, 0) # 0);
+  *)
+
   H.ShowWindow(Window.hwnd, 1);
 END CreateWindow;
 
@@ -643,6 +646,14 @@ END GetKey;
 PROCEDURE Mouse*(): INTEGER;
 BEGIN Drain;
 RETURN MouseState END Mouse;
+
+PROCEDURE PositionWindow*(x, y: INTEGER);
+BEGIN H.MoveWindow(Window.hwnd, x, y, Window.ncwidth, Window.ncheight, 0)
+END PositionWindow;
+
+PROCEDURE Minimise*;
+BEGIN H.ShowWindow(Window.hwnd, 6) (* SW_MINIMIZE *)
+END Minimise;
 
 (* ------------------------- Display initialisation ------------------------- *)
 

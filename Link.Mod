@@ -24,7 +24,7 @@ CONST
   BootstrapVarBytes   = 64;  (* size of WinHost PreLoadVars *)
   Kernel32ImportCount = 40;
   Gdi32ImportCount    = 18;
-  User32ImportCount   = 34;
+  User32ImportCount   = 35;
 
 TYPE
   ModuleDesc = H.ModuleDesc;
@@ -329,6 +329,7 @@ BEGIN
   AddImport(Idt.User32Lookups, n, i, dll, importhints, "EndPaint");
   AddImport(Idt.User32Lookups, n, i, dll, importhints, "GetClientRect");
   AddImport(Idt.User32Lookups, n, i, dll, importhints, "GetClipboardFormatNameW");
+  AddImport(Idt.User32Lookups, n, i, dll, importhints, "GetCursorPos");
   AddImport(Idt.User32Lookups, n, i, dll, importhints, "GetDCEx");
   AddImport(Idt.User32Lookups, n, i, dll, importhints, "GetDpiForWindow");
   AddImport(Idt.User32Lookups, n, i, dll, importhints, "GetMessageW");

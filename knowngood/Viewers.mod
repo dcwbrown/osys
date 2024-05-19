@@ -1,5 +1,5 @@
 MODULE Viewers; (*JG 14.9.90 / NW 15.9.2013*)
-  IMPORT Display;
+  IMPORT Fonts, Display;
 
   CONST restore* = 0; modify* = 1; suspend* = 2; (*message ids*)
     inf = 65535;
@@ -18,9 +18,16 @@ MODULE Viewers; (*JG 14.9.90 / NW 15.9.2013*)
     Track = POINTER TO TrackDesc;
     TrackDesc = RECORD (ViewerDesc) under: Display.Frame END;
 
-  VAR curW*, minH*, DH: INTEGER;
-    FillerTrack: Track; FillerViewer,
-    backup: Viewer; (*last closed viewer*)
+  VAR curW*, minH*, DH*: INTEGER;
+    FillerTrack:  Track; FillerViewer,
+    backup:       Viewer; (*last closed viewer*)
+    TitleViewer:  Viewer;
+
+  PROCEDURE AllocateTitleViewer*(V: Viewer);
+  BEGIN TitleViewer := V;
+    V.X := 0;  V.W := Display.Width;
+    V.Y := DH; V.H := Display.Height - DH
+  END AllocateTitleViewer;
 
   PROCEDURE Open* (V: Viewer; X, Y: INTEGER);
     VAR T, u, v: Display.Frame; M: ViewerMsg;
@@ -101,7 +108,9 @@ MODULE Viewers; (*JG 14.9.90 / NW 15.9.2013*)
   PROCEDURE This* (X, Y: INTEGER): Viewer;
     VAR T, V: Display.Frame;
   BEGIN
-    IF (X < inf) & (Y < DH) THEN
+    IF (Y >= DH) & (Y < Display.Height) THEN
+      V := TitleViewer
+    ELSIF (X < inf) & (Y < DH) THEN
       T := FillerTrack;
       REPEAT T := T.next UNTIL X < T.X + T.W;
       V := T.dsc;
@@ -197,7 +206,8 @@ MODULE Viewers; (*JG 14.9.90 / NW 15.9.2013*)
     END
   END Broadcast;
 
-BEGIN backup := NIL; curW := 0; minH := 1; DH := Display.Height;
+BEGIN backup := NIL; curW := 0; minH := 1;
+  DH := Display.Height - (Fonts.Default.height + 1);  (* Reserve space for host title bar *)
   NEW(FillerViewer); FillerViewer.X := 0; FillerViewer.W := inf; FillerViewer.Y := 0; FillerViewer.H := DH;
   FillerViewer.next := FillerViewer;
   NEW(FillerTrack);

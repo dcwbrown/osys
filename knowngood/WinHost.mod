@@ -178,6 +178,7 @@ VAR
   EndPaint*:                       PROCEDURE-(wn, ps: INTEGER): INTEGER;
   GetClientRect*:                  PROCEDURE-(wn, rec: INTEGER): INTEGER;
   GetClipboardFormatNameW*:        PROCEDURE-(format, name, maxcount: INTEGER): INTEGER;
+  GetCursorPos*:                   PROCEDURE-(pos: INTEGER);
   GetDCEx*:                        PROCEDURE-(wn, clip, flags: INTEGER): INTEGER;
   GetDpiForWindow*:                PROCEDURE-(wn: INTEGER): INTEGER;
   GetMessageW*:                    PROCEDURE-(lm, wn, mn, mx: INTEGER): INTEGER;
@@ -299,35 +300,35 @@ BEGIN Syslog := sl END SetSyslog;
 PROCEDURE Log*(s: ARRAY OF BYTE);
 VAR written, res: INTEGER;
 BEGIN
-  IF Syslog # NIL THEN Syslog(s)
+  IF (*Syslog # NIL*) FALSE THEN Syslog(s)
   ELSE res := WriteFile(Stdout, SYSTEM.ADR(s), Length(s), SYSTEM.ADR(written), 0);
   END
 END Log;
 
-PROCEDURE wc(c: CHAR); BEGIN Log(c) END wc;
+PROCEDURE wc*(c: CHAR); BEGIN Log(c) END wc;
 
-PROCEDURE wn; BEGIN Log(crlf) END wn;
+PROCEDURE wn*; BEGIN Log(crlf) END wn;
 
-PROCEDURE ws(s: ARRAY OF CHAR); BEGIN Log(s) END ws;
+PROCEDURE ws*(s: ARRAY OF CHAR); BEGIN Log(s) END ws;
 
-PROCEDURE wsz(s: ARRAY OF CHAR; w: INTEGER);  (* Right justified with leading zeroes *)
+PROCEDURE wsz*(s: ARRAY OF CHAR; w: INTEGER);  (* Right justified with leading zeroes *)
 BEGIN DEC(w, Length(s));  WHILE w > 0 DO wc("0"); DEC(w) END; Log(s) END wsz;
 
 PROCEDURE wsn*(s: ARRAY OF CHAR); BEGIN Log(s); Log(crlf) END wsn;
 
-PROCEDURE wh(n: INTEGER);
+PROCEDURE wh*(n: INTEGER);
 VAR hex: ARRAY 32 OF CHAR;
 BEGIN IntToHex(n, hex); Log(hex) END wh;
 
-PROCEDURE whz(n, w: INTEGER);  (* Right justified with leading zeroes *)
+PROCEDURE whz*(n, w: INTEGER);  (* Right justified with leading zeroes *)
 VAR hex: ARRAY 32 OF CHAR;
 BEGIN IntToHex(n, hex); wsz(hex, w) END whz;
 
-PROCEDURE wi(n: INTEGER);
+PROCEDURE wi*(n: INTEGER);
 VAR dec: ARRAY 32 OF CHAR;
 BEGIN IntToDecimal(n, dec); Log(dec) END wi;
 
-PROCEDURE wb(n: INTEGER);
+PROCEDURE wb*(n: INTEGER);
 BEGIN WHILE n > 0 DO wc(" "); DEC(n) END END wb;
 
 

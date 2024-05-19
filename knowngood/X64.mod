@@ -59,6 +59,8 @@ CONST
   Import*  = 29;  (* Import             16/modno, 16/impno  0                           *)
   Impcode* = 30;  (* Imported code var  16/modno, 16/impno  0                           *)
 
+  (* Note re imported procedures: An imported procedure has Mode Import, while an *)
+  (* imported procedure address variable has mode ImpCode.                        *)
 
 TYPE
   Item* = RECORD

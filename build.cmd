@@ -9,6 +9,7 @@
 @copy ..\knowngood\Link.Link.exe >NUL 2>NUL
 ::
 ::
+::  goto outercorebuild
 @fc ..\Link.Mod ..\knowngood\Link.Mod >NUL && goto noprebuild
 :: goto noprebuild
 ::
@@ -48,11 +49,24 @@
 @ORP.Compile Fonts.Mod/s Texts.Mod/s Link.Mod/s ORS.Mod/s ~          || goto end
 @ORP.Compile ORB.Mod/s X64.Mod/s Listing.Mod/s ORG.Mod/s ORP.Mod/s ~ || goto end
 @Link.Link ORP.Compile Link.Link                                     || goto end
+goto oberonbuild
+::
+::
+@echo.
+@echo --------------------------- Build outer core -----------------------------
+@echo.
+:outercorebuild
+::
+@copy /Y ..\*.mod >NUL
+::
+@ORP.Compile WinHost.Mod/s Kernel.Mod/s Files.Mod/s Modules.Mod/s ~  || goto end
+@ORP.Compile Fonts.Mod/s Texts.Mod/s ~                               || goto end
 ::
 ::
 @echo.
 @echo -------------------------- Build Oberon system ---------------------------
 @echo.
+:oberonbuild
 ::
 ::
 @ORP.Compile FileDir.Mod/s WinGui.Mod/s Input.Mod/s Display.Mod/s ~ || goto end

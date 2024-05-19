@@ -122,7 +122,7 @@ BEGIN
   ELSE
     IF X > CL + DW - 15 THEN X := CL + DW - 15 END
   END;
-  IF Y < 14 THEN Y := 14 ELSIF Y > DH THEN Y := DH END;
+  IF Y < 14 THEN Y := 14 ELSIF Y > Display.Height THEN Y := Display.Height END;
   Display.CopyPattern(Display.white, Display.arrow, X, Y - 14, Display.invert)
 END FlipArrow;
 
@@ -133,7 +133,7 @@ BEGIN
   ELSE
     IF X < CL + 7 THEN X := CL + 7 ELSIF X > CL + DW - 8 THEN X := CL + DW - 8 END
   END;
-  IF Y < 7 THEN Y := 7 ELSIF Y > DH - 8 THEN Y := DH - 8 END;
+  IF Y < 7 THEN Y := 7 ELSIF Y > Display.Height - 8 THEN Y := Display.Height - 8 END;
   Display.CopyPattern(Display.white, Display.star, X - 7, Y - 7, Display.invert)
 END FlipStar;
 
@@ -202,7 +202,7 @@ END HandleFiller;
 PROCEDURE OpenDisplay* (UW, SW, H: INTEGER);
 VAR Filler: Viewers.Viewer;
 BEGIN
-   Input.SetMouseLimits(Viewers.curW + UW + SW, H);
+   Input.SetMouseLimits(Viewers.curW + UW + SW, Display.Height);
    Display.ReplConst(Display.black, Viewers.curW, 0, UW + SW, H, Display.replace);
    NEW(Filler); Filler.handle := HandleFiller;
    Viewers.InitTrack(UW, H, Filler); (*init user track*)
@@ -342,11 +342,13 @@ BEGIN
     Kernel.Scan; (*LED(20H);*)
     scan := H.Time();
 
+    (*
     ws("GC timing: mark ");    wi((mark - start) DIV 10);
     ws("us, files "); wi((files - mark) DIV 10);
     ws("us, scan ");  wi((scan - files) DIV 10);
     ws("us, total "); wi((scan - start) DIV 10);
     wsn("us.");
+    *)
 
     Modules.Collect(BasicCycle);
 
@@ -453,7 +455,7 @@ BEGIN Texts.OpenWriter(W);
   Star.Fade := FlipStar; Star.Draw := FlipStar;
   OpenCursor(Mouse); OpenCursor(Pointer);
 
-  DW := Display.Width; DH := Display.Height; CL := DW;
+  DW := Display.Width; DH := Viewers.DH; CL := DW;
   OpenDisplay(DW DIV 8 * 5, DW DIV 8 * 3, DH);
   FocusViewer := Viewers.This(0, 0);
   IF Fonts.Default = NIL THEN H.Trap(-1, "Default font not available") END;
@@ -464,19 +466,14 @@ BEGIN Texts.OpenWriter(W);
   NEW(Par);
   Modules.Load("System", Mod);
   IF Mod = NIL THEN
-    wsn("**** Load failed. ****");
-    IF Mod = NIL THEN
-      wsn("**** Load failed. ****");
-      ws("**** Full Oberon init load error: "); ws(Modules.importing);
-      IF    Modules.res = 1 THEN wsn(" module not found")
-      ELSIF Modules.res = 2 THEN wsn(" bad version")
-      ELSIF Modules.res = 3 THEN ws(" imports ");
-                                 ws(Modules.imported);
-                                 wsn(" with bad key");
-      ELSIF Modules.res = 4 THEN wsn(" corrupted obj file")
-      ELSIF Modules.res = 5 THEN wsn(" command not found")
-      ELSIF Modules.res = 7 THEN wsn(" insufficient space")
-      END
+    ws("**** Full Oberon init load error: "); ws(Modules.importing);
+    IF    Modules.res = 1 THEN wsn(" module not found")
+    ELSIF Modules.res = 2 THEN wsn(" bad version")
+    ELSIF Modules.res = 3 THEN ws(" imports ");  ws(Modules.imported);
+                               wsn(" with bad key");
+    ELSIF Modules.res = 4 THEN wsn(" corrupted obj file")
+    ELSIF Modules.res = 5 THEN wsn(" command not found")
+    ELSIF Modules.res = 7 THEN wsn(" insufficient space")
     END
   END;
   H.SetReset(Reset);

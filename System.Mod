@@ -68,13 +68,9 @@ BEGIN Texts.OpenScanner(S, Oberon.Par.text, Oberon.Par.pos); Texts.Scan(S);
   END
 END Date;
 
-PROCEDURE Collect*;
-BEGIN Modules.Collect(0)
-END Collect;
-
-PROCEDURE Quit*;
-BEGIN WinGui.Quit
-END Quit;
+PROCEDURE Collect*;  BEGIN Modules.Collect(0) END Collect;
+PROCEDURE Quit*;     BEGIN WinGui.Quit        END Quit;
+PROCEDURE Minimise*; BEGIN WinGui.Minimise    END Minimise;
 
 (* ------------- Toolbox for standard display ---------------*)
 
@@ -372,12 +368,43 @@ BEGIN Texts.WriteString(W, "System.ShowFonts"); Texts.WriteLn(W); fnt := Fonts.r
   Texts.Append(Oberon.Log, W.buf)
 END ShowFonts;
 
+
+(* ------------------------------- Host title ------------------------------- *)
+
+PROCEDURE HandleTitle* (V: Display.Frame; VAR M: Display.FrameMsg);
+VAR
+  x, y: INTEGER;  keys: SET;
+  curpos: RECORD- x, y: SYSTEM.INT32 END;
+BEGIN
+  CASE M OF
+    Oberon.InputMsg:
+      IF M.id = Oberon.track THEN
+        IF    M.keys = {}  THEN Oberon.DrawMouseArrow(M.X, M.Y)
+        ELSIF M.keys = {1} THEN MenuViewers.Handle(V, M)
+        ELSIF M.keys = {2} THEN REPEAT
+                                  H.GetCursorPos(SYSTEM.ADR(curpos));
+                                  WinGui.PositionWindow(curpos.x - M.X, curpos.y - (Display.Height - 1 - M.Y));
+                                  WinGui.WaitMsgOrTime(100);  (* Be nice with CPU *)
+                                  Input.Mouse(keys, x, y)
+                                UNTIL keys = {}
+        END
+      END
+  | Viewers.ViewerMsg: MenuViewers.Handle(V, M)
+  END
+END HandleTitle;
+
 PROCEDURE OpenViewers;
 VAR logV, toolV: Viewers.Viewer;
+    V: MenuViewers.Viewer;
+    M: Viewers.ViewerMsg;
     menu, main: Display.Frame;
     X, Y: INTEGER;
 BEGIN
-  Texts.WriteString(W, "Oberon V5  NW 14.4.2013  DB 30.3.2024"); EndLine;
+  NEW(V);  Viewers.AllocateTitleViewer(V);
+  V.handle := HandleTitle;
+  V.dsc    := TextFrames.NewMenu("Oberon V5  NW 14.4.2013  DB 30.3.2024", "System.Minimise  System.Quit");;
+  V.menuH  := TextFrames.menuH;
+  M.id     := Viewers.restore;  V.handle(V, M);
   Oberon.AllocateSystemViewer(0, X, Y);
   menu := TextFrames.NewMenu("System.Log", LogMenu);
   main := TextFrames.NewText(Oberon.Log, 0);
@@ -385,7 +412,9 @@ BEGIN
   Oberon.AllocateSystemViewer(0, X, Y);
   menu := TextFrames.NewMenu("System.Tool", StandardMenu);
   main := TextFrames.NewText(TextFrames.Text("System.Tool"), 0);
-  toolV := MenuViewers.New(menu, main, TextFrames.menuH, X, Y)
+  toolV := MenuViewers.New(menu, main, TextFrames.menuH, X, Y);
+  Texts.WriteString(W, "To exit, middle click (press scoll wheel) on 'System.Quit' in the title bar.");
+  EndLine;
 END OpenViewers;
 
 PROCEDURE ExtendDisplay*;

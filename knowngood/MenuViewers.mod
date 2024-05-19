@@ -70,10 +70,14 @@ MODULE MenuViewers; (*JG 26.8.90 / 16.9.93 / NW 10.3.2013*)
     Oberon.RemoveMarks(V.X, V.Y, V.W, V.H);
     Draw(V);
     Menu.X := V.X + 1; Menu.Y := V.Y + V.H - 1; Menu.W := V.W - 2; Menu.H := 0;
-    Main.X := V.X + 1; Main.Y := V.Y + V.H - V.menuH; Main.W := V.W - 2; Main.H := 0;
+    IF Main # NIL THEN
+      Main.X := V.X + 1; Main.Y := V.Y + V.H - V.menuH; Main.W := V.W - 2; Main.H := 0
+    END;
     IF V.H > V.menuH + 1 THEN
       Adjust(Menu, extend, 0, V.Y + V.H - V.menuH, V.menuH - 1);
-      Adjust(Main, extend, 0, V.Y + 1, V.H - V.menuH - 1)
+      IF Main # NIL THEN
+        Adjust(Main, extend, 0, V.Y + 1, V.H - V.menuH - 1)
+      END
     ELSE Adjust(Menu, extend, 0, V.Y + 1, V.H - 2)
     END
   END Restore;

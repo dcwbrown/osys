@@ -1,4 +1,4 @@
-System.Open ^  System.Recall  System.Watch  System.Collect  System.Quit
+System.Open ^  System.Recall  System.Watch  System.Collect
 Edit.Open ^  Edit.Recall
 Edit.ChangeFont Oberon10i.Scn.Fnt
 Edit.ChangeFont Oberon10b.Scn.Fnt
