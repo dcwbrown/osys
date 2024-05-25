@@ -1,5 +1,5 @@
 MODULE Link;  (* Create exe for a given module + optional command *)
-(* DCWB 14.04.2023..06.05.2024 *)
+(* DCWB 2023/04/14 .. 2024/05/25 *)
 
 IMPORT SYSTEM, H := WinHost, Kernel, Files, Texts, Modules;
 
@@ -13,13 +13,12 @@ CONST
   RvaImport   = 1000H;
   ImportVSize = 0F000H;      (* Size reserved for import table in memory *)
 
-  (* Note: Import table is sized large to place module base at 1,0000,0000H *)
-
   (* Modules section *)
   FadrModules = 0E00H;
   RvaModules  = RvaImport + ImportVSize; (* 2000H; *)
-  ImageBase   = 0FFFF0000H;  (* Image base must be multiple of 64k / 10000H  *)
-  ModuleBase  = ImageBase + RvaModules;
+
+  OberonCoreBase = 100000000H;  (* All linking is arranged to place the Oberon core at 1,0000,0000H *)
+  ImageBase      = OberonCoreBase - RvaModules;
 
   BootstrapVarBytes   = 64;  (* size of WinHost PreLoadVars *)
   Kernel32ImportCount = 40;
@@ -34,7 +33,8 @@ TYPE
     next: EmbeddedModule;
     name: Modules.ModuleName;
     key:  INTEGER;
-    file: Files.File
+    file: Files.File;
+    size: INTEGER
   END;
 
   Zeroes58 = ARRAY 3AH OF BYTE;
@@ -146,31 +146,31 @@ VAR
   FileName:     ARRAY 512 OF CHAR;
   ExeFile:      Files.File;
   Exe:          Files.Rider;
-  ModuleSize:   INTEGER;
-  ModuleVSize:  INTEGER;
-  ImportMSize:  INTEGER;       (* Import section size in memory (multiple of 16 bytes) *)
 
   Verbose:      BOOLEAN;
-  EntryPoint:   INTEGER;
 
-  Embeddings:    EmbeddedModule;
-  LastEmbedding: EmbeddedModule;
+  FirstPreload: EmbeddedModule;
+  LastPreload:  EmbeddedModule;
+  PreloadSize:  INTEGER;
 
-  Idt: ImportDirectoryTable;
+  (* Section ".idata" - imports from Windows OS *)
+  Idt:            ImportDirectoryTable;
+  ImportHints:    ARRAY 2000 OF BYTE;
+  ImportHintSize: INTEGER;
+  ImportSize:     INTEGER;  (* Directory table + hints rounded up to multiple of 16 *)
 
-  Mem:    ARRAY 10000H OF BYTE;  (* Will be loaded at ImageBase + RvaModules *)
-  ModAdr: ARRAY 16 OF RECORD  (* Module name to base address map *)
+  (* Section "Oberon" - Inner core *)
+  CoreMem:    ARRAY 10000H OF BYTE;  (* Will be loaded at ImageBase + RvaModules *)
+  CoreModAdr: ARRAY 16 OF RECORD  (* Module name to base address map *)
     name: Modules.ModuleName;
     key:  INTEGER;
     adr:  INTEGER
   END;
-  ModCount:   INTEGER;
+  CoreModCount:   INTEGER;
+  CoreEntryPoint: INTEGER;  (* Relative to OberonCoreBase *)
+  CoreSize:       INTEGER;
+  CoreHostVars:   INTEGER;  (* Loaded address of vars relative to OberonCoreBase *)
 
-
-  (* Section layout - generates 2 sections:
-     1. Imports section requesting standard system functions
-     2. Oberon section containing pre-linked modules in requested sequence
-  *)
 
 
 (* Convenience functions *)
@@ -193,182 +193,24 @@ PROCEDURE Align(a: INTEGER;  align: INTEGER): INTEGER;
 BEGIN IF a > 0 THEN INC(a, align - 1) END;
 RETURN a DIV align * align END Align;
 
-PROCEDURE FileAlign(VAR r: Files.Rider; alignment: INTEGER);
-BEGIN
-  IF Files.Pos(r) MOD alignment # 0 THEN
-    spos(Align(Files.Pos(r), alignment)-1);
-    Files.WriteByte(r, 0);
-  END
-END FileAlign;
+PROCEDURE MemAlign(a: INTEGER): INTEGER;
+RETURN Align(a, MemoryAlignment) END MemAlign;
+
+PROCEDURE PageAlign(a: INTEGER): INTEGER;
+RETURN Align(a, 10000H) END PageAlign;
+
+PROCEDURE FileAlign(a: INTEGER): INTEGER;
+RETURN Align(a, FileAlignment) END FileAlign;
+
+PROCEDURE IsInnerCore(name: ARRAY OF CHAR): BOOLEAN;
+RETURN (name = "WinHost") OR (name = "Kernel")
+    OR (name = "Files")   OR (name = "Modules")
+END IsInnerCore;
 
 
 (* -------------------------------------------------------------------------- *)
 (* -------------------------------------------------------------------------- *)
 
-PROCEDURE WriteImports;
-VAR
-  i, dll, n:   INTEGER;
-  importhints: ARRAY 2000 OF BYTE;
-  hintsize:    INTEGER;
-  target:      INTEGER;
-  mod:         Modules.Module;
-
-  PROCEDURE FieldRVA(VAR field: ARRAY OF BYTE): U32;
-  BEGIN RETURN RvaImport + SYSTEM.ADR(field) - SYSTEM.ADR(Idt) END FieldRVA;
-
-  PROCEDURE AddProc(VAR hints: ARRAY OF BYTE; VAR i: INTEGER; name: ARRAY OF CHAR);
-  VAR n: INTEGER;
-  BEGIN
-    n := 0; REPEAT hints[i] := ORD(name[n]);  INC(i);  INC(n) UNTIL name[n-1] = 0X;
-  END AddProc;
-
-  PROCEDURE AddImport(VAR lookups: ARRAY OF I64; VAR n, i: INTEGER;
-                      dll: INTEGER; VAR hints: ARRAY OF BYTE; name: ARRAY OF CHAR);
-  BEGIN
-    lookups[n] := RvaImport + SYSTEM.SIZE(ImportDirectoryTable) + i;
-    INC(n);
-    ASSERT(dll < 256);
-    ASSERT(i + H.Length(name) + 3 < LEN(hints));
-    hints[i] := dll;  hints[i+1] := 0;  INC(i, 2);
-    AddProc(hints, i, name);
-  END AddImport;
-
-BEGIN
-  H.ZeroFill(Idt);
-  mod := SYSTEM.VAL(Modules.Module, SYSTEM.ADR(Mem));
-  target := RvaModules + mod.vars + BootstrapVarBytes;
-
-  (* **NOTE** these imports must be in exactly the same order as the *)
-  (* corresponding procedure variable declarations in WinHost.mode   *)
-
-  Idt.Kernel32LookupTable := FieldRVA(Idt.Kernel32Lookups);
-  Idt.Kernel32Dllnameadr  := FieldRVA(Idt.Kernel32Dllname);
-  Idt.Kernel32Dllname     := "KERNEL32.DLL";
-  Idt.Kernel32Target      := target;
-  n := 0;  i := 0;  dll := 0;
-  AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "AddVectoredExceptionHandler");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "CloseHandle");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "CreateFileW");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "CreateProcessW");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "DeleteFileW");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "ExitProcess");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "FileTimeToLocalFileTime");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "FileTimeToSystemTime");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "FindClose");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "FindFirstFileExW");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "FindNextFileW");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "FlushFileBuffers");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "FormatMessageW");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "GetCommandLineW");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "GetCurrentDirectoryW");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "GetCurrentProcessId");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "GetEnvironmentVariableW");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "GetFileAttributesExW");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "GetFileAttributesW");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "GetFileInformationByHandleEx");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "GetFileSizeEx");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "GetLastError");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "GetModuleFileNameW");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "GetProcAddress");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "GetStdHandle");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "GetSystemTimePreciseAsFileTime");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "GetTempFileNameA");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "GetTempPathA");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "LoadLibraryA");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "MoveFileExW");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "ReadFile");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "SetConsoleOutputCP");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "SetEndOfFile");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "SetFileInformationByHandle");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "SetFilePointerEx");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "Sleep");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "UnmapViewOfFile");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "VirtualAlloc");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "VirtualQuery");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, importhints, "WriteFile");
-  ASSERT(n = Kernel32ImportCount);
-  INC(target, 8 * n);
-
-  Idt.Gdi32LookupTable := FieldRVA(Idt.Gdi32Lookups);
-  Idt.Gdi32Dllnameadr  := FieldRVA(Idt.Gdi32Dllname);
-  Idt.Gdi32Dllname     := "GDI32.DLL";
-  Idt.Gdi32Target      := target;
-  n := 0;  INC(dll);
-  AddImport(Idt.Gdi32Lookups, n, i, dll, importhints, "BitBlt");
-  AddImport(Idt.Gdi32Lookups, n, i, dll, importhints, "CreateBitmap");
-  AddImport(Idt.Gdi32Lookups, n, i, dll, importhints, "CreateCompatibleDC");
-  AddImport(Idt.Gdi32Lookups, n, i, dll, importhints, "CreateDCA");
-  AddImport(Idt.Gdi32Lookups, n, i, dll, importhints, "CreateDIBSection");
-  AddImport(Idt.Gdi32Lookups, n, i, dll, importhints, "CreateFontA");
-  AddImport(Idt.Gdi32Lookups, n, i, dll, importhints, "CreatePen");
-  AddImport(Idt.Gdi32Lookups, n, i, dll, importhints, "CreateRectRgn");
-  AddImport(Idt.Gdi32Lookups, n, i, dll, importhints, "DeleteObject");
-  AddImport(Idt.Gdi32Lookups, n, i, dll, importhints, "GetGlyphOutlineW");
-  AddImport(Idt.Gdi32Lookups, n, i, dll, importhints, "GetCharABCWidthsW");
-  AddImport(Idt.Gdi32Lookups, n, i, dll, importhints, "GetDeviceCaps");
-  AddImport(Idt.Gdi32Lookups, n, i, dll, importhints, "GetOutlineTextMetricsW");
-  AddImport(Idt.Gdi32Lookups, n, i, dll, importhints, "GetStockObject");
-  AddImport(Idt.Gdi32Lookups, n, i, dll, importhints, "Rectangle");
-  AddImport(Idt.Gdi32Lookups, n, i, dll, importhints, "SelectObject");
-  AddImport(Idt.Gdi32Lookups, n, i, dll, importhints, "SetDCPenColor");
-  AddImport(Idt.Gdi32Lookups, n, i, dll, importhints, "SetDCBrushColor");
-  ASSERT(n = Gdi32ImportCount);
-  INC(target, 8 * n);
-
-  Idt.User32LookupTable := FieldRVA(Idt.User32Lookups);
-  Idt.User32Dllnameadr  := FieldRVA(Idt.User32Dllname);
-  Idt.User32Dllname     := "USER32.DLL";
-  Idt.User32Target      := target;
-  n := 0;  INC(dll);
-  AddImport(Idt.User32Lookups, n, i, dll, importhints, "AdjustWindowRectEx");
-  AddImport(Idt.User32Lookups, n, i, dll, importhints, "BeginPaint");
-  AddImport(Idt.User32Lookups, n, i, dll, importhints, "CreateIconIndirect");
-  AddImport(Idt.User32Lookups, n, i, dll, importhints, "CreateWindowExW");
-  AddImport(Idt.User32Lookups, n, i, dll, importhints, "DefWindowProcW");
-  AddImport(Idt.User32Lookups, n, i, dll, importhints, "DispatchMessageW");
-  AddImport(Idt.User32Lookups, n, i, dll, importhints, "EndPaint");
-  AddImport(Idt.User32Lookups, n, i, dll, importhints, "GetClientRect");
-  AddImport(Idt.User32Lookups, n, i, dll, importhints, "GetClipboardFormatNameW");
-  AddImport(Idt.User32Lookups, n, i, dll, importhints, "GetCursorPos");
-  AddImport(Idt.User32Lookups, n, i, dll, importhints, "GetDCEx");
-  AddImport(Idt.User32Lookups, n, i, dll, importhints, "GetDpiForWindow");
-  AddImport(Idt.User32Lookups, n, i, dll, importhints, "GetMessageW");
-  AddImport(Idt.User32Lookups, n, i, dll, importhints, "GetQueueStatus");
-  AddImport(Idt.User32Lookups, n, i, dll, importhints, "GetWindowDC");
-  AddImport(Idt.User32Lookups, n, i, dll, importhints, "GetWindowRect");
-  AddImport(Idt.User32Lookups, n, i, dll, importhints, "LoadCursorW");
-  AddImport(Idt.User32Lookups, n, i, dll, importhints, "MessageBoxA");
-  AddImport(Idt.User32Lookups, n, i, dll, importhints, "MessageBoxW");
-  AddImport(Idt.User32Lookups, n, i, dll, importhints, "MoveWindow");
-  AddImport(Idt.User32Lookups, n, i, dll, importhints, "MsgWaitForMultipleObjects");
-  AddImport(Idt.User32Lookups, n, i, dll, importhints, "PeekMessageW");
-  AddImport(Idt.User32Lookups, n, i, dll, importhints, "PostMessageW");
-  AddImport(Idt.User32Lookups, n, i, dll, importhints, "PostQuitMessage");
-  AddImport(Idt.User32Lookups, n, i, dll, importhints, "RegisterClassExW");
-  AddImport(Idt.User32Lookups, n, i, dll, importhints, "ReleaseCapture");
-  AddImport(Idt.User32Lookups, n, i, dll, importhints, "ReleaseDC");
-  AddImport(Idt.User32Lookups, n, i, dll, importhints, "SetCapture");
-  AddImport(Idt.User32Lookups, n, i, dll, importhints, "SetProcessDpiAwarenessContext");
-  AddImport(Idt.User32Lookups, n, i, dll, importhints, "SetWindowRgn");
-  AddImport(Idt.User32Lookups, n, i, dll, importhints, "ShowCursor");
-  AddImport(Idt.User32Lookups, n, i, dll, importhints, "ShowWindow");
-  AddImport(Idt.User32Lookups, n, i, dll, importhints, "TrackMouseEvent");
-  AddImport(Idt.User32Lookups, n, i, dll, importhints, "TranslateMessage");
-  AddImport(Idt.User32Lookups, n, i, dll, importhints, "InvalidateRect");
-  ASSERT(n = User32ImportCount);
-  INC(target, 8 * n);
-
-  hintsize := i;
-
-  spos(FadrImport);
-  Files.WriteBytes(Exe, Idt, 0, SYSTEM.SIZE(ImportDirectoryTable));
-  Files.WriteBytes(Exe, importhints, 0, hintsize);
-
-  ImportMSize := Align(Files.Pos(Exe), 16) - FadrImport;
-  ASSERT(ImportMSize <= ImportVSize);
-  ASSERT(FadrImport + ImportMSize < FadrModules); (* If fails increase FadrModules *)
-  ASSERT(RvaImport  + ImportMSize < RvaModules);  (* If fails increase RvaModules  *)
-END WriteImports;
 
 
 (* -------------------------------------------------------------------------- *)
@@ -406,6 +248,11 @@ BEGIN
   Files.WriteBytes(Exe, shdr, 0, SYSTEM.SIZE(SectionHeader));
 END WriteSectionHeader;
 
+(*
+  i := 0; WHILE i < LEN(name) DO Files.Write(Exe, name[i]) INC(i) END;
+  WHILE i < 8 DO Files.Write(Exe, 0); INC(i) END;
+  Files.WriteBytes(Exe,
+*)
 
 PROCEDURE WritePEHeader;
 CONST
@@ -421,15 +268,6 @@ VAR
   hdr: PEheader;
 
 BEGIN
-  (*
-  ws("Size of eMagic:     "); wh(SYSTEM.ADR(hdr.zeroes)     - SYSTEM.ADR(hdr.eMagic));     wsn("H.");
-  ws("Size of zeroes:     "); wh(SYSTEM.ADR(hdr.eLfanew)    - SYSTEM.ADR(hdr.zeroes));     wsn("H.");
-  ws("Size of eLfanew:    "); wh(SYSTEM.ADR(hdr.dosProgram) - SYSTEM.ADR(hdr.eLfanew));    wsn("H.");
-  ws("Size of dosProgram: "); wh(SYSTEM.ADR(hdr.signature)  - SYSTEM.ADR(hdr.dosProgram)); wsn("H.");
-  ws("Size of signature:  "); wh(SYSTEM.ADR(hdr.machine)    - SYSTEM.ADR(hdr.signature));  wsn("H.");
-  ws("Size of Zeroes58:   "); wh(SYSTEM.SIZE(Zeroes58));                                   wsn("H.");
-  ws("Size of PEheader:   "); wh(SYSTEM.SIZE(PEheader));                                   wsn("H.");
-  *)
   H.ZeroFill(hdr);
 
   (* MSDOS stub *)
@@ -445,21 +283,21 @@ BEGIN
   hdr.machine              := 8664H;  (* AMD64/Intel 64 *)
   hdr.numberOfSections     := 2;
   hdr.sizeOfOptionalHeader := 240;
-  hdr.characteristics      := 200H  (* Windows debug information stripped               *)
-                            + 20H   (* Large address aware                              *)
-                            + 8     (* Coff symbol tables removed (should really be 0?) *)
-                            + 4     (* Coff linenumbers removed   (should really be 0?) *)
-                            + 2     (* Executable image                                 *)
+  hdr.characteristics      := 200H  (* Windows debug information stripped *)
+                            + 20H   (* Large address aware                *)
+                            + 8     (* Coff symbol tables removed         *)
+                            + 4     (* Coff linenumbers removed           *)
+                            + 2     (* Executable image                   *)
                             + 1;    (* Relocs stripped *)
 
   (* PE32+ optional header *)
   hdr.pe32magic               := 20BH;  (* PE32+ *)
   hdr.majorLinkerVersion      := 1;
   hdr.minorLinkerVersion      := 49H;
-  hdr.sizeOfCode              := ModuleVSize; (*Align(ModuleSize, FileAlignment);*)
-  hdr.sizeOfInitializedData   := ImportVSize;  (* ModuleSize already accounted for by hdr.sizeOfCode *)
+  hdr.sizeOfCode              := PageAlign(CoreSize);
+  hdr.sizeOfInitializedData   := ImportVSize(* + 1000H*);
   hdr.sizeOfUninitializedData := 0;
-  hdr.addressOfEntryPoint     := EntryPoint;
+  hdr.addressOfEntryPoint     := RvaModules + CoreEntryPoint;
   hdr.baseOfCode              := RvaModules;
 
   (* Windows specific PE32+ fields *)
@@ -468,14 +306,10 @@ BEGIN
   hdr.fileAlignment           := FileAlignment;
   hdr.majorOSVersion          := 1;
   hdr.majorSubsystemVersion   := 5;
-  hdr.sizeOfImage             := RvaModules + ModuleVSize; (*Align(ModuleSize, MemoryAlignment);*)
-                               (*Align(HeaderSize, MemoryAlignment)
-                               + Align(ModuleSize, MemoryAlignment)
-                               + 4096;   (* import section *)
-                               *)
+  hdr.sizeOfImage             := RvaModules + PageAlign(CoreSize); (* + 1000H;*) (*Align(ModuleSize, MemoryAlignment);*)
   hdr.sizeOfHeaders           := HeaderSize;
-  hdr.subsystem               := 3;    (* Console *)
-(*hdr.subsystem               := 2;*)  (* Windows *)
+  hdr.subsystem               := 3;      (* Console *)
+(*hdr.subsystem               := 2;*)    (* Windows *)
   hdr.dllCharacteristics      := 400H;   (* No SEH *)
   hdr.sizeOfStackReserve      := 1000H;
   hdr.sizeOfStackCommit       := 1000H;
@@ -492,25 +326,34 @@ BEGIN
 
   (* Write section headers *)
   WriteSectionHeader(".idata",
-                     ImportVSize,                           (* Section size in memory *)
-                     Align(ImportMSize, FileAlignment),     (* Size on disk *)
-                     RvaImport, FadrImport,
+                     ImportVSize,               (* Section size in memory *)
+                     FileAlign(ImportSize),     (* Size on disk *)
+                     RvaImport,
+                     FadrImport,
                      SReadable + SWriteable + SInitialised);
 
   WriteSectionHeader("Oberon",
-                   (*Align(ModuleSize, MemoryAlignment),    (* Size in memory *)*)
-                     ModuleVSize,                           (* Reserved size in memory *)
-                     Align(ModuleSize, FileAlignment),      (* Size on disk *)
-                     RvaModules, FadrModules,
+                     PageAlign(CoreSize),      (* Reserved size in memory *)
+                     FileAlign(CoreSize),      (* Size on disk *)
+                     RvaModules,
+                     FadrModules,
                      SReadable + SWriteable + SExecutable + SCode);
 
+  (*
+  WriteSectionHeader(".rsrc",
+                     1000H,    (* Size in memory *)
+                     200H,     (* Size on disk   *)
+                     RvaModules  + PageAlign(CoreSize),
+                     FadrModules + FileAlign(CoreSize),
+                     SReadable + SInitialised);
+  *)
   (*
   ws("After PE header, Pos(Exe) ");                wh(Files.Pos(Exe));
   ws("H, Align(Files.Pos(Exe), FileAlignment) ");  wh(Align(Files.Pos(Exe), FileAlignment));
   ws("H, HeaderSize "); wh(HeaderSize); wsn("H.");
   *)
 
-  ASSERT(Align(Files.Pos(Exe), FileAlignment) = HeaderSize);
+  ASSERT(FileAlign(Files.Pos(Exe)) = HeaderSize);
 
 END WritePEHeader;
 
@@ -521,126 +364,60 @@ PROCEDURE ReadVar(VAR r: Files.Rider;  VAR var: ARRAY OF BYTE);
 BEGIN Files.ReadBytes(r, var, LEN(var))
 END ReadVar;
 
-(* ---------------------------- Embedded modules ---------------------------- *)
-
-PROCEDURE IsInnerCore(name: ARRAY OF CHAR): BOOLEAN;
-RETURN (name = "WinHost") OR (name = "Kernel")
-    OR (name = "Files")   OR (name = "Modules")
-END IsInnerCore;
-
-
-PROCEDURE IsEmbedded(name: ARRAY OF CHAR): BOOLEAN;
-VAR emb: EmbeddedModule;
-BEGIN emb := Embeddings;
-  WHILE (emb # NIL) & (emb.name # name) DO emb := emb.next END;
-RETURN emb # NIL END IsEmbedded;
-
-
-PROCEDURE EmbedModule(name: ARRAY OF CHAR; reqkey: INTEGER);
-VAR
-  fn:  Files.FileName;
-  f:   Files.File;
-  r:   Files.Rider;
-  hdr: Modules.ModDesc;
-  imp: Modules.ModuleName;
-  key: INTEGER;
-  emb: EmbeddedModule;
-
-BEGIN
-  IF ~IsEmbedded(name) THEN
-    fn := name;  H.Append(".x64", fn);  f := Files.Old(fn);
-    IF f = NIL THEN
-      ws("Link.Mod cannot find "); ws(fn);
-      wsn(".");  ASSERT(FALSE)
-    ELSE
-      Files.Set(r, f, 0);  ReadVar(r, hdr);
-      IF hdr.magic # "Oberon5" THEN
-        ws("Link.Mod: "); ws(fn);
-        wsn(" corrupt header.");
-        ASSERT(FALSE)
-      ELSIF hdr.name # name THEN
-        ws("Link.Mod: "); ws(fn);
-        wsn(" wrong module name.");
-        ASSERT(FALSE)
-      ELSIF (reqkey # 0) & (reqkey # hdr.key) THEN
-        ws("Link.Mod: "); ws(fn);
-        ws(" key ");  wh(hdr.key);
-        ws("H not requested key ");  wh(reqkey);
-        wsn("H.");
-        ASSERT(FALSE)
-      ELSE
-        Files.Set(r, f, (SYSTEM.SIZE(Modules.ModDesc) + 15) DIV 16 * 16);
-        Files.ReadString(r, imp);
-        WHILE imp[0] # 0X DO
-          Files.ReadInt(r, key);
-          EmbedModule(imp, key);
-          Files.ReadString(r, imp);
-        END;
-        NEW(emb);
-        emb.next := NIL;
-        emb.name := hdr.name;
-        emb.key  := hdr.key;
-        emb.file := f;
-        IF Embeddings = NIL THEN Embeddings := emb ELSE LastEmbedding.next := emb END;
-        LastEmbedding := emb
-      END
-    END
-  END
-END EmbedModule;
-
+(* --------------------------- Inner core linking --------------------------- *)
 
 PROCEDURE ExportedOffset(modhdr: INTEGER; index: INTEGER): INTEGER;
 VAR exportoffset: SYSTEM.CARD32;  mod: Modules.Module;
 BEGIN
-  mod := SYSTEM.VAL(Modules.Module, SYSTEM.ADR(Mem[modhdr]));
+  mod := SYSTEM.VAL(Modules.Module, SYSTEM.ADR(CoreMem[modhdr]));
   SYSTEM.GET(ORD(mod) + mod.exports + index * 4, exportoffset);
 RETURN exportoffset END ExportedOffset;
 
 
 PROCEDURE LinkImport*(
-  modofs:       INTEGER;  (* Module offset of importing module relative to Mem/ModuleBase *)
+  modofs:       INTEGER;  (* Module offset of importing module relative to CoreMem/OberonCoreBase *)
   offset:       INTEGER;  (* Offset within importing module of disp/abs value being updated *)
   impno, modno: INTEGER;
   modules:      ARRAY OF INTEGER
 );
 VAR
   disp:           SYSTEM.INT32;
-  modadr:         INTEGER;
+  Coremodadr:         INTEGER;
   expoffset:      INTEGER;
   absreloc:       INTEGER;
   handlersoffset: INTEGER;
   winhost:        Modules.Module;
 BEGIN
-  winhost := SYSTEM.VAL(Modules.Module, SYSTEM.ADR(Mem));
-  modadr  := SYSTEM.ADR(Mem[modofs]);
+  winhost := SYSTEM.VAL(Modules.Module, SYSTEM.ADR(CoreMem));
+  Coremodadr  := SYSTEM.ADR(CoreMem[modofs]);
   IF modno = 0 THEN  (* system function *)
-    SYSTEM.GET(modadr + offset, disp);
+    SYSTEM.GET(Coremodadr + offset, disp);
     ASSERT((impno >= 0) & (impno <= H.HandlerCount));
 
-    handlersoffset := winhost.vars - ModuleBase  (* relative to start of modules *)
+    handlersoffset := winhost.vars - OberonCoreBase  (* relative to start of modules *)
                     + BootstrapVarBytes
                     + 8 * (Kernel32ImportCount + Gdi32ImportCount + User32ImportCount);
 
     INC(disp, handlersoffset + 8 * impno - modofs);
-    SYSTEM.PUT(modadr + offset, disp)
+    SYSTEM.PUT(Coremodadr + offset, disp)
   ELSIF modno = 0FFFFH THEN (* 64 bit absolute address relocation *)
     (* qword at offset contains 32/0,32/module offset or 32/1,16/mod,16/imp *)
-    SYSTEM.GET(modadr + offset, absreloc);
+    SYSTEM.GET(Coremodadr + offset, absreloc);
     IF absreloc DIV 100000000H = 0 THEN  (* offset in this module *)
-      SYSTEM.PUT(modadr + offset, ModuleBase + modofs + absreloc)
+      SYSTEM.PUT(Coremodadr + offset, OberonCoreBase + modofs + absreloc)
     ELSE  (* import reference from another module *)
       modno := absreloc DIV 10000H MOD 10000H;  ASSERT(modno > 0);
       impno := absreloc MOD 10000H;
       ASSERT(impno > 0);
-      SYSTEM.PUT(modadr + offset, ModuleBase + modules[modno-1]
+      SYSTEM.PUT(Coremodadr + offset, OberonCoreBase + modules[modno-1]
                                   + ExportedOffset(modules[modno-1], impno-1))
     END
   ELSE
     ASSERT(modno > 0);
-    SYSTEM.GET(modadr + offset, disp);
+    SYSTEM.GET(Coremodadr + offset, disp);
     expoffset := ExportedOffset(modules[modno-1], impno-1);
     INC(disp, modules[modno-1] - modofs + expoffset);
-    SYSTEM.PUT(modadr + offset, disp)
+    SYSTEM.PUT(Coremodadr + offset, disp)
   END
 END LinkImport;
 
@@ -650,7 +427,7 @@ VAR
   mod:     Modules.Module;
   R:       Files.Rider;
   i, m:    INTEGER;
-  modules: ARRAY 32 OF INTEGER;  (* Offset into Mem of start of module *)
+  modules: ARRAY 32 OF INTEGER;  (* Offset into CoreMem of start of module *)
   impcnt:  SYSTEM.CARD32;
   impname: Modules.ModuleName;
   impkey:  INTEGER;
@@ -665,31 +442,31 @@ VAR
 BEGIN
   ASSERT(f # NIL);
   Files.Set(R, f, 0);
-  mod := SYSTEM.VAL(Modules.Module, SYSTEM.ADR(Mem[ModuleSize]));
+  mod := SYSTEM.VAL(Modules.Module, SYSTEM.ADR(CoreMem[CoreSize]));
   ReadVar(R, mod^);
-  ModAdr[ModCount].name := mod.name;
-  ModAdr[ModCount].key  := mod.key;
-  ModAdr[ModCount].adr  := ModuleSize;  (* Offset into Mem = relative to ModuleBase *)
-  m := ModuleSize + SYSTEM.SIZE(Modules.ModDesc);
+  CoreModAdr[CoreModCount].name := mod.name;
+  CoreModAdr[CoreModCount].key  := mod.key;
+  CoreModAdr[CoreModCount].adr  := CoreSize;  (* Offset into CoreMem = relative to OberonCoreBase *)
+  m := CoreSize + SYSTEM.SIZE(Modules.ModDesc);
   FOR i := SYSTEM.SIZE(Modules.ModDesc) + 1 TO mod.vars DO
-    Files.ReadByte(R, Mem[m]);  INC(m)
+    Files.ReadByte(R, CoreMem[m]);  INC(m)
   END;
-  FOR i := 1 TO mod.varsize DO Mem[m] := 0;  INC(m) END;
+  FOR i := 1 TO mod.varsize DO CoreMem[m] := 0;  INC(m) END;
 
   (* Extract list of imported modules from loaded code *)
-  m := ModuleSize + SYSTEM.SIZE(Modules.ModDesc);
+  m := CoreSize + SYSTEM.SIZE(Modules.ModDesc);
   impcnt := 0;
   REPEAT
     i := 0;
-    REPEAT impname[i] := CHR(Mem[m]); INC(i); INC(m) UNTIL impname[i-1] = 0X;
+    REPEAT impname[i] := CHR(CoreMem[m]); INC(i); INC(m) UNTIL impname[i-1] = 0X;
     IF impname[0] # 0X THEN
-      SYSTEM.GET(SYSTEM.ADR(Mem[m]), impkey); INC(m, 8);
+      SYSTEM.GET(SYSTEM.ADR(CoreMem[m]), impkey); INC(m, 8);
       (* Find loaded module number for this import *)
       modnum := 0;
-      WHILE (modnum < ModCount) & (ModAdr[modnum].name # impname) DO INC(modnum) END;
-      ASSERT(modnum < ModCount);
-      ASSERT(ModAdr[modnum].key = impkey);
-      modules[impcnt] := ModAdr[modnum].adr
+      WHILE (modnum < CoreModCount) & (CoreModAdr[modnum].name # impname) DO INC(modnum) END;
+      ASSERT(modnum < CoreModCount);
+      ASSERT(CoreModAdr[modnum].key = impkey);
+      modules[impcnt] := CoreModAdr[modnum].adr
     END;
     INC(impcnt)
   UNTIL impname[0] = 0X;
@@ -701,119 +478,301 @@ BEGIN
   Files.ReadBytes(R, impcnt, 4);
   FOR i := 1 TO impcnt DO
     ReadVar(R, offset);  ReadVar(R, impno);  ReadVar(R, modno);
-    LinkImport(ModuleSize, offset, impno, modno, modules)
+    LinkImport(CoreSize, offset, impno, modno, modules)
   END;
 
   (* Relocate pointer addresses *)
-  ptradr := ORD(mod) + mod.ptr;  (* Address witihin Mem *)
+  ptradr := ORD(mod) + mod.ptr;  (* Address witihin CoreMem *)
   SYSTEM.GET(ptradr, ptroff);
   WHILE ptroff >= 0 DO
-    SYSTEM.PUT(ptradr, ModuleBase + ModuleSize + mod.vars + ptroff);
+    SYSTEM.PUT(ptradr, OberonCoreBase + CoreSize + mod.vars + ptroff);
     INC(ptradr, 8);
     SYSTEM.GET(ptradr, ptroff)
   END;
 
-  INC(mod.cmd, ModuleBase + ModuleSize);
+  INC(mod.cmd, OberonCoreBase + CoreSize);
   mod.size := (mod.vars + mod.varsize + 16) DIV 16 * 16;
-  INC(mod.vars, ModuleBase + ModuleSize);
-  INC(ModuleSize, mod.size);
-  INC(ModCount)
+  INC(mod.vars, OberonCoreBase + CoreSize);
+  INC(CoreSize, mod.size);
+  INC(CoreModCount)
 RETURN mod END LoadModule;
 
 
-PROCEDURE PresetWinHost;
-VAR
-  mod:     Modules.Module;
-  varpos:  INTEGER;
-  i:       INTEGER;
-  preload: H.PreLoadVars;
-BEGIN
-  mod := SYSTEM.VAL(Modules.Module, SYSTEM.ADR(Mem));
-  varpos := mod.vars - ModuleBase;
-
-  H.ZeroFill(preload);
-  preload.Exeadr    := ImageBase;
-  preload.ImgHeader := SYSTEM.VAL(H.Module, ModuleBase);
-  IF Embeddings # NIL THEN
-    preload.FileOfs := FadrModules + Align(ModuleSize, FileAlignment)
-  END;
-  SYSTEM.COPY(SYSTEM.ADR(preload), SYSTEM.ADR(Mem[varpos]), SYSTEM.SIZE(H.PreLoadVars));
-  INC(varpos, SYSTEM.SIZE(H.PreLoadVars));
-  ASSERT(ModuleBase + varpos = mod.vars + BootstrapVarBytes);
-
-  SYSTEM.COPY(SYSTEM.ADR(Idt.Kernel32Lookups), SYSTEM.ADR(Mem[varpos]), Kernel32ImportCount * 8);
-  INC(varpos, Kernel32ImportCount * 8);
-
-  SYSTEM.COPY(SYSTEM.ADR(Idt.User32Lookups), SYSTEM.ADR(Mem[varpos]), User32ImportCount * 8);
-  INC(varpos, User32ImportCount * 8);
-
-  SYSTEM.COPY(SYSTEM.ADR(Idt.Gdi32Lookups), SYSTEM.ADR(Mem[varpos]), Gdi32ImportCount * 8);
-  INC(varpos, Gdi32ImportCount * 8);
-END PresetWinHost;
-
-
-PROCEDURE Generate*(PEname: ARRAY OF CHAR);
+PROCEDURE BuildInnerCore;
 VAR
   WinHostHdr: Modules.Module;
   KernelHdr:  Modules.Module;
   FilesHdr:   Modules.Module;
   ModulesHdr: Modules.Module;
-  mod:        Modules.ModDesc;
-  emb:        EmbeddedModule;
-  r:          Files.Rider;
-  buf:        ARRAY 1024 OF BYTE;
-  i, size:    INTEGER;
-  prev1:      Files.FileName;
-  prev2:      Files.FileName;
-  prev3:      Files.FileName;
-  res:        INTEGER;
 BEGIN
-  ModCount      := 0;
-  ModuleSize    := 0;
-  EntryPoint    := 0;
+  CoreModCount   := 0;
+  CoreSize       := 0;
+  CoreEntryPoint := 0;
 
   WinHostHdr := LoadModule(Files.Old("WinHost.x64"));
   KernelHdr  := LoadModule(Files.Old("Kernel.x64"));
   FilesHdr   := LoadModule(Files.Old("Files.x64"));
   ModulesHdr := LoadModule(Files.Old("Modules.x64"));
 
-  WinHostHdr.next := SYSTEM.VAL(Modules.Module, ModuleBase + ORD(KernelHdr)  - SYSTEM.ADR(Mem));
-  KernelHdr.next  := SYSTEM.VAL(Modules.Module, ModuleBase + ORD(FilesHdr)   - SYSTEM.ADR(Mem));
-  FilesHdr.next   := SYSTEM.VAL(Modules.Module, ModuleBase + ORD(ModulesHdr) - SYSTEM.ADR(Mem));
+  WinHostHdr.next := SYSTEM.VAL(Modules.Module, OberonCoreBase + ORD(KernelHdr)  - SYSTEM.ADR(CoreMem));
+  KernelHdr.next  := SYSTEM.VAL(Modules.Module, OberonCoreBase + ORD(FilesHdr)   - SYSTEM.ADR(CoreMem));
+  FilesHdr.next   := SYSTEM.VAL(Modules.Module, OberonCoreBase + ORD(ModulesHdr) - SYSTEM.ADR(CoreMem));
   ModulesHdr.next := NIL;
 
-  (* Initialisation is at Modules body - it takes care *)
-  (* of initialising Files, Kernel and WinHost.        *)
-  EntryPoint := RvaModules + ORD(ModulesHdr) - SYSTEM.ADR(Mem) + ModulesHdr.init;
+  CoreEntryPoint := ORD(ModulesHdr) - SYSTEM.ADR(CoreMem) + ModulesHdr.init;
+  CoreHostVars   := WinHostHdr.vars - OberonCoreBase;
 
-  ModuleVSize := Align(ModuleSize, 10000H);  (* Tell loader to allocate whole multiple of alloc size *)
+END BuildInnerCore;
+
+
+(* ---------------- Windows .idata import table construction ---------------- *)
+
+PROCEDURE BuildImportTables;
+VAR i, dll, n: INTEGER;
+
+  PROCEDURE FieldRVA(VAR field: ARRAY OF BYTE): U32;
+  BEGIN RETURN RvaImport + SYSTEM.ADR(field) - SYSTEM.ADR(Idt) END FieldRVA;
+
+  PROCEDURE AddProc(VAR hints: ARRAY OF BYTE; VAR i: INTEGER; name: ARRAY OF CHAR);
+  VAR n: INTEGER;
+  BEGIN
+    n := 0; REPEAT hints[i] := ORD(name[n]);  INC(i);  INC(n) UNTIL name[n-1] = 0X;
+  END AddProc;
+
+  PROCEDURE AddImport(VAR lookups: ARRAY OF I64; VAR n, i: INTEGER;
+                      dll: INTEGER; VAR hints: ARRAY OF BYTE; name: ARRAY OF CHAR);
+  BEGIN
+    lookups[n] := RvaImport + SYSTEM.SIZE(ImportDirectoryTable) + i;
+    INC(n);
+    ASSERT(dll < 256);
+    ASSERT(i + H.Length(name) + 3 < LEN(hints));
+    hints[i] := dll;  hints[i+1] := 0;  INC(i, 2);
+    AddProc(hints, i, name);
+  END AddImport;
+
+BEGIN
+  H.ZeroFill(Idt);
+
+  (* **NOTE** these imports must be in exactly the same order as the *)
+  (* corresponding procedure variable declarations in WinHost.mode   *)
+
+  Idt.Kernel32LookupTable := FieldRVA(Idt.Kernel32Lookups);
+  Idt.Kernel32Dllnameadr  := FieldRVA(Idt.Kernel32Dllname);
+  Idt.Kernel32Dllname     := "KERNEL32.DLL";
+  n := 0;  i := 0;  dll := 0;
+  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "AddVectoredExceptionHandler");
+  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "CloseHandle");
+  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "CreateFileW");
+  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "CreateProcessW");
+  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "DeleteFileW");
+  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "ExitProcess");
+  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "FileTimeToLocalFileTime");
+  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "FileTimeToSystemTime");
+  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "FindClose");
+  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "FindFirstFileExW");
+  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "FindNextFileW");
+  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "FlushFileBuffers");
+  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "FormatMessageW");
+  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "GetCommandLineW");
+  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "GetCurrentDirectoryW");
+  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "GetCurrentProcessId");
+  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "GetEnvironmentVariableW");
+  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "GetFileAttributesExW");
+  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "GetFileAttributesW");
+  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "GetFileInformationByHandleEx");
+  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "GetFileSizeEx");
+  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "GetLastError");
+  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "GetModuleFileNameW");
+  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "GetProcAddress");
+  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "GetStdHandle");
+  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "GetSystemTimePreciseAsFileTime");
+  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "GetTempFileNameA");
+  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "GetTempPathA");
+  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "LoadLibraryA");
+  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "MoveFileExW");
+  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "ReadFile");
+  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "SetConsoleOutputCP");
+  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "SetEndOfFile");
+  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "SetFileInformationByHandle");
+  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "SetFilePointerEx");
+  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "Sleep");
+  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "UnmapViewOfFile");
+  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "VirtualAlloc");
+  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "VirtualQuery");
+  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "WriteFile");
+  ASSERT(n = Kernel32ImportCount);
+
+  Idt.Gdi32LookupTable := FieldRVA(Idt.Gdi32Lookups);
+  Idt.Gdi32Dllnameadr  := FieldRVA(Idt.Gdi32Dllname);
+  Idt.Gdi32Dllname     := "GDI32.DLL";
+  n := 0;  INC(dll);
+  AddImport(Idt.Gdi32Lookups, n, i, dll, ImportHints, "BitBlt");
+  AddImport(Idt.Gdi32Lookups, n, i, dll, ImportHints, "CreateBitmap");
+  AddImport(Idt.Gdi32Lookups, n, i, dll, ImportHints, "CreateCompatibleDC");
+  AddImport(Idt.Gdi32Lookups, n, i, dll, ImportHints, "CreateDCA");
+  AddImport(Idt.Gdi32Lookups, n, i, dll, ImportHints, "CreateDIBSection");
+  AddImport(Idt.Gdi32Lookups, n, i, dll, ImportHints, "CreateFontA");
+  AddImport(Idt.Gdi32Lookups, n, i, dll, ImportHints, "CreatePen");
+  AddImport(Idt.Gdi32Lookups, n, i, dll, ImportHints, "CreateRectRgn");
+  AddImport(Idt.Gdi32Lookups, n, i, dll, ImportHints, "DeleteObject");
+  AddImport(Idt.Gdi32Lookups, n, i, dll, ImportHints, "GetGlyphOutlineW");
+  AddImport(Idt.Gdi32Lookups, n, i, dll, ImportHints, "GetCharABCWidthsW");
+  AddImport(Idt.Gdi32Lookups, n, i, dll, ImportHints, "GetDeviceCaps");
+  AddImport(Idt.Gdi32Lookups, n, i, dll, ImportHints, "GetOutlineTextMetricsW");
+  AddImport(Idt.Gdi32Lookups, n, i, dll, ImportHints, "GetStockObject");
+  AddImport(Idt.Gdi32Lookups, n, i, dll, ImportHints, "Rectangle");
+  AddImport(Idt.Gdi32Lookups, n, i, dll, ImportHints, "SelectObject");
+  AddImport(Idt.Gdi32Lookups, n, i, dll, ImportHints, "SetDCPenColor");
+  AddImport(Idt.Gdi32Lookups, n, i, dll, ImportHints, "SetDCBrushColor");
+  ASSERT(n = Gdi32ImportCount);
+
+  Idt.User32LookupTable := FieldRVA(Idt.User32Lookups);
+  Idt.User32Dllnameadr  := FieldRVA(Idt.User32Dllname);
+  Idt.User32Dllname     := "USER32.DLL";
+  n := 0;  INC(dll);
+  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "AdjustWindowRectEx");
+  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "BeginPaint");
+  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "CreateIconIndirect");
+  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "CreateWindowExW");
+  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "DefWindowProcW");
+  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "DispatchMessageW");
+  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "EndPaint");
+  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "GetClientRect");
+  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "GetClipboardFormatNameW");
+  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "GetCursorPos");
+  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "GetDCEx");
+  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "GetDpiForWindow");
+  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "GetMessageW");
+  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "GetQueueStatus");
+  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "GetWindowDC");
+  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "GetWindowRect");
+  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "LoadCursorW");
+  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "MessageBoxA");
+  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "MessageBoxW");
+  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "MoveWindow");
+  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "MsgWaitForMultipleObjects");
+  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "PeekMessageW");
+  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "PostMessageW");
+  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "PostQuitMessage");
+  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "RegisterClassExW");
+  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "ReleaseCapture");
+  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "ReleaseDC");
+  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "SetCapture");
+  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "SetProcessDpiAwarenessContext");
+  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "SetWindowRgn");
+  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "ShowCursor");
+  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "ShowWindow");
+  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "TrackMouseEvent");
+  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "TranslateMessage");
+  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "InvalidateRect");
+  ASSERT(n = User32ImportCount);
+  ImportHintSize := i;
+
+  ImportSize := Align(SYSTEM.SIZE(ImportDirectoryTable) + ImportHintSize, 16);
+END BuildImportTables;
+
+
+PROCEDURE PresetWinHost;
+VAR
+  mod:         Modules.Module;
+  varpos:      INTEGER;
+  i:           INTEGER;
+  preloadvars: H.PreLoadVars;
+BEGIN
+  varpos := CoreHostVars;
+
+  H.ZeroFill(preloadvars);
+  preloadvars.Exeadr    := ImageBase;
+  preloadvars.ImgHeader := SYSTEM.VAL(H.Module, OberonCoreBase);
+  IF FirstPreload # NIL THEN
+    preloadvars.FileOfs := FadrModules + FileAlign(CoreSize)
+  END;
+
+  SYSTEM.COPY(SYSTEM.ADR(preloadvars), SYSTEM.ADR(CoreMem[varpos]), SYSTEM.SIZE(H.PreLoadVars));
+  INC(varpos, SYSTEM.SIZE(H.PreLoadVars));
+  ASSERT(varpos = CoreHostVars + BootstrapVarBytes);
+
+  SYSTEM.COPY(SYSTEM.ADR(Idt.Kernel32Lookups), SYSTEM.ADR(CoreMem[varpos]), Kernel32ImportCount * 8);
+  INC(varpos, Kernel32ImportCount * 8);
+
+  SYSTEM.COPY(SYSTEM.ADR(Idt.User32Lookups), SYSTEM.ADR(CoreMem[varpos]), User32ImportCount * 8);
+  INC(varpos, User32ImportCount * 8);
+
+  SYSTEM.COPY(SYSTEM.ADR(Idt.Gdi32Lookups), SYSTEM.ADR(CoreMem[varpos]), Gdi32ImportCount * 8);
+END PresetWinHost;
+
+
+(* -------------------------- Generate one target --------------------------- *)
+
+PROCEDURE Generate*(PEname: ARRAY OF CHAR);
+VAR
+  emb:   EmbeddedModule;
+  mod:   Modules.ModDesc;
+  r:     Files.Rider;
+  buf:   ARRAY 1024 OF BYTE;
+  i:     INTEGER;
+  prev1: Files.FileName;
+  prev2: Files.FileName;
+  prev3: Files.FileName;
+  res:   INTEGER;
+BEGIN
+  BuildInnerCore;
+
+  BuildImportTables;
+
+  (* Fill in target addresses *)
+  Idt.Kernel32Target := RvaModules + CoreHostVars + BootstrapVarBytes;
+  Idt.Gdi32Target    := Idt.Kernel32Target + 8 * Kernel32ImportCount;
+  Idt.User32Target   := Idt.Gdi32Target    + 8 * Gdi32ImportCount;
 
   ExeFile := Files.New(PEname);
   Files.Set(Exe, ExeFile, 0);
-  WriteImports;
+  spos(FadrImport);
+  Files.WriteBytes(Exe, Idt, 0, SYSTEM.SIZE(ImportDirectoryTable));
+  Files.WriteBytes(Exe, ImportHints, 0, ImportHintSize);
+
+  ASSERT(ImportSize = Align(Files.Pos(Exe), 16) - FadrImport);
+  ASSERT(ImportSize <= ImportVSize);
+  ASSERT(FadrImport + ImportSize < FadrModules); (* If fails increase FadrModules *)
+  ASSERT(RvaImport  + ImportSize < RvaModules);  (* If fails increase RvaModules  *)
+
+  (* Determine file and virtual addresses *)
+
+
+
+  (* Initialisation is at Modules body - it takes care *)
+  (* of initialising Files, Kernel and WinHost.        *)
   PresetWinHost;
 
   WritePEHeader;
 
-  spos(FadrModules);
-  Files.WriteBytes(Exe, Mem, 0, ModuleSize);
-  FileAlign(Exe, FileAlignment);
 
-  (* Add embedded modules *)
-  emb := Embeddings;
+
+
+  (* Write .exe file *)
+
+  spos(FadrModules);
+  Files.WriteBytes(Exe, CoreMem, 0, CoreSize);
+
+  IF Files.Pos(Exe) MOD FileAlignment # 0 THEN
+    spos(FileAlign(Files.Pos(Exe))-1);
+    Files.WriteByte(Exe, 0);
+  END;
+
+  (* Copy embedded modules *)
+  emb := FirstPreload;
   WHILE emb # NIL DO
     IF ~IsInnerCore(emb.name) THEN
       Files.Set(r, emb.file, 0);
       ReadVar(r, mod);
-      size := Files.Length(emb.file);  ASSERT(size > 0);
       Files.Set(r, emb.file, 0);
-      i := size DIV LEN(buf);
+      i := emb.size DIV LEN(buf);
       WHILE i > 0 DO
         Files.ReadBytes(r, buf, LEN(buf));
         Files.WriteBytes(Exe, buf, 0, LEN(buf));
         DEC(i)
       END;
-      i := size MOD LEN(buf);
+      i := emb.size MOD LEN(buf);
       IF i > 0 THEN
         Files.ReadBytes(r, buf, i);
         Files.WriteBytes(Exe, buf, 0, i)
@@ -821,8 +780,8 @@ BEGIN
     END;
     emb := emb.next
   END;
-  Embeddings    := NIL;
-  LastEmbedding := NIL;
+  FirstPreload    := NIL;
+  LastPreload := NIL;
 
   (* Shuffle previous versions *)
   prev1 := ExeFile.name; H.Append(".-1", prev1);
@@ -835,6 +794,74 @@ BEGIN
 
   Files.Register(ExeFile)
 END Generate;
+
+
+(* ---------------------------- Embedded modules ---------------------------- *)
+
+PROCEDURE IsPreloaded(name: ARRAY OF CHAR): BOOLEAN;
+VAR emb: EmbeddedModule;
+BEGIN emb := FirstPreload;
+  WHILE (emb # NIL) & (emb.name # name) DO emb := emb.next END;
+RETURN emb # NIL END IsPreloaded;
+
+
+PROCEDURE AddPreloadModule(name: ARRAY OF CHAR; reqkey: INTEGER);
+VAR
+  fn:   Files.FileName;
+  f:    Files.File;
+  size: INTEGER;
+  r:    Files.Rider;
+  hdr:  Modules.ModDesc;
+  imp:  Modules.ModuleName;
+  key:  INTEGER;
+  emb:  EmbeddedModule;
+
+BEGIN
+  IF ~IsPreloaded(name) THEN
+    fn := name;  H.Append(".x64", fn);  f := Files.Old(fn);
+    IF f = NIL THEN
+      ws("Link.Mod cannot find "); ws(fn);
+      wsn(".");  ASSERT(FALSE)
+    ELSE
+      Files.Set(r, f, 0);  ReadVar(r, hdr);
+      IF hdr.magic # "Oberon5" THEN
+        ws("Link.Mod: "); ws(fn); wsn(" corrupt header.");
+        ASSERT(FALSE)
+      ELSIF hdr.name # name THEN
+        ws("Link.Mod: "); ws(fn); wsn(" wrong module name.");
+        ASSERT(FALSE)
+      ELSIF (reqkey # 0) & (reqkey # hdr.key) THEN
+        ws("Link.Mod: "); ws(fn); ws(" key ");  wh(hdr.key);
+        ws("H not requested key ");  wh(reqkey);  wsn("H.");
+        ASSERT(FALSE)
+      ELSE
+        size := Files.Length(f);
+        IF (size <= 0) OR (size MOD 16 # 0) THEN
+          ws("Link.Mod: "); ws(fn); ws(" length "); wi(size);
+          wsn(" is not a whole multiple of 16.");
+          ASSERT(FALSE)
+        ELSE
+          Files.Set(r, f, (SYSTEM.SIZE(Modules.ModDesc) + 15) DIV 16 * 16);
+          Files.ReadString(r, imp);
+          WHILE imp[0] # 0X DO
+            Files.ReadInt(r, key);
+            AddPreloadModule(imp, key);
+            Files.ReadString(r, imp);
+          END;
+          NEW(emb);
+          emb.size := size;
+          emb.next := NIL;
+          emb.name := hdr.name;
+          emb.key  := hdr.key;
+          emb.file := f;
+          IF FirstPreload = NIL THEN FirstPreload := emb ELSE LastPreload.next := emb END;
+          LastPreload := emb;
+          INC(PreloadSize, emb.size)
+        END
+      END
+    END
+  END
+END AddPreloadModule;
 
 
 PROCEDURE ParseTarget(
@@ -880,9 +907,9 @@ BEGIN
   WHILE (target[0] # 0X) & (target # "~") DO
     ws("  linking ");  wsn(target);
 
-    EmbedModule(modname, 0);
+    AddPreloadModule(modname, 0);
     (* Special knowledge: Oberon.Mod loads System.Mod *)
-    IF IsEmbedded("Oberon") THEN EmbedModule("System", 0) END;
+    IF IsPreloaded("Oberon") THEN AddPreloadModule("System", 0) END;
 
     H.Append(".exe", target);
     Generate(target);
@@ -894,6 +921,7 @@ END Link;
 
 BEGIN
   Texts.OpenWriter(W); wsn("Linker DCWB 2024-05-10");
-  Embeddings    := NIL;
-  LastEmbedding := NIL;
+  FirstPreload := NIL;
+  LastPreload  := NIL;
+  PreloadSize  := 0;
 END Link.

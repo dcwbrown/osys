@@ -94,14 +94,14 @@ BEGIN
 END Dirty;
 
 PROCEDURE InvalidateDirty;
-VAR rect: RECORD- left, top, right, bottom: SYSTEM.INT32 END;
+VAR rect: RECORD- left, top, right, bottom: SYSTEM.INT32 END;  res: INTEGER;
 BEGIN (* Note: Windows coords are top down, PO2013's are bottom up *)
   IF Dirtyleft < Width THEN
     rect.left   := Dirtyleft;
     rect.right  := Dirtyright ;
     rect.top    := Height - 1 - (Dirtytop - 1);
     rect.bottom := Height - Dirtybottom;
-    ASSERT(H.InvalidateRect(Window.hwnd, SYSTEM.ADR(rect), 0) # 0);
+    res := H.InvalidateRect(Window.hwnd, SYSTEM.ADR(rect), 0);
     Dirtyleft   := Width;   Dirtyright := 0;
     Dirtybottom := Height;  Dirtytop   := 0
   END

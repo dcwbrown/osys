@@ -402,7 +402,7 @@ VAR logV, toolV: Viewers.Viewer;
 BEGIN
   NEW(V);  Viewers.AllocateTitleViewer(V);
   V.handle := HandleTitle;
-  V.dsc    := TextFrames.NewMenu("Oberon V5  NW 14.4.2013  DB 30.3.2024", "System.Minimise  System.Quit");;
+  V.dsc    := TextFrames.NewMenu("Oberon V5  NW 14.4.2013  DCWB 2024-05-20", "System.Minimise  System.Quit");;
   V.menuH  := TextFrames.menuH;
   M.id     := Viewers.restore;  V.handle(V, M);
   Oberon.AllocateSystemViewer(0, X, Y);
