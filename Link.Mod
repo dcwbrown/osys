@@ -243,9 +243,9 @@ END WriteSectionHeader;
 *)
 
 PROCEDURE WritePEHeader(ImageBase,   HeaderSize,
-                        FadrImport,  FadrModules,
-                        RvaImport,   RvaModules,
-                        ImportVSize: INTEGER);
+                        FadrPreload, RvaPreload,
+                        FadrImport,  RvaImport,
+                        FadrModules, RvaModules: INTEGER);
 CONST
   (* Section flags *)
   SWriteable     = 80000000H;
@@ -272,7 +272,11 @@ BEGIN
 
   (* COFF file header*)
   hdr.machine              := 8664H;  (* AMD64/Intel 64 *)
-  hdr.numberOfSections     := 2;
+  IF FadrImport > FadrPreload THEN
+    hdr.numberOfSections   := 3
+  ELSE
+    hdr.numberOfSections   := 2
+  END;
   hdr.sizeOfOptionalHeader := 240;
   hdr.characteristics      := 200H  (* Windows debug information stripped *)
                             + 20H   (* Large address aware                *)
@@ -286,7 +290,7 @@ BEGIN
   hdr.majorLinkerVersion      := 1;
   hdr.minorLinkerVersion      := 49H;
   hdr.sizeOfCode              := PageAlign(CoreSize);
-  hdr.sizeOfInitializedData   := ImportVSize(* + 1000H*);
+  hdr.sizeOfInitializedData   := RvaModules - RvaPreload;
   hdr.sizeOfUninitializedData := 0;
   hdr.addressOfEntryPoint     := RvaModules + CoreEntryPoint;
   hdr.baseOfCode              := RvaModules;
@@ -309,23 +313,23 @@ BEGIN
 
   (* Optional header data directories *)
   hdr.importTableRVA          := RvaImport;
-  hdr.importTableSize         := ImportVSize;
+  hdr.importTableSize         := RvaModules - RvaImport;
 
   spos(0);
   Files.WriteBytes(Exe, hdr, 0, SYSTEM.SIZE(PEheader));
 
   (* Write section headers *)
-  (*
-  WriteSectionHeader(".rsrc",
-                     1000H,    (* Size in memory *)
-                     200H,     (* Size on disk   *)
-                     RvaModules  + PageAlign(CoreSize),
-                     FadrModules + FileAlign(CoreSize),
+  IF FadrImport > FadrPreload THEN
+    WriteSectionHeader("Preload",
+                     RvaImport  - RvaPreload,    (* Size in memory *)
+                     FadrImport - FadrPreload,   (* Size on disk   *)
+                     RvaPreload,
+                     FadrPreload,
                      SReadable + SInitialised);
-  *)
+  END;
 
   WriteSectionHeader("Imports",
-                     ImportVSize,               (* Section size in memory *)
+                     RvaModules - RvaImport,    (* Section size in memory *)
                      FileAlign(ImportSize),     (* Size on disk *)
                      RvaImport,
                      FadrImport,
@@ -690,37 +694,76 @@ END PresetWinHost;
 
 (* -------------------------- Generate one target --------------------------- *)
 
+PROCEDURE CopyFile(f: Files.File; VAR r2: Files.Rider; size: INTEGER);
+VAR
+  buf: ARRAY 1024 OF BYTE;
+  i:   INTEGER;
+  r1:  Files.Rider;
+BEGIN
+  Files.Set(r1, f, 0);
+  i := size DIV LEN(buf);
+  WHILE i > 0 DO
+    Files.ReadBytes(r1, buf, LEN(buf));
+    Files.WriteBytes(r2, buf, 0, LEN(buf));
+    DEC(i)
+  END;
+  i := size MOD LEN(buf);
+  IF i > 0 THEN
+    Files.ReadBytes(r1, buf, i);
+    Files.WriteBytes(r2, buf, 0, i)
+  END
+END CopyFile;
+
+
 PROCEDURE Generate*(PEname: ARRAY OF CHAR);
 CONST NumSections = 2;
 VAR
   emb:         EmbeddedModule;
-  mod:         Modules.ModDesc;
-  r:           Files.Rider;
-  buf:         ARRAY 1024 OF BYTE;
-  i:           INTEGER;
   prev1:       Files.FileName;
   prev2:       Files.FileName;
   prev3:       Files.FileName;
   res:         INTEGER;
-  HeaderSize:  INTEGER;
+  HeaderSize:  INTEGER;    PreloadSize: INTEGER;
   FadrImport:  INTEGER;    RvaImport:   INTEGER;
+  FadrPreload: INTEGER;    RvaPreload:  INTEGER;
   FadrModules: INTEGER;    RvaModules:  INTEGER;
-  ImageBase:   INTEGER;    ImportVSize: INTEGER;
+  ImageBase:   INTEGER;
 BEGIN
+  ExeFile := Files.New(PEname);
+  Files.Set(Exe, ExeFile, 0);
+
   BuildInnerCore;
 
   HeaderSize := FileAlign(SYSTEM.SIZE(PEheader)
               + NumSections * SYSTEM.SIZE(SectionHeader));
 
-  RvaImport := MemAlign(HeaderSize);
+  FadrPreload := FileAlign(HeaderSize);
+  RvaPreload  := MemAlign(HeaderSize);
+
+  (* Copy preload modules to Preload section *)
+  PreloadSize := 0;
+  emb := FirstPreload;
+  spos(FadrPreload);
+  WHILE emb # NIL DO
+    IF ~IsInnerCore(emb.name) THEN
+      CopyFile(emb.file, Exe, emb.size);
+      INC(PreloadSize, emb.size)
+    END;
+    emb := emb.next
+  END;
+  Files.WriteInt(Exe, 0);  (* Terminate preload modules with empty name *)
+  INC(PreloadSize, 16);
+
+
+
+  FadrImport := FileAlign(FadrPreload + PreloadSize);
+  RvaImport  := MemAlign(RvaPreload + PreloadSize);
   BuildImportTables(RvaImport);
 
   (* Determine file and virtual addresses *)
 
-  FadrImport  := FileAlign(HeaderSize);
   FadrModules := FileAlign(FadrImport + ImportSize);
   RvaModules  := Align(RvaImport + ImportSize, 10000H);
-  ImportVSize := RvaModules - RvaImport;
   ImageBase   := OberonCoreBase - RvaModules;
 
   ASSERT(RvaImport  + ImportSize <= RvaModules);  (* If fails increase RvaModules  *)
@@ -737,17 +780,15 @@ BEGIN
 
   (* Write .exe file *)
 
-  ExeFile := Files.New(PEname);
-  Files.Set(Exe, ExeFile, 0);
   spos(FadrImport);
   Files.WriteBytes(Exe, Idt, 0, SYSTEM.SIZE(ImportDirectoryTable));
   Files.WriteBytes(Exe, ImportHints, 0, ImportHintSize);
   ASSERT(ImportSize = Align(Files.Pos(Exe), 16) - FadrImport);
 
-  WritePEHeader(ImageBase,  HeaderSize,
-                FadrImport, FadrModules,
-                RvaImport,  RvaModules,
-                ImportVSize);
+  WritePEHeader(ImageBase,   HeaderSize,
+                FadrPreload, RvaPreload,
+                FadrImport,  RvaImport,
+                FadrModules, RvaModules);
 
   spos(FadrModules);
   Files.WriteBytes(Exe, CoreMem, 0, CoreSize);
@@ -760,26 +801,9 @@ BEGIN
   (* Copy embedded modules *)
   emb := FirstPreload;
   WHILE emb # NIL DO
-    IF ~IsInnerCore(emb.name) THEN
-      Files.Set(r, emb.file, 0);
-      ReadVar(r, mod);
-      Files.Set(r, emb.file, 0);
-      i := emb.size DIV LEN(buf);
-      WHILE i > 0 DO
-        Files.ReadBytes(r, buf, LEN(buf));
-        Files.WriteBytes(Exe, buf, 0, LEN(buf));
-        DEC(i)
-      END;
-      i := emb.size MOD LEN(buf);
-      IF i > 0 THEN
-        Files.ReadBytes(r, buf, i);
-        Files.WriteBytes(Exe, buf, 0, i)
-      END
-    END;
+    IF ~IsInnerCore(emb.name) THEN CopyFile(emb.file, Exe, emb.size) END;
     emb := emb.next
   END;
-  FirstPreload    := NIL;
-  LastPreload := NIL;
 
   (* Shuffle previous versions *)
   prev1 := ExeFile.name; H.Append(".-1", prev1);
@@ -790,7 +814,10 @@ BEGIN
   res   := H.MoveFile(prev1, prev2);
   res   := H.MoveFile(ExeFile.name, prev1);
 
-  Files.Register(ExeFile)
+  Files.Register(ExeFile);
+
+  FirstPreload := NIL;
+  LastPreload  := NIL
 END Generate;
 
 
