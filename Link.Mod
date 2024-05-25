@@ -4,21 +4,10 @@ MODULE Link;  (* Create exe for a given module + optional command *)
 IMPORT SYSTEM, H := WinHost, Kernel, Files, Texts, Modules;
 
 CONST
-  HeaderSize      =  200H;
   MemoryAlignment = 1000H;   (* Sections are a multiple of this size in memory *)
   FileAlignment   =  200H;   (* Sections are a multiple of this size on file *)
 
-  (* Import section *)
-  FadrImport  = HeaderSize;  (* Import directory table *)
-  RvaImport   = 1000H;
-  ImportVSize = 0F000H;      (* Size reserved for import table in memory *)
-
-  (* Modules section *)
-  FadrModules = 0E00H;
-  RvaModules  = RvaImport + ImportVSize; (* 2000H; *)
-
   OberonCoreBase = 100000000H;  (* All linking is arranged to place the Oberon core at 1,0000,0000H *)
-  ImageBase      = OberonCoreBase - RvaModules;
 
   BootstrapVarBytes   = 64;  (* size of WinHost PreLoadVars *)
   Kernel32ImportCount = 40;
@@ -100,6 +89,18 @@ TYPE
     delayImportDescriptorRVA: U32;  delayImportDescriptorSize: U32;
     CLRRuntimeHeaderRVA:      U32;  CLRRuntimeHeaderSize:      U32;
     reservedZeroRVA:          U32;  reservedZeroSize:          U32
+  END;
+
+  SectionHeader = RECORD
+    Name:                 ARRAY 8 OF CHAR;
+    VirtualSize:          U32;
+    VirtualAddress:       U32;
+    SizeOfRawData:        U32;
+    PointerToRawData:     U32;
+    PointerToRelocations: U32;
+    PointerToLinenumbers: U32;
+    NumberOfRelocations:  U32;
+    Characteristics:      U32;
   END;
 
   ImportDirectoryTable = RECORD
@@ -221,19 +222,6 @@ PROCEDURE WriteSectionHeader(name:         ARRAY OF CHAR;
                              vsize, fsize: INTEGER;
                              rva,   fadr:  INTEGER;
                              flags:        INTEGER);
-TYPE
-  SectionHeader = RECORD
-    Name:                 ARRAY 8 OF CHAR;
-    VirtualSize:          U32;
-    VirtualAddress:       U32;
-    SizeOfRawData:        U32;
-    PointerToRawData:     U32;
-    PointerToRelocations: U32;
-    PointerToLinenumbers: U32;
-    NumberOfRelocations:  U32;
-    Characteristics:      U32;
-  END;
-
 VAR
   shdr: SectionHeader;
 
@@ -254,7 +242,10 @@ END WriteSectionHeader;
   Files.WriteBytes(Exe,
 *)
 
-PROCEDURE WritePEHeader;
+PROCEDURE WritePEHeader(ImageBase,   HeaderSize,
+                        FadrImport,  FadrModules,
+                        RvaImport,   RvaModules,
+                        ImportVSize: INTEGER);
 CONST
   (* Section flags *)
   SWriteable     = 80000000H;
@@ -322,23 +313,8 @@ BEGIN
 
   spos(0);
   Files.WriteBytes(Exe, hdr, 0, SYSTEM.SIZE(PEheader));
-  (*w.DumpMem(2, SYSTEM.ADR(hdr), 0, SYSTEM.SIZE(PEheader));*)
 
   (* Write section headers *)
-  WriteSectionHeader(".idata",
-                     ImportVSize,               (* Section size in memory *)
-                     FileAlign(ImportSize),     (* Size on disk *)
-                     RvaImport,
-                     FadrImport,
-                     SReadable + SWriteable + SInitialised);
-
-  WriteSectionHeader("Oberon",
-                     PageAlign(CoreSize),      (* Reserved size in memory *)
-                     FileAlign(CoreSize),      (* Size on disk *)
-                     RvaModules,
-                     FadrModules,
-                     SReadable + SWriteable + SExecutable + SCode);
-
   (*
   WriteSectionHeader(".rsrc",
                      1000H,    (* Size in memory *)
@@ -347,13 +323,22 @@ BEGIN
                      FadrModules + FileAlign(CoreSize),
                      SReadable + SInitialised);
   *)
-  (*
-  ws("After PE header, Pos(Exe) ");                wh(Files.Pos(Exe));
-  ws("H, Align(Files.Pos(Exe), FileAlignment) ");  wh(Align(Files.Pos(Exe), FileAlignment));
-  ws("H, HeaderSize "); wh(HeaderSize); wsn("H.");
-  *)
 
-  ASSERT(FileAlign(Files.Pos(Exe)) = HeaderSize);
+  WriteSectionHeader("Imports",
+                     ImportVSize,               (* Section size in memory *)
+                     FileAlign(ImportSize),     (* Size on disk *)
+                     RvaImport,
+                     FadrImport,
+                     SReadable + SWriteable + SInitialised);
+
+  WriteSectionHeader("Core",
+                     PageAlign(CoreSize),      (* Reserved size in memory *)
+                     FileAlign(CoreSize),      (* Size on disk *)
+                     RvaModules,
+                     FadrModules,
+                     SReadable + SWriteable + SExecutable + SCode);
+
+  ASSERT(Files.Pos(Exe) <= HeaderSize);
 
 END WritePEHeader;
 
@@ -527,11 +512,12 @@ END BuildInnerCore;
 
 (* ---------------- Windows .idata import table construction ---------------- *)
 
-PROCEDURE BuildImportTables;
-VAR i, dll, n: INTEGER;
+PROCEDURE BuildImportTables(RvaImport: INTEGER);
+TYPE State = RECORD n, i, RvaImport, dll: INTEGER END;
+VAR s: State;
 
   PROCEDURE FieldRVA(VAR field: ARRAY OF BYTE): U32;
-  BEGIN RETURN RvaImport + SYSTEM.ADR(field) - SYSTEM.ADR(Idt) END FieldRVA;
+  BEGIN RETURN SYSTEM.ADR(field) - SYSTEM.ADR(Idt) END FieldRVA;
 
   PROCEDURE AddProc(VAR hints: ARRAY OF BYTE; VAR i: INTEGER; name: ARRAY OF CHAR);
   VAR n: INTEGER;
@@ -539,15 +525,15 @@ VAR i, dll, n: INTEGER;
     n := 0; REPEAT hints[i] := ORD(name[n]);  INC(i);  INC(n) UNTIL name[n-1] = 0X;
   END AddProc;
 
-  PROCEDURE AddImport(VAR lookups: ARRAY OF I64; VAR n, i: INTEGER;
-                      dll: INTEGER; VAR hints: ARRAY OF BYTE; name: ARRAY OF CHAR);
+  PROCEDURE AddImport(VAR lookups: ARRAY OF I64; VAR s: State;
+                      name: ARRAY OF CHAR);
   BEGIN
-    lookups[n] := RvaImport + SYSTEM.SIZE(ImportDirectoryTable) + i;
-    INC(n);
-    ASSERT(dll < 256);
-    ASSERT(i + H.Length(name) + 3 < LEN(hints));
-    hints[i] := dll;  hints[i+1] := 0;  INC(i, 2);
-    AddProc(hints, i, name);
+    lookups[s.n] := s.RvaImport + SYSTEM.SIZE(ImportDirectoryTable) + s.i;
+    INC(s.n);
+    ASSERT(s.dll < 256);
+    ASSERT(s.i + H.Length(name) + 3 < LEN(ImportHints));
+    ImportHints[s.i] := s.dll;  ImportHints[s.i+1] := 0;  INC(s.i, 2);
+    AddProc(ImportHints, s.i, name);
   END AddImport;
 
 BEGIN
@@ -556,123 +542,123 @@ BEGIN
   (* **NOTE** these imports must be in exactly the same order as the *)
   (* corresponding procedure variable declarations in WinHost.mode   *)
 
-  Idt.Kernel32LookupTable := FieldRVA(Idt.Kernel32Lookups);
-  Idt.Kernel32Dllnameadr  := FieldRVA(Idt.Kernel32Dllname);
+  Idt.Kernel32LookupTable := RvaImport + FieldRVA(Idt.Kernel32Lookups);
+  Idt.Kernel32Dllnameadr  := RvaImport + FieldRVA(Idt.Kernel32Dllname);
   Idt.Kernel32Dllname     := "KERNEL32.DLL";
-  n := 0;  i := 0;  dll := 0;
-  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "AddVectoredExceptionHandler");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "CloseHandle");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "CreateFileW");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "CreateProcessW");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "DeleteFileW");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "ExitProcess");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "FileTimeToLocalFileTime");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "FileTimeToSystemTime");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "FindClose");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "FindFirstFileExW");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "FindNextFileW");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "FlushFileBuffers");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "FormatMessageW");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "GetCommandLineW");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "GetCurrentDirectoryW");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "GetCurrentProcessId");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "GetEnvironmentVariableW");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "GetFileAttributesExW");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "GetFileAttributesW");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "GetFileInformationByHandleEx");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "GetFileSizeEx");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "GetLastError");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "GetModuleFileNameW");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "GetProcAddress");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "GetStdHandle");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "GetSystemTimePreciseAsFileTime");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "GetTempFileNameA");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "GetTempPathA");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "LoadLibraryA");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "MoveFileExW");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "ReadFile");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "SetConsoleOutputCP");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "SetEndOfFile");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "SetFileInformationByHandle");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "SetFilePointerEx");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "Sleep");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "UnmapViewOfFile");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "VirtualAlloc");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "VirtualQuery");
-  AddImport(Idt.Kernel32Lookups, n, i, dll, ImportHints, "WriteFile");
-  ASSERT(n = Kernel32ImportCount);
+  s.n := 0;  s.i := 0;  s.dll := 0;  s.RvaImport := RvaImport;
+  AddImport(Idt.Kernel32Lookups, s, "AddVectoredExceptionHandler");
+  AddImport(Idt.Kernel32Lookups, s, "CloseHandle");
+  AddImport(Idt.Kernel32Lookups, s, "CreateFileW");
+  AddImport(Idt.Kernel32Lookups, s, "CreateProcessW");
+  AddImport(Idt.Kernel32Lookups, s, "DeleteFileW");
+  AddImport(Idt.Kernel32Lookups, s, "ExitProcess");
+  AddImport(Idt.Kernel32Lookups, s, "FileTimeToLocalFileTime");
+  AddImport(Idt.Kernel32Lookups, s, "FileTimeToSystemTime");
+  AddImport(Idt.Kernel32Lookups, s, "FindClose");
+  AddImport(Idt.Kernel32Lookups, s, "FindFirstFileExW");
+  AddImport(Idt.Kernel32Lookups, s, "FindNextFileW");
+  AddImport(Idt.Kernel32Lookups, s, "FlushFileBuffers");
+  AddImport(Idt.Kernel32Lookups, s, "FormatMessageW");
+  AddImport(Idt.Kernel32Lookups, s, "GetCommandLineW");
+  AddImport(Idt.Kernel32Lookups, s, "GetCurrentDirectoryW");
+  AddImport(Idt.Kernel32Lookups, s, "GetCurrentProcessId");
+  AddImport(Idt.Kernel32Lookups, s, "GetEnvironmentVariableW");
+  AddImport(Idt.Kernel32Lookups, s, "GetFileAttributesExW");
+  AddImport(Idt.Kernel32Lookups, s, "GetFileAttributesW");
+  AddImport(Idt.Kernel32Lookups, s, "GetFileInformationByHandleEx");
+  AddImport(Idt.Kernel32Lookups, s, "GetFileSizeEx");
+  AddImport(Idt.Kernel32Lookups, s, "GetLastError");
+  AddImport(Idt.Kernel32Lookups, s, "GetModuleFileNameW");
+  AddImport(Idt.Kernel32Lookups, s, "GetProcAddress");
+  AddImport(Idt.Kernel32Lookups, s, "GetStdHandle");
+  AddImport(Idt.Kernel32Lookups, s, "GetSystemTimePreciseAsFileTime");
+  AddImport(Idt.Kernel32Lookups, s, "GetTempFileNameA");
+  AddImport(Idt.Kernel32Lookups, s, "GetTempPathA");
+  AddImport(Idt.Kernel32Lookups, s, "LoadLibraryA");
+  AddImport(Idt.Kernel32Lookups, s, "MoveFileExW");
+  AddImport(Idt.Kernel32Lookups, s, "ReadFile");
+  AddImport(Idt.Kernel32Lookups, s, "SetConsoleOutputCP");
+  AddImport(Idt.Kernel32Lookups, s, "SetEndOfFile");
+  AddImport(Idt.Kernel32Lookups, s, "SetFileInformationByHandle");
+  AddImport(Idt.Kernel32Lookups, s, "SetFilePointerEx");
+  AddImport(Idt.Kernel32Lookups, s, "Sleep");
+  AddImport(Idt.Kernel32Lookups, s, "UnmapViewOfFile");
+  AddImport(Idt.Kernel32Lookups, s, "VirtualAlloc");
+  AddImport(Idt.Kernel32Lookups, s, "VirtualQuery");
+  AddImport(Idt.Kernel32Lookups, s, "WriteFile");
+  ASSERT(s.n = Kernel32ImportCount);
 
-  Idt.Gdi32LookupTable := FieldRVA(Idt.Gdi32Lookups);
-  Idt.Gdi32Dllnameadr  := FieldRVA(Idt.Gdi32Dllname);
+  Idt.Gdi32LookupTable := RvaImport + FieldRVA(Idt.Gdi32Lookups);
+  Idt.Gdi32Dllnameadr  := RvaImport + FieldRVA(Idt.Gdi32Dllname);
   Idt.Gdi32Dllname     := "GDI32.DLL";
-  n := 0;  INC(dll);
-  AddImport(Idt.Gdi32Lookups, n, i, dll, ImportHints, "BitBlt");
-  AddImport(Idt.Gdi32Lookups, n, i, dll, ImportHints, "CreateBitmap");
-  AddImport(Idt.Gdi32Lookups, n, i, dll, ImportHints, "CreateCompatibleDC");
-  AddImport(Idt.Gdi32Lookups, n, i, dll, ImportHints, "CreateDCA");
-  AddImport(Idt.Gdi32Lookups, n, i, dll, ImportHints, "CreateDIBSection");
-  AddImport(Idt.Gdi32Lookups, n, i, dll, ImportHints, "CreateFontA");
-  AddImport(Idt.Gdi32Lookups, n, i, dll, ImportHints, "CreatePen");
-  AddImport(Idt.Gdi32Lookups, n, i, dll, ImportHints, "CreateRectRgn");
-  AddImport(Idt.Gdi32Lookups, n, i, dll, ImportHints, "DeleteObject");
-  AddImport(Idt.Gdi32Lookups, n, i, dll, ImportHints, "GetGlyphOutlineW");
-  AddImport(Idt.Gdi32Lookups, n, i, dll, ImportHints, "GetCharABCWidthsW");
-  AddImport(Idt.Gdi32Lookups, n, i, dll, ImportHints, "GetDeviceCaps");
-  AddImport(Idt.Gdi32Lookups, n, i, dll, ImportHints, "GetOutlineTextMetricsW");
-  AddImport(Idt.Gdi32Lookups, n, i, dll, ImportHints, "GetStockObject");
-  AddImport(Idt.Gdi32Lookups, n, i, dll, ImportHints, "Rectangle");
-  AddImport(Idt.Gdi32Lookups, n, i, dll, ImportHints, "SelectObject");
-  AddImport(Idt.Gdi32Lookups, n, i, dll, ImportHints, "SetDCPenColor");
-  AddImport(Idt.Gdi32Lookups, n, i, dll, ImportHints, "SetDCBrushColor");
-  ASSERT(n = Gdi32ImportCount);
+  s.n := 0;  INC(s.dll);
+  AddImport(Idt.Gdi32Lookups, s, "BitBlt");
+  AddImport(Idt.Gdi32Lookups, s, "CreateBitmap");
+  AddImport(Idt.Gdi32Lookups, s, "CreateCompatibleDC");
+  AddImport(Idt.Gdi32Lookups, s, "CreateDCA");
+  AddImport(Idt.Gdi32Lookups, s, "CreateDIBSection");
+  AddImport(Idt.Gdi32Lookups, s, "CreateFontA");
+  AddImport(Idt.Gdi32Lookups, s, "CreatePen");
+  AddImport(Idt.Gdi32Lookups, s, "CreateRectRgn");
+  AddImport(Idt.Gdi32Lookups, s, "DeleteObject");
+  AddImport(Idt.Gdi32Lookups, s, "GetGlyphOutlineW");
+  AddImport(Idt.Gdi32Lookups, s, "GetCharABCWidthsW");
+  AddImport(Idt.Gdi32Lookups, s, "GetDeviceCaps");
+  AddImport(Idt.Gdi32Lookups, s, "GetOutlineTextMetricsW");
+  AddImport(Idt.Gdi32Lookups, s, "GetStockObject");
+  AddImport(Idt.Gdi32Lookups, s, "Rectangle");
+  AddImport(Idt.Gdi32Lookups, s, "SelectObject");
+  AddImport(Idt.Gdi32Lookups, s, "SetDCPenColor");
+  AddImport(Idt.Gdi32Lookups, s, "SetDCBrushColor");
+  ASSERT(s.n = Gdi32ImportCount);
 
-  Idt.User32LookupTable := FieldRVA(Idt.User32Lookups);
-  Idt.User32Dllnameadr  := FieldRVA(Idt.User32Dllname);
+  Idt.User32LookupTable := RvaImport + FieldRVA(Idt.User32Lookups);
+  Idt.User32Dllnameadr  := RvaImport + FieldRVA(Idt.User32Dllname);
   Idt.User32Dllname     := "USER32.DLL";
-  n := 0;  INC(dll);
-  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "AdjustWindowRectEx");
-  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "BeginPaint");
-  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "CreateIconIndirect");
-  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "CreateWindowExW");
-  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "DefWindowProcW");
-  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "DispatchMessageW");
-  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "EndPaint");
-  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "GetClientRect");
-  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "GetClipboardFormatNameW");
-  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "GetCursorPos");
-  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "GetDCEx");
-  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "GetDpiForWindow");
-  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "GetMessageW");
-  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "GetQueueStatus");
-  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "GetWindowDC");
-  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "GetWindowRect");
-  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "LoadCursorW");
-  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "MessageBoxA");
-  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "MessageBoxW");
-  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "MoveWindow");
-  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "MsgWaitForMultipleObjects");
-  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "PeekMessageW");
-  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "PostMessageW");
-  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "PostQuitMessage");
-  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "RegisterClassExW");
-  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "ReleaseCapture");
-  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "ReleaseDC");
-  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "SetCapture");
-  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "SetProcessDpiAwarenessContext");
-  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "SetWindowRgn");
-  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "ShowCursor");
-  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "ShowWindow");
-  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "TrackMouseEvent");
-  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "TranslateMessage");
-  AddImport(Idt.User32Lookups, n, i, dll, ImportHints, "InvalidateRect");
-  ASSERT(n = User32ImportCount);
-  ImportHintSize := i;
+  s.n := 0;  INC(s.dll);
+  AddImport(Idt.User32Lookups, s, "AdjustWindowRectEx");
+  AddImport(Idt.User32Lookups, s, "BeginPaint");
+  AddImport(Idt.User32Lookups, s, "CreateIconIndirect");
+  AddImport(Idt.User32Lookups, s, "CreateWindowExW");
+  AddImport(Idt.User32Lookups, s, "DefWindowProcW");
+  AddImport(Idt.User32Lookups, s, "DispatchMessageW");
+  AddImport(Idt.User32Lookups, s, "EndPaint");
+  AddImport(Idt.User32Lookups, s, "GetClientRect");
+  AddImport(Idt.User32Lookups, s, "GetClipboardFormatNameW");
+  AddImport(Idt.User32Lookups, s, "GetCursorPos");
+  AddImport(Idt.User32Lookups, s, "GetDCEx");
+  AddImport(Idt.User32Lookups, s, "GetDpiForWindow");
+  AddImport(Idt.User32Lookups, s, "GetMessageW");
+  AddImport(Idt.User32Lookups, s, "GetQueueStatus");
+  AddImport(Idt.User32Lookups, s, "GetWindowDC");
+  AddImport(Idt.User32Lookups, s, "GetWindowRect");
+  AddImport(Idt.User32Lookups, s, "LoadCursorW");
+  AddImport(Idt.User32Lookups, s, "MessageBoxA");
+  AddImport(Idt.User32Lookups, s, "MessageBoxW");
+  AddImport(Idt.User32Lookups, s, "MoveWindow");
+  AddImport(Idt.User32Lookups, s, "MsgWaitForMultipleObjects");
+  AddImport(Idt.User32Lookups, s, "PeekMessageW");
+  AddImport(Idt.User32Lookups, s, "PostMessageW");
+  AddImport(Idt.User32Lookups, s, "PostQuitMessage");
+  AddImport(Idt.User32Lookups, s, "RegisterClassExW");
+  AddImport(Idt.User32Lookups, s, "ReleaseCapture");
+  AddImport(Idt.User32Lookups, s, "ReleaseDC");
+  AddImport(Idt.User32Lookups, s, "SetCapture");
+  AddImport(Idt.User32Lookups, s, "SetProcessDpiAwarenessContext");
+  AddImport(Idt.User32Lookups, s, "SetWindowRgn");
+  AddImport(Idt.User32Lookups, s, "ShowCursor");
+  AddImport(Idt.User32Lookups, s, "ShowWindow");
+  AddImport(Idt.User32Lookups, s, "TrackMouseEvent");
+  AddImport(Idt.User32Lookups, s, "TranslateMessage");
+  AddImport(Idt.User32Lookups, s, "InvalidateRect");
+  ASSERT(s.n = User32ImportCount);
+  ImportHintSize := s.i;
 
   ImportSize := Align(SYSTEM.SIZE(ImportDirectoryTable) + ImportHintSize, 16);
 END BuildImportTables;
 
 
-PROCEDURE PresetWinHost;
+PROCEDURE PresetWinHost(FadrModules, ImageBase: INTEGER);
 VAR
   mod:         Modules.Module;
   varpos:      INTEGER;
@@ -705,51 +691,63 @@ END PresetWinHost;
 (* -------------------------- Generate one target --------------------------- *)
 
 PROCEDURE Generate*(PEname: ARRAY OF CHAR);
+CONST NumSections = 2;
 VAR
-  emb:   EmbeddedModule;
-  mod:   Modules.ModDesc;
-  r:     Files.Rider;
-  buf:   ARRAY 1024 OF BYTE;
-  i:     INTEGER;
-  prev1: Files.FileName;
-  prev2: Files.FileName;
-  prev3: Files.FileName;
-  res:   INTEGER;
+  emb:         EmbeddedModule;
+  mod:         Modules.ModDesc;
+  r:           Files.Rider;
+  buf:         ARRAY 1024 OF BYTE;
+  i:           INTEGER;
+  prev1:       Files.FileName;
+  prev2:       Files.FileName;
+  prev3:       Files.FileName;
+  res:         INTEGER;
+  HeaderSize:  INTEGER;
+  FadrImport:  INTEGER;    RvaImport:   INTEGER;
+  FadrModules: INTEGER;    RvaModules:  INTEGER;
+  ImageBase:   INTEGER;    ImportVSize: INTEGER;
 BEGIN
   BuildInnerCore;
 
-  BuildImportTables;
+  HeaderSize := FileAlign(SYSTEM.SIZE(PEheader)
+              + NumSections * SYSTEM.SIZE(SectionHeader));
+
+  RvaImport := MemAlign(HeaderSize);
+  BuildImportTables(RvaImport);
+
+  (* Determine file and virtual addresses *)
+
+  FadrImport  := FileAlign(HeaderSize);
+  FadrModules := FileAlign(FadrImport + ImportSize);
+  RvaModules  := Align(RvaImport + ImportSize, 10000H);
+  ImportVSize := RvaModules - RvaImport;
+  ImageBase   := OberonCoreBase - RvaModules;
+
+  ASSERT(RvaImport  + ImportSize <= RvaModules);  (* If fails increase RvaModules  *)
 
   (* Fill in target addresses *)
   Idt.Kernel32Target := RvaModules + CoreHostVars + BootstrapVarBytes;
   Idt.Gdi32Target    := Idt.Kernel32Target + 8 * Kernel32ImportCount;
   Idt.User32Target   := Idt.Gdi32Target    + 8 * Gdi32ImportCount;
 
+  (* Initialisation is at Modules body - it takes care *)
+  (* of initialising Files, Kernel and WinHost.        *)
+  PresetWinHost(FadrModules, ImageBase);
+
+
+  (* Write .exe file *)
+
   ExeFile := Files.New(PEname);
   Files.Set(Exe, ExeFile, 0);
   spos(FadrImport);
   Files.WriteBytes(Exe, Idt, 0, SYSTEM.SIZE(ImportDirectoryTable));
   Files.WriteBytes(Exe, ImportHints, 0, ImportHintSize);
-
   ASSERT(ImportSize = Align(Files.Pos(Exe), 16) - FadrImport);
-  ASSERT(ImportSize <= ImportVSize);
-  ASSERT(FadrImport + ImportSize < FadrModules); (* If fails increase FadrModules *)
-  ASSERT(RvaImport  + ImportSize < RvaModules);  (* If fails increase RvaModules  *)
 
-  (* Determine file and virtual addresses *)
-
-
-
-  (* Initialisation is at Modules body - it takes care *)
-  (* of initialising Files, Kernel and WinHost.        *)
-  PresetWinHost;
-
-  WritePEHeader;
-
-
-
-
-  (* Write .exe file *)
+  WritePEHeader(ImageBase,  HeaderSize,
+                FadrImport, FadrModules,
+                RvaImport,  RvaModules,
+                ImportVSize);
 
   spos(FadrModules);
   Files.WriteBytes(Exe, CoreMem, 0, CoreSize);
