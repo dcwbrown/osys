@@ -211,11 +211,6 @@ END IsInnerCore;
 
 (* -------------------------------------------------------------------------- *)
 (* -------------------------------------------------------------------------- *)
-
-
-
-(* -------------------------------------------------------------------------- *)
-(* -------------------------------------------------------------------------- *)
 (* PE Header *)
 
 PROCEDURE WriteSectionHeader(name:         ARRAY OF CHAR;
@@ -346,12 +341,6 @@ BEGIN
 
 END WritePEHeader;
 
-(* -------------------------------------------------------------------------- *)
-(* -------------------------------------------------------------------------- *)
-
-PROCEDURE ReadVar(VAR r: Files.Rider;  VAR var: ARRAY OF BYTE);
-BEGIN Files.ReadBytes(r, var, LEN(var))
-END ReadVar;
 
 (* --------------------------- Inner core linking --------------------------- *)
 
@@ -432,7 +421,7 @@ BEGIN
   ASSERT(f # NIL);
   Files.Set(R, f, 0);
   mod := SYSTEM.VAL(Modules.Module, SYSTEM.ADR(CoreMem[CoreSize]));
-  ReadVar(R, mod^);
+  Files.ReadVar(R, mod^);
   CoreModAdr[CoreModCount].name := mod.name;
   CoreModAdr[CoreModCount].key  := mod.key;
   CoreModAdr[CoreModCount].adr  := CoreSize;  (* Offset into CoreMem = relative to OberonCoreBase *)
@@ -466,7 +455,9 @@ BEGIN
   Files.Set(R, f, mod.imprefs);
   Files.ReadBytes(R, impcnt, 4);
   FOR i := 1 TO impcnt DO
-    ReadVar(R, offset);  ReadVar(R, impno);  ReadVar(R, modno);
+    Files.ReadVar(R, offset);
+    Files.ReadVar(R, impno);
+    Files.ReadVar(R, modno);
     LinkImport(CoreSize, offset, impno, modno, modules)
   END;
 
@@ -754,8 +745,6 @@ BEGIN
   Files.WriteInt(Exe, 0);  (* Terminate preload modules with empty name *)
   INC(PreloadSize, 16);
 
-
-
   FadrImport := FileAlign(FadrPreload + PreloadSize);
   RvaImport  := MemAlign(RvaPreload + PreloadSize);
   BuildImportTables(RvaImport);
@@ -848,7 +837,7 @@ BEGIN
       ws("Link.Mod cannot find "); ws(fn);
       wsn(".");  ASSERT(FALSE)
     ELSE
-      Files.Set(r, f, 0);  ReadVar(r, hdr);
+      Files.Set(r, f, 0);  Files.ReadVar(r, hdr);
       IF hdr.magic # "Oberon5" THEN
         ws("Link.Mod: "); ws(fn); wsn(" corrupt header.");
         ASSERT(FALSE)

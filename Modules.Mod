@@ -19,6 +19,7 @@ VAR
   Load*:         PROCEDURE(name: ARRAY OF CHAR;  VAR newmod: Module);
   ActCnt*:       INTEGER;  (* Action count for scheduling garbage collection *)
   StackOrg*:     INTEGER;
+  PreloadNext:   INTEGER;
 
 
 PROCEDURE ThisFile(name: ARRAY OF CHAR): Files.File;
@@ -43,6 +44,50 @@ BEGIN ch := s[0];  res := 1;  i := 1;
     IF (i < 32) & (ch = 0X) THEN res := 0 END
   END
 END Check;
+
+
+PROCEDURE FindModule(name: ARRAY OF CHAR): Module;
+VAR mod: Module;
+BEGIN mod := H.Root;
+  WHILE (mod # NIL) & (name # mod.name) DO mod := mod.next END;
+RETURN mod END FindModule;
+
+
+PROCEDURE AllocateModule(VAR header: ModDesc): Module;
+(* Allocate space for module & preset header *)
+VAR mod: Module;  p, size, allocsize: INTEGER;
+BEGIN
+  size := (header.vars + header.varsize + 15) DIV 16 * 16;
+  mod := H.Root;
+  WHILE (mod # NIL) & ~((mod.name[0] = 0X) & (mod.size >= size)) DO
+    mod := mod.next
+  END;
+  IF mod # NIL THEN (* Use existing hole *)
+    p := ORD(mod)
+  ELSE
+    H.Allocate(size, p, allocsize);  mod := SYSTEM.VAL(Module, p);
+    IF mod # NIL THEN
+      H.ZeroFill(mod^);
+      mod.size := allocsize;
+      mod.num  := H.Root.num + 1;
+      mod.next := H.Root;
+      H.SetRoot(mod);
+    END
+  END;
+  IF mod # NIL THEN
+    mod.refcnt  := 0;
+    mod.name    := header.name;
+    mod.key     := header.key;
+    mod.vars    := p + header.vars;
+    mod.init    := header.init;
+    mod.imprefs := 0;
+    mod.cmd     := p + header.cmd;
+    mod.exports := header.exports;
+    mod.ptr     := header.ptr;
+    mod.lines   := header.lines;
+    mod.varsize := header.varsize;
+  END;
+RETURN mod END AllocateModule;
 
 
 PROCEDURE ExportedAddress(modhdr: Module; index: INTEGER): INTEGER;
@@ -80,8 +125,75 @@ BEGIN
 END LinkImport;
 
 
-PROCEDURE ReadVar(VAR r: Files.Rider;  VAR var: ARRAY OF BYTE);
-BEGIN Files.ReadBytes(r, var, LEN(var)) END ReadVar;
+PROCEDURE GetString(VAR p: INTEGER; VAR s: ARRAY OF CHAR);
+VAR i: INTEGER; ch: CHAR;
+BEGIN i := 0;
+  REPEAT SYSTEM.GET(p, ch);  s[i] := ch;  INC(p);  INC(i) UNTIL ch = 0X
+END GetString;
+
+
+PROCEDURE Preload;  (* Load all modules from EXE preload section *)
+VAR
+  hdr, mod:  Module;
+  i, p:      INTEGER;
+  impname:   ModuleName;
+  impkey:    INTEGER;
+  impmod:    Module;
+  impcount:  SYSTEM.CARD32;
+  offset:    SYSTEM.CARD32;
+  impno:     SYSTEM.CARD16;
+  modno:     SYSTEM.CARD16;
+  import:    ARRAY 16 OF Module;
+  nofimps:   INTEGER;
+  ptroff:    INTEGER;
+  body:      Command;
+BEGIN
+  WHILE PreloadNext # 0  DO
+    hdr := SYSTEM.VAL(Module, PreloadNext);
+    IF hdr.name[0] = 0X THEN PreloadNext := 0  (* End of preload modules reached *)
+    ELSE
+      ASSERT(hdr.magic = "Oberon5");
+      mod := AllocateModule(hdr^);  ASSERT(mod # NIL);
+      p := PreloadNext + SYSTEM.SIZE(ModDesc);
+      SYSTEM.COPY(p, ORD(mod) + SYSTEM.SIZE(ModDesc), hdr.vars - SYSTEM.SIZE(ModDesc));
+
+      (* Load imported modules array - for preload Link guarantees all will be present *)
+      GetString(p, impname);
+      nofimps := 0;
+      WHILE impname[0] # 0X DO
+        SYSTEM.GET(p, impkey);  INC(p, 8);
+        impmod := FindModule(impname);  ASSERT(impmod # NIL);  ASSERT(impmod.key = impkey);
+        import[nofimps] := impmod;  INC(nofimps);
+        GetString(p, impname);
+      END;
+
+      (* Link imports *)
+      p := PreloadNext + hdr.vars;  (* Address import table *)
+      SYSTEM.GET(p, impcount);  INC(p, 4);
+      FOR i := 1 TO impcount DO
+        SYSTEM.GET(p, offset);  SYSTEM.GET(p+4, impno);  SYSTEM.GET(p+6, modno);
+        INC(p, 8);
+        LinkImport(ORD(mod), offset, impno, modno, import)
+      END
+    END;
+
+    (* Relocate pointer addresses *)
+    p := ORD(mod) + mod.ptr;  SYSTEM.GET(p, ptroff);
+    WHILE ptroff >= 0 DO
+      SYSTEM.PUT(p, mod.vars + ptroff);  INC(p, 8);  SYSTEM.GET(p, ptroff)
+    END;
+
+    (* Increment imported module refcounts *)
+    FOR i := 0 TO nofimps-1 DO INC(import[i].refcnt) END;
+
+    INC(PreloadNext, hdr.size);
+
+    (* Initialize module *)
+    IF mod.init # 0 THEN
+      body := SYSTEM.VAL(Command, ORD(mod) + mod.init);  body
+    END
+  END
+END Preload;
 
 
 PROCEDURE LoadModule*(VAR F: Files.File; VAR fileoffset: INTEGER; VAR newmod: Module);
@@ -101,7 +213,6 @@ VAR
   header:    ModDesc;
   name1:     ModuleName;
   key:       INTEGER;
-  size:      INTEGER;
   impname:   ModuleName;
   import:    ARRAY 16 OF Module;
   impmod:    Module;
@@ -121,15 +232,13 @@ BEGIN
   filepos    := fileoffset;
 
   Files.Set(R, F, filepos);
-  H.ZeroFill(header);
-  Files.ReadBytes(R, header, SYSTEM.SIZE(ModDesc));
+  Files.ReadVar(R, header);
   IF header.magic # "Oberon5" THEN
     res := 4
   ELSE
     name1     := header.name;
     importing := name1;
     key       := header.key;
-    size      := (header.vars + header.varsize + 15) DIV 16 * 16;
 
     (* Load list of imported modules (immediately follows module header) *)
     Files.ReadString(R, impname);
@@ -147,62 +256,31 @@ BEGIN
     END
   END;
 
-  IF res = 0 THEN (*search for a hole in the list allocate and link*)
-    mod := H.Root;
-    WHILE (mod # NIL) & ~((mod.name[0] = 0X) & (mod.size >= size)) DO mod := mod.next END;
-    IF mod = NIL THEN (*no large enough hole was found*)
-      H.Allocate(size, p, allocsize);
-      IF allocsize # 0 THEN
-        mod := SYSTEM.VAL(Module, p);
-        H.ZeroFill(mod^);
-        mod.size := allocsize;
-        mod.num  := H.Root.num + 1;
-        mod.next := H.Root;
-        mod.vars := 0;  (* Nothing loaded yet - not a candidate for LocateModule *)
-        H.SetRoot(mod);
-      ELSE error(7, name1)
-      END
-    ELSE (*fill hole*) p := ORD(mod)
-    END
+  IF res = 0 THEN
+    mod := AllocateModule(header);
+    IF mod = NIL THEN error(7, name1) END
   END;
 
   IF res = 0 THEN
     (* Read static memory, including code, type descriptors, strings and pointers *)
-    INC(p, SYSTEM.SIZE(ModDesc));  (* Skip header *)
     Files.Set(R, F, filepos + SYSTEM.SIZE(ModDesc));
-    loadlen := header.vars - SYSTEM.SIZE(ModDesc);
-    ASSERT(loadlen MOD 8 = 0);
-    WHILE loadlen > 0 DO
-      Files.ReadInt(R, i);  DEC(loadlen, 8);
-      SYSTEM.PUT(p, i);     INC(p, 8)
-    END;
-    mod.refcnt  := 0;
-    mod.name    := header.name;
-    mod.key     := header.key;
-    mod.init    := header.init;
-    mod.exports := header.exports;
-    mod.lines   := header.lines;
-    mod.varsize := header.varsize;
-    mod.ptr     := header.ptr;
-    mod.vars    := ORD(mod) + header.vars;
-    mod.cmd     := ORD(mod) + header.cmd;
+    Files.ReadMem(R, ORD(mod) + SYSTEM.SIZE(ModDesc), header.vars - SYSTEM.SIZE(ModDesc));
 
     (* Link imports *)
 
     Files.Set(R, F, filepos + header.imprefs);
-    Files.ReadBytes(R, impcount, 4);
+    Files.ReadVar(R, impcount);
     FOR i := 1 TO impcount DO
-      ReadVar(R, offset);  ReadVar(R, impno);  ReadVar(R, modno);
+      Files.ReadVar(R, offset);
+      Files.ReadVar(R, impno);
+      Files.ReadVar(R, modno);
       LinkImport(ORD(mod), offset, impno, modno, import)
     END;
 
     (* Relocate pointer addresses *)
-    p := ORD(mod) + mod.ptr;
-    SYSTEM.GET(p, ptroff);
+    p := ORD(mod) + mod.ptr;  SYSTEM.GET(p, ptroff);
     WHILE ptroff >= 0 DO
-      SYSTEM.PUT(p, mod.vars + ptroff);
-      INC(p, 8);
-      SYSTEM.GET(p, ptroff)
+      SYSTEM.PUT(p, mod.vars + ptroff);  INC(p, 8);  SYSTEM.GET(p, ptroff)
     END;
 
     (* Manage preloading *)
@@ -234,13 +312,20 @@ PROCEDURE LoadImpl(name: ARRAY OF CHAR;  VAR newmod: Module);
 VAR mod: Module;  F: Files.File;  offset: INTEGER;
 BEGIN
   res := 0;
-  mod := H.Root;  WHILE (mod # NIL) & (name # mod.name) DO mod := mod.next END;
+  mod := FindModule(name);
+
   IF (mod = NIL) & (PreloadOffset # 0) THEN
     WHILE (res = 0) & (PreloadExe # NIL) DO
       LoadModule(PreloadExe, PreloadOffset, mod);  ASSERT(res = 0)
     END;
-    mod := H.Root;  WHILE (mod # NIL) & (name # mod.name) DO mod := mod.next END;
+    mod := FindModule(name);
   END;
+
+  IF (mod = NIL) & (PreloadNext # 0) THEN
+    Preload;
+    mod := FindModule(name);
+  END;
+
   IF mod = NIL THEN
     Check(name);
     IF res = 0 THEN F := ThisFile(name) ELSE F := NIL END;
@@ -276,8 +361,8 @@ END ThisCommand;
 
 PROCEDURE Free*(name: ARRAY OF CHAR);
 VAR mod, imp: Module;  p, q: INTEGER;
-BEGIN mod := H.Root;  res := 0;
-  WHILE (mod # NIL) & (mod.name # name) DO mod := mod.next END;
+BEGIN res := 0;
+  mod := FindModule(name);
   IF mod # NIL THEN
     IF mod.refcnt = 0 THEN
       mod.name[0] := 0X;
@@ -316,7 +401,9 @@ BEGIN
   Load          := LoadImpl;
   PreloadExe    := NIL;
   PreloadOffset := 0;
+  PreloadNext   := 0;
   ActCnt        := 0;
+  (*
   IF H.Preload.FileOfs # 0 THEN
     ASSERT(H.GetModuleFileNameW(0, SYSTEM.ADR(fn16), H.MaxPath) # 0);
     ASSERT(H.Utf16ToUtf8(fn16, fn8) # 0);
@@ -324,6 +411,9 @@ BEGIN
     PreloadOffset := H.Preload.FileOfs;
     ASSERT(PreloadExe # NIL)
   END
+  *)
+  PreloadNext := H.Preload.Exeadr + 1000H;  (* Temp hardcoded preload modules address *)
+  H.DumpMem(0, PreloadNext, PreloadNext, 100H);
 END Init;
 
 BEGIN Init;

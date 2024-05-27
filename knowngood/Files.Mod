@@ -218,71 +218,57 @@ END SetFilePos;
 
 (* ---------------------------------- Read ---------------------------------- *)
 
-
-PROCEDURE ReadRange(VAR r: Rider; n: INTEGER; VAR x: ARRAY OF BYTE; VAR bytesread: INTEGER);
-VAR f: File; res, pos, len: INTEGER;
+PROCEDURE ZeroMem(adr, len: INTEGER);
+VAR zero: INTEGER;
 BEGIN
-  f  := r.file;
-  pos := r.pos;
-  len := n;
+  WHILE len >= 8 DO SYSTEM.PUT(adr, 0);  INC(adr, 8);  DEC(len, 8) END;
+  WHILE len > 0 DO SYSTEM.PUT(adr, 0X);  INC(adr);  DEC(len)  END;
+END ZeroMem;
+
+
+PROCEDURE ReadMem*(VAR r: Rider; adr, len: INTEGER);
+VAR f: File; res, bytesread: INTEGER;
+BEGIN
+  f := r.file;
+  SetFilePos(f, r.pos);
   IF len > 0 THEN
-    SetFilePos(f, pos);
-    res := H.ReadFile(f.handle, SYSTEM.ADR(x), len, SYSTEM.ADR(bytesread), 0);
-    INC(f.pos, bytesread)
+    res := H.ReadFile(f.handle, adr, len, SYSTEM.ADR(bytesread), 0);
+    INC(f.pos, bytesread);
+    INC(r.pos, bytesread)
   ELSE
     bytesread := 0;
   END;
-  INC(r.pos, bytesread)
-END ReadRange;
+  IF bytesread < len THEN
+    r.eof := TRUE;
+    r.res := len - bytesread;
+    ZeroMem(adr + bytesread, r.res)
+  ELSE
+    ASSERT(bytesread = len)
+  END;
+END ReadMem;
 
+PROCEDURE ReadVar*(VAR r: Rider;  VAR var: ARRAY OF BYTE);
+BEGIN ReadMem(r, SYSTEM.ADR(var), LEN(var)) END ReadVar;
 
 PROCEDURE ReadBytes*(VAR r: Rider; VAR x: ARRAY OF BYTE; n: INTEGER);
 VAR bytesread: INTEGER;
-BEGIN
-  ASSERT(n <= LEN(x));
-  ReadRange(r, n, x, bytesread);
-  IF bytesread < n THEN
-    r.eof := TRUE;  r.res := n - bytesread;
-    REPEAT DEC(n); x[n] := 0 UNTIL n <= bytesread;
-  ELSE
-    ASSERT(bytesread = n)
-  END;
-END ReadBytes;
+BEGIN ASSERT(n <= LEN(x)); ReadMem(r, SYSTEM.ADR(x), n) END ReadBytes;
 
 
 PROCEDURE ReadByte*(VAR r: Rider; VAR x: BYTE);
-VAR bytesread: INTEGER;
-BEGIN
-  ReadRange(r, 1, x, bytesread);
-  IF bytesread < 1 THEN
-    r.eof := TRUE;  r.res := 1;
-    x     := 0;
-  ELSE
-    ASSERT(bytesread = 1)
-  END
-END ReadByte;
-
+BEGIN ReadVar(r, x) END ReadByte;
 
 PROCEDURE Read*(VAR r: Rider; VAR ch: CHAR);
-VAR bytesread: INTEGER;
-BEGIN
-  ReadRange(r, 1, ch, bytesread);
-  IF bytesread < 1 THEN
-    r.eof := TRUE;  r.res := 1;
-    ch    := 0X;
-  ELSE
-    ASSERT(bytesread = 1)
-  END
-END Read;
+BEGIN ReadVar(r, ch) END Read;
 
 PROCEDURE ReadInt*(VAR r: Rider; VAR x: INTEGER);
-BEGIN ReadBytes(r, x, 8) END ReadInt;
+BEGIN ReadVar(r, x) END ReadInt;
 
 PROCEDURE ReadSet*(VAR r: Rider; VAR s: SET);
-BEGIN ReadBytes(r, SYSTEM.VAL(INTEGER, s), 8) END ReadSet;
+BEGIN ReadVar(r, s) END ReadSet;
 
 PROCEDURE ReadReal*(VAR r: Rider; VAR x: REAL);
-BEGIN ReadBytes(r, SYSTEM.VAL(INTEGER, x), 8) END ReadReal;
+BEGIN ReadVar(r, x) END ReadReal;
 
 PROCEDURE ReadString*(VAR r: Rider; VAR x: ARRAY OF CHAR);
 VAR i: INTEGER;  ch: CHAR;
@@ -310,6 +296,7 @@ BEGIN
   END;
   x := y;
 END ReadNum;
+
 
 (* ---------------------------------- Write --------------------------------- *)
 
