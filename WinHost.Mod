@@ -84,14 +84,14 @@ TYPE
   END;
 
   PreLoadVars* = RECORD-
-    Exeadr*:    INTEGER;    (* Image PE header loaded address *)
-    ImgHeader*: Module;     (* Image Oberon section loaded address *)
-    dummy1:     INTEGER;
-    FileOfs*:   INTEGER;    (* Offset into exe file of first embedded file *)
-    dummy2:     INTEGER;
-    dummy3:     INTEGER;
-    dummy4:     INTEGER;
-    dummy5:     INTEGER;
+    Exeadr*:      INTEGER;    (* Image PE header loaded address *)
+    ImgHeader*:   Module;     (* Image Oberon section loaded address *)
+    MadrPreload*: INTEGER;
+    dummy1:       INTEGER;    (* Offset into exe file of first embedded file *)
+    dummy2:       INTEGER;
+    dummy3:       INTEGER;
+    dummy4:       INTEGER;
+    dummy5:       INTEGER;
   END;
 
 

@@ -478,7 +478,7 @@ BEGIN
 RETURN mod END LoadModule;
 
 
-PROCEDURE BuildInnerCore;
+PROCEDURE LinkInnerCore;
 VAR
   WinHostHdr: Modules.Module;
   KernelHdr:  Modules.Module;
@@ -502,7 +502,7 @@ BEGIN
   CoreEntryPoint := ORD(ModulesHdr) - SYSTEM.ADR(CoreMem) + ModulesHdr.init;
   CoreHostVars   := WinHostHdr.vars - OberonCoreBase;
 
-END BuildInnerCore;
+END LinkInnerCore;
 
 
 (* ---------------- Windows .idata import table construction ---------------- *)
@@ -653,7 +653,7 @@ BEGIN
 END BuildImportTables;
 
 
-PROCEDURE PresetWinHost(FadrModules, ImageBase: INTEGER);
+PROCEDURE PresetWinHost(FadrModules, ImageBase, MadrPreload: INTEGER);
 VAR
   mod:         Modules.Module;
   varpos:      INTEGER;
@@ -663,11 +663,9 @@ BEGIN
   varpos := CoreHostVars;
 
   H.ZeroFill(preloadvars);
-  preloadvars.Exeadr    := ImageBase;
-  preloadvars.ImgHeader := SYSTEM.VAL(H.Module, OberonCoreBase);
-  IF FirstPreload # NIL THEN
-    preloadvars.FileOfs := FadrModules + FileAlign(CoreSize)
-  END;
+  preloadvars.Exeadr      := ImageBase;
+  preloadvars.ImgHeader   := SYSTEM.VAL(H.Module, OberonCoreBase);
+  preloadvars.MadrPreload := MadrPreload;
 
   SYSTEM.COPY(SYSTEM.ADR(preloadvars), SYSTEM.ADR(CoreMem[varpos]), SYSTEM.SIZE(H.PreLoadVars));
   INC(varpos, SYSTEM.SIZE(H.PreLoadVars));
@@ -718,12 +716,12 @@ VAR
   FadrImport:  INTEGER;    RvaImport:   INTEGER;
   FadrPreload: INTEGER;    RvaPreload:  INTEGER;
   FadrModules: INTEGER;    RvaModules:  INTEGER;
-  ImageBase:   INTEGER;
+  ImageBase:   INTEGER;    MadrPreload: INTEGER;
 BEGIN
   ExeFile := Files.New(PEname);
   Files.Set(Exe, ExeFile, 0);
 
-  BuildInnerCore;
+  LinkInnerCore;
 
   HeaderSize := FileAlign(SYSTEM.SIZE(PEheader)
               + NumSections * SYSTEM.SIZE(SectionHeader));
@@ -733,17 +731,19 @@ BEGIN
 
   (* Copy preload modules to Preload section *)
   PreloadSize := 0;
-  emb := FirstPreload;
-  spos(FadrPreload);
-  WHILE emb # NIL DO
-    IF ~IsInnerCore(emb.name) THEN
-      CopyFile(emb.file, Exe, emb.size);
-      INC(PreloadSize, emb.size)
+  IF FirstPreload # NIL THEN
+    emb := FirstPreload;
+    spos(FadrPreload);
+    WHILE emb # NIL DO
+      IF ~IsInnerCore(emb.name) THEN
+        CopyFile(emb.file, Exe, emb.size);
+        INC(PreloadSize, emb.size)
+      END;
+      emb := emb.next
     END;
-    emb := emb.next
+    Files.WriteInt(Exe, 0);  (* Terminate preload modules with empty name *)
+    INC(PreloadSize, 16);
   END;
-  Files.WriteInt(Exe, 0);  (* Terminate preload modules with empty name *)
-  INC(PreloadSize, 16);
 
   FadrImport := FileAlign(FadrPreload + PreloadSize);
   RvaImport  := MemAlign(RvaPreload + PreloadSize);
@@ -764,10 +764,9 @@ BEGIN
 
   (* Initialisation is at Modules body - it takes care *)
   (* of initialising Files, Kernel and WinHost.        *)
-  PresetWinHost(FadrModules, ImageBase);
-
-
-  (* Write .exe file *)
+  MadrPreload := 0;
+  IF PreloadSize > 0 THEN MadrPreload := ImageBase + RvaPreload END;
+  PresetWinHost(FadrModules, ImageBase, MadrPreload);
 
   spos(FadrImport);
   Files.WriteBytes(Exe, Idt, 0, SYSTEM.SIZE(ImportDirectoryTable));
@@ -785,13 +784,6 @@ BEGIN
   IF Files.Pos(Exe) MOD FileAlignment # 0 THEN
     spos(FileAlign(Files.Pos(Exe))-1);
     Files.WriteByte(Exe, 0);
-  END;
-
-  (* Copy embedded modules *)
-  emb := FirstPreload;
-  WHILE emb # NIL DO
-    IF ~IsInnerCore(emb.name) THEN CopyFile(emb.file, Exe, emb.size) END;
-    emb := emb.next
   END;
 
   (* Shuffle previous versions *)

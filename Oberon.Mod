@@ -466,10 +466,10 @@ BEGIN Texts.OpenWriter(W);
   NEW(Par);
   Modules.Load("System", Mod);
   IF Mod = NIL THEN
-    ws("**** Full Oberon init load error: "); ws(Modules.importing);
+    ws("**** Full Oberon init load error: "); ws(Modules.Importing);
     IF    Modules.res = 1 THEN wsn(" module not found")
     ELSIF Modules.res = 2 THEN wsn(" bad version")
-    ELSIF Modules.res = 3 THEN ws(" imports ");  ws(Modules.imported);
+    ELSIF Modules.res = 3 THEN ws(" imports ");  ws(Modules.Imported);
                                wsn(" with bad key");
     ELSIF Modules.res = 4 THEN wsn(" corrupted obj file")
     ELSIF Modules.res = 5 THEN wsn(" command not found")

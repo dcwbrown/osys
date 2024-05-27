@@ -10,29 +10,20 @@ TYPE
   ModDesc*    = H.ModuleDesc;
 
 VAR
-  M:             Module;     (* Loaded module 'Oberon' *)
-  P:             Command;
-  res*:          INTEGER;
-  importing*, imported*: ModuleName;
-  PreloadExe:    Files.File;
-  PreloadOffset: INTEGER;
-  Load*:         PROCEDURE(name: ARRAY OF CHAR;  VAR newmod: Module);
-  ActCnt*:       INTEGER;  (* Action count for scheduling garbage collection *)
-  StackOrg*:     INTEGER;
-  PreloadNext:   INTEGER;
+  M:           Module;     (* Loaded module 'Oberon' *)
+  P:           Command;
+  res*:        INTEGER;
+  Importing*:  ModuleName;
+  Imported*:   ModuleName;
+  ActCnt*:     INTEGER;  (* Action count for scheduling garbage collection *)
+  StackOrg*:   INTEGER;
+  PreloadNext: INTEGER;
 
-
-PROCEDURE ThisFile(name: ARRAY OF CHAR): Files.File;
-VAR i: INTEGER;  filename: ModuleName;
-BEGIN i := 0;
-  WHILE name[i] # 0X DO filename[i] := name[i];  INC(i) END;
-    filename[i] := "."; filename[i+1] := "x"; filename[i+2] := "6"; filename[i+3] := "4"; filename[i+4] := 0X;
-  RETURN Files.Old(filename)
-END ThisFile;
 
 PROCEDURE error(n: INTEGER;  name: ARRAY OF CHAR);
-BEGIN res := n;  importing := name
+BEGIN res := n;  Importing := name
 END error;
+
 
 PROCEDURE Check(s: ARRAY OF CHAR);
 VAR i: INTEGER;  ch: CHAR;
@@ -144,7 +135,7 @@ VAR
   impno:     SYSTEM.CARD16;
   modno:     SYSTEM.CARD16;
   import:    ARRAY 16 OF Module;
-  nofimps:   INTEGER;
+  nimpmods:  INTEGER;
   ptroff:    INTEGER;
   body:      Command;
 BEGIN
@@ -157,13 +148,13 @@ BEGIN
       p := PreloadNext + SYSTEM.SIZE(ModDesc);
       SYSTEM.COPY(p, ORD(mod) + SYSTEM.SIZE(ModDesc), hdr.vars - SYSTEM.SIZE(ModDesc));
 
-      (* Load imported modules array - for preload Link guarantees all will be present *)
+      (* Load Imported modules array - for preload Link guarantees all will be present *)
       GetString(p, impname);
-      nofimps := 0;
+      nimpmods := 0;
       WHILE impname[0] # 0X DO
         SYSTEM.GET(p, impkey);  INC(p, 8);
         impmod := FindModule(impname);  ASSERT(impmod # NIL);  ASSERT(impmod.key = impkey);
-        import[nofimps] := impmod;  INC(nofimps);
+        import[nimpmods] := impmod;  INC(nimpmods);
         GetString(p, impname);
       END;
 
@@ -174,29 +165,29 @@ BEGIN
         SYSTEM.GET(p, offset);  SYSTEM.GET(p+4, impno);  SYSTEM.GET(p+6, modno);
         INC(p, 8);
         LinkImport(ORD(mod), offset, impno, modno, import)
+      END;
+
+      (* Relocate pointer addresses *)
+      p := ORD(mod) + mod.ptr;  SYSTEM.GET(p, ptroff);
+      WHILE ptroff >= 0 DO
+        SYSTEM.PUT(p, mod.vars + ptroff);  INC(p, 8);  SYSTEM.GET(p, ptroff)
+      END;
+
+      (* Increment Imported module refcounts *)
+      FOR i := 0 TO nimpmods-1 DO INC(import[i].refcnt) END;
+
+      INC(PreloadNext, hdr.size);
+
+      (* Initialize module *)
+      IF mod.init # 0 THEN
+        body := SYSTEM.VAL(Command, ORD(mod) + mod.init);  body
       END
-    END;
-
-    (* Relocate pointer addresses *)
-    p := ORD(mod) + mod.ptr;  SYSTEM.GET(p, ptroff);
-    WHILE ptroff >= 0 DO
-      SYSTEM.PUT(p, mod.vars + ptroff);  INC(p, 8);  SYSTEM.GET(p, ptroff)
-    END;
-
-    (* Increment imported module refcounts *)
-    FOR i := 0 TO nofimps-1 DO INC(import[i].refcnt) END;
-
-    INC(PreloadNext, hdr.size);
-
-    (* Initialize module *)
-    IF mod.init # 0 THEN
-      body := SYSTEM.VAL(Command, ORD(mod) + mod.init);  body
     END
   END
 END Preload;
 
 
-PROCEDURE LoadModule*(VAR F: Files.File; VAR fileoffset: INTEGER; VAR newmod: Module);
+PROCEDURE Load*(name: ARRAY OF CHAR;  VAR newmod: Module);
   (*search module in list;  if not found, load module.
     res = 0: already present or loaded;
     res = 1: file not available;
@@ -206,139 +197,103 @@ PROCEDURE LoadModule*(VAR F: Files.File; VAR fileoffset: INTEGER; VAR newmod: Mo
     res = 5: corrupted file;
     res = 7: no space*)
 VAR
-  mod:       Module;
-  filepos:   INTEGER;
-  nofimps:   INTEGER;
+  filename:  ARRAY 64 OF CHAR;
+  F:         Files.File;
+  nimpmods:  INTEGER;
   R:         Files.Rider;
   header:    ModDesc;
   name1:     ModuleName;
   key:       INTEGER;
   impname:   ModuleName;
-  import:    ARRAY 16 OF Module;
-  impmod:    Module;
   impkey:    INTEGER;
-  p:         INTEGER;
-  allocsize: INTEGER;
-  loadlen:   INTEGER;
-  i:         INTEGER;
-  ptroff:    INTEGER;
+  impmod:    Module;
+  import:    ARRAY 16 OF Module;
+  mod:       Module;
   impcount:  SYSTEM.CARD32;
   offset:    SYSTEM.CARD32;
   impno:     SYSTEM.CARD16;
   modno:     SYSTEM.CARD16;
+  p:         INTEGER;
+  ptroff:    INTEGER;
+  i:         INTEGER;
   body:      Command;
 BEGIN
-  nofimps    := 0;
-  filepos    := fileoffset;
+  res       := 0;
+  Importing := name;
+  newmod    := FindModule(name);
 
-  Files.Set(R, F, filepos);
-  Files.ReadVar(R, header);
-  IF header.magic # "Oberon5" THEN
-    res := 4
-  ELSE
-    name1     := header.name;
-    importing := name1;
-    key       := header.key;
+  IF (newmod = NIL) & (PreloadNext # 0) THEN
+    Preload;  newmod := FindModule(name);
+  END;
 
-    (* Load list of imported modules (immediately follows module header) *)
-    Files.ReadString(R, impname);
-    WHILE (impname[0] # 0X) & (res = 0) DO
-      Files.ReadInt(R, impkey);
-      Load(impname, impmod);
-      import[nofimps] := impmod;
-      importing := name1;
-      IF res = 0 THEN
-        IF impmod.key = impkey THEN INC(impmod.refcnt);  INC(nofimps)
-        ELSE error(3, name1);  imported := impname
+  IF newmod = NIL THEN
+    Check(name);
+
+    IF res = 0 THEN
+      filename := name;  H.Append(".x64", filename);  F := Files.Old(filename);
+      IF F = NIL THEN res := 1 END
+    END;
+
+    (* IF res = 0 THEN LoadModule(F, newmod) END *)
+
+    IF res = 0 THEN
+      nimpmods := 0;
+      Files.Set(R, F, 0);  Files.ReadVar(R, header);
+      IF header.magic # "Oberon5" THEN res := 4 ELSE
+        name1     := header.name;
+        Importing := name1;
+        key       := header.key;
+        (* Load list of Imported modules (immediately follows module header) *)
+        Files.ReadString(R, impname);
+        WHILE (impname[0] # 0X) & (res = 0) DO
+          Files.ReadInt(R, impkey);
+          Load(impname, impmod);
+          import[nimpmods] := impmod;
+          Importing := name1;
+          IF res = 0 THEN
+            IF impmod.key = impkey THEN INC(impmod.refcnt);  INC(nimpmods)
+            ELSE error(3, name1);  Imported := impname
+            END
+          END;
+          Files.ReadString(R, impname)
         END
-      END;
-      Files.ReadString(R, impname)
-    END
-  END;
-
-  IF res = 0 THEN
-    mod := AllocateModule(header);
-    IF mod = NIL THEN error(7, name1) END
-  END;
-
-  IF res = 0 THEN
-    (* Read static memory, including code, type descriptors, strings and pointers *)
-    Files.Set(R, F, filepos + SYSTEM.SIZE(ModDesc));
-    Files.ReadMem(R, ORD(mod) + SYSTEM.SIZE(ModDesc), header.vars - SYSTEM.SIZE(ModDesc));
-
-    (* Link imports *)
-
-    Files.Set(R, F, filepos + header.imprefs);
-    Files.ReadVar(R, impcount);
-    FOR i := 1 TO impcount DO
-      Files.ReadVar(R, offset);
-      Files.ReadVar(R, impno);
-      Files.ReadVar(R, modno);
-      LinkImport(ORD(mod), offset, impno, modno, import)
-    END;
-
-    (* Relocate pointer addresses *)
-    p := ORD(mod) + mod.ptr;  SYSTEM.GET(p, ptroff);
-    WHILE ptroff >= 0 DO
-      SYSTEM.PUT(p, mod.vars + ptroff);  INC(p, 8);  SYSTEM.GET(p, ptroff)
-    END;
-
-    (* Manage preloading *)
-    IF fileoffset > 0 THEN  (* Advance preload state *)
-      IF fileoffset + header.size < Files.Length(F) THEN
-        INC(fileoffset, header.size)
-      ELSE
-        (* We've reached the end of the exe, close it before initialising the module. *)
-        Files.CloseHostHandle(F);  F := NIL;
-        fileoffset := 0;
       END
     END;
 
-    (* Initialize module *)
-    IF mod.init # 0 THEN
-      body := SYSTEM.VAL(Command, ORD(mod) + mod.init);
-      body
+    IF res = 0 THEN
+      mod := AllocateModule(header);  IF mod = NIL THEN error(7, name1) END
     END;
-(*
-  ELSIF res >= 3 THEN importing := name;
-    WHILE nofimps > 0 DO DEC(nofimps);  DEC(import[nofimps].refcnt) END
-*)
-  END;
-  newmod := mod
-END LoadModule;
 
+    IF res = 0 THEN
+      (* Read static memory, including code, type descriptors, strings and pointers *)
+      Files.Set(R, F, SYSTEM.SIZE(ModDesc));
+      Files.ReadMem(R, ORD(mod) + SYSTEM.SIZE(ModDesc), header.vars - SYSTEM.SIZE(ModDesc));
 
-PROCEDURE LoadImpl(name: ARRAY OF CHAR;  VAR newmod: Module);
-VAR mod: Module;  F: Files.File;  offset: INTEGER;
-BEGIN
-  res := 0;
-  mod := FindModule(name);
+      (* Link imports *)
 
-  IF (mod = NIL) & (PreloadOffset # 0) THEN
-    WHILE (res = 0) & (PreloadExe # NIL) DO
-      LoadModule(PreloadExe, PreloadOffset, mod);  ASSERT(res = 0)
+      Files.Set(R, F, header.imprefs);
+      Files.ReadVar(R, impcount);
+      FOR i := 1 TO impcount DO
+        Files.ReadVar(R, offset);  Files.ReadVar(R, impno);  Files.ReadVar(R, modno);
+        LinkImport(ORD(mod), offset, impno, modno, import)
+      END;
+
+      (* Relocate pointer addresses *)
+      p := ORD(mod) + mod.ptr;  SYSTEM.GET(p, ptroff);
+      WHILE ptroff >= 0 DO
+        SYSTEM.PUT(p, mod.vars + ptroff);  INC(p, 8);  SYSTEM.GET(p, ptroff)
+      END;
+
+      (* Initialize module *)
+      IF mod.init # 0 THEN
+        body := SYSTEM.VAL(Command, ORD(mod) + mod.init);  body
+      END
+    ELSIF res >= 3 THEN Importing := name;
+      WHILE nimpmods > 0 DO DEC(nimpmods); DEC(import[nimpmods].refcnt) END
     END;
-    mod := FindModule(name);
-  END;
-
-  IF (mod = NIL) & (PreloadNext # 0) THEN
-    Preload;
-    mod := FindModule(name);
-  END;
-
-  IF mod = NIL THEN
-    Check(name);
-    IF res = 0 THEN F := ThisFile(name) ELSE F := NIL END;
-    IF F = NIL THEN
-      error(1, name)
-    ELSE
-      error(0, name);  (* No error yet *)
-      offset := 0;
-      LoadModule(F, offset, mod)
-    END;
-  END;
-  newmod := mod
-END LoadImpl;
+    newmod := mod
+  END
+END Load;
 
 
 PROCEDURE ThisCommand*(mod: Module;  name: ARRAY OF CHAR): Command;
@@ -398,22 +353,9 @@ VAR
   fn8:   ARRAY H.MaxPath OF CHAR;
 BEGIN
   Files.Init;
-  Load          := LoadImpl;
-  PreloadExe    := NIL;
-  PreloadOffset := 0;
-  PreloadNext   := 0;
-  ActCnt        := 0;
-  (*
-  IF H.Preload.FileOfs # 0 THEN
-    ASSERT(H.GetModuleFileNameW(0, SYSTEM.ADR(fn16), H.MaxPath) # 0);
-    ASSERT(H.Utf16ToUtf8(fn16, fn8) # 0);
-    PreloadExe    := Files.Old(fn8);
-    PreloadOffset := H.Preload.FileOfs;
-    ASSERT(PreloadExe # NIL)
-  END
-  *)
-  PreloadNext := H.Preload.Exeadr + 1000H;  (* Temp hardcoded preload modules address *)
-  H.DumpMem(0, PreloadNext, PreloadNext, 100H);
+  PreloadNext := 0;
+  ActCnt      := 0;
+  PreloadNext := H.Preload.MadrPreload
 END Init;
 
 BEGIN Init;
@@ -427,10 +369,10 @@ BEGIN Init;
   ASSERT(res = 0);
   (*
   IF res # 0 THEN
-    H.ws("Load error: "); H.ws(importing);
+    H.ws("Load error: "); H.ws(Importing);
     IF    res = 1 THEN H.wsn(" module not found")
     ELSIF res = 2 THEN H.wsn(" bad version")
-    ELSIF res = 3 THEN H.ws(" imports '"); H.ws(imported); H.wsn(" with bad key");
+    ELSIF res = 3 THEN H.ws(" imports '"); H.ws(Imported); H.wsn(" with bad key");
     ELSIF res = 4 THEN H.wsn(" corrupted obj file")
     ELSIF res = 5 THEN H.ws(" command "); H.ws(H.CmdCommand); H.wsn(" not found")
     ELSIF res = 7 THEN H.wsn(" insufficient space")

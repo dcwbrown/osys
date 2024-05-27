@@ -603,11 +603,11 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
     IF (S.class = Texts.Name) & (S.line = 0) THEN
       Oberon.SetPar(F, F.text, pos + S.len); Oberon.Call(S.s, res);
       IF res > 0 THEN
-        Texts.WriteString(W, "Call error: "); Texts.WriteString(W, Modules.importing);
+        Texts.WriteString(W, "Call error: "); Texts.WriteString(W, Modules.Importing);
         IF res = 1 THEN Texts.WriteString(W, " module not found")
-        ELSIF res = 2 THEN  Texts.WriteString(W, " bad version")
-        ELSIF res = 3 THEN Texts.WriteString(W, " imports ");
-          Texts.WriteString(W, Modules.imported); Texts.WriteString(W, " with bad key");
+        ELSIF res = 2 THEN Texts.WriteString(W, " bad version")
+        ELSIF res = 3 THEN Texts.WriteString(W, " imports "); Texts.WriteString(W, Modules.Imported);
+                           Texts.WriteString(W, " with bad key");
         ELSIF res = 4 THEN Texts.WriteString(W, " corrupted obj file")
         ELSIF res = 5 THEN Texts.WriteString(W, " command not found")
         ELSIF res = 7 THEN Texts.WriteString(W, " insufficient space")
