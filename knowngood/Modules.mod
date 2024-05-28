@@ -3,19 +3,35 @@ MODULE Modules;  (*Link and load on RISC;  NW 20.10.2013 / 8.1.2019*)
 IMPORT SYSTEM, H := WinHost, Files;
 
 TYPE
-  (*Module*     = POINTER TO ModDesc;*)
-  Module*     = H.Module;
-  Command*    = PROCEDURE;
+  Module*     = POINTER- TO ModDesc;
   ModuleName* = ARRAY 32 OF CHAR;
-  ModDesc*    = H.ModuleDesc;
+  ModDesc* = RECORD-
+    name*:    ModuleName;  (* 00H *)
+    next*:    Module;      (* 20H Set on load *)
+    key*:     INTEGER;     (* 28H *)
+    num*:     INTEGER;     (* 30H Module num, set on load *)
+    size*:    INTEGER;     (* 38H Allocated memory, set on load (image size in file) *)
+    refcnt*:  INTEGER;     (* 40H Managed by module loader *)
+    vars*:    INTEGER;     (* 48H Start of global VARs / in code file start of import ref table *)
+    init*:    INTEGER;     (* 50H Module initialisation entry point *)
+    imprefs*: INTEGER;     (* 58H Imports references *)
+    cmd*:     INTEGER;     (* 60H PO2013 Commands: address of seq of command strings and code offsets *)
+    exports*: INTEGER;     (* 68H PO2013 Entries: address of array of exported offsets *)
+    ptr*:     INTEGER;     (* 70H PO2013 Pointers: address of array of pointer var addresses *)
+    lines*:   INTEGER;     (* 78H Line numbers etc. to address mapping *)
+    varsize*: INTEGER;     (* 80H Size of module VARs *)
+    magic*:   ARRAY 8 OF CHAR; (* 88H *)
+  END;
+  Command*    = PROCEDURE;
 
 VAR
+  Root*:       Module;
   M:           Module;     (* Loaded module 'Oberon' *)
   P:           Command;
   res*:        INTEGER;
   Importing*:  ModuleName;
   Imported*:   ModuleName;
-  ActCnt*:     INTEGER;  (* Action count for scheduling garbage collection *)
+  ActCnt*:     INTEGER;    (* Action count for scheduling garbage collection *)
   StackOrg*:   INTEGER;
   PreloadNext: INTEGER;
 
@@ -39,7 +55,7 @@ END Check;
 
 PROCEDURE FindModule(name: ARRAY OF CHAR): Module;
 VAR mod: Module;
-BEGIN mod := H.Root;
+BEGIN mod := Root;
   WHILE (mod # NIL) & (name # mod.name) DO mod := mod.next END;
 RETURN mod END FindModule;
 
@@ -49,7 +65,7 @@ PROCEDURE AllocateModule(VAR header: ModDesc): Module;
 VAR mod: Module;  p, size, allocsize: INTEGER;
 BEGIN
   size := (header.vars + header.varsize + 15) DIV 16 * 16;
-  mod := H.Root;
+  mod := Root;
   WHILE (mod # NIL) & ~((mod.name[0] = 0X) & (mod.size >= size)) DO
     mod := mod.next
   END;
@@ -60,9 +76,9 @@ BEGIN
     IF mod # NIL THEN
       H.ZeroFill(mod^);
       mod.size := allocsize;
-      mod.num  := H.Root.num + 1;
-      mod.next := H.Root;
-      H.SetRoot(mod);
+      mod.num  := Root.num + 1;
+      mod.next := Root;
+      Root     := mod
     END
   END;
   IF mod # NIL THEN
@@ -149,8 +165,8 @@ BEGIN
       SYSTEM.COPY(p, ORD(mod) + SYSTEM.SIZE(ModDesc), hdr.vars - SYSTEM.SIZE(ModDesc));
 
       (* Load Imported modules array - for preload Link guarantees all will be present *)
-      GetString(p, impname);
       nimpmods := 0;
+      GetString(p, impname);
       WHILE impname[0] # 0X DO
         SYSTEM.GET(p, impkey);  INC(p, 8);
         impmod := FindModule(impname);  ASSERT(impmod # NIL);  ASSERT(impmod.key = impkey);
@@ -233,8 +249,6 @@ BEGIN
       filename := name;  H.Append(".x64", filename);  F := Files.Old(filename);
       IF F = NIL THEN res := 1 END
     END;
-
-    (* IF res = 0 THEN LoadModule(F, newmod) END *)
 
     IF res = 0 THEN
       nimpmods := 0;
@@ -345,17 +359,65 @@ BEGIN ActCnt := count
 END Collect;
 
 
+(* ----------------------------- Trap Handling ------------------------------ *)
+
+PROCEDURE Locate*(adr: INTEGER; VAR mod: Module; VAR line: INTEGER; VAR proc: ModuleName);
+VAR
+  offset, p, l, pc, i: INTEGER;
+  name: ModuleName;
+BEGIN
+  mod := Root;  line := -1;  proc[0] := 0X;
+  WHILE (mod # NIL) & ((adr < ORD(mod)) OR (adr >= mod.vars)) DO mod := mod.next END;
+  IF (mod # NIL) & (mod.lines > 0) THEN
+    offset := adr - ORD(mod);
+    p := ORD(mod) + mod.lines;
+    GetString(p, name);
+    WHILE name[0] # 0X DO
+      SYSTEM.GET(p, l);  SYSTEM.GET(p+8, pc);  INC(p, 16);
+      H.GetUnsigned(p, i);
+      WHILE (i # 0) & (offset > pc + i) DO
+        INC(pc, i);  H.GetUnsigned(p, i);  INC(l, i);  H.GetUnsigned(p, i)
+      END;
+      IF (offset > pc) & (offset <= pc + i) THEN
+        IF name = mod.name THEN proc := "<init>" ELSE proc := name END;
+        line := l
+      ELSE
+        GetString(p, name)
+      END;
+    END
+  END
+END Locate;
+
+
+(* Non-GUI trap handler *)
+PROCEDURE HandleTrap(adr: INTEGER; desc: ARRAY OF CHAR);
+VAR mod: Module; line: INTEGER; proc: ModuleName;
+BEGIN
+  Locate(adr, mod, line, proc);
+  H.ws("  Trap: ");  H.ws(desc);
+  IF mod = NIL THEN
+    H.ws(" at address ");  H.wh(adr);  H.wsn("H.")
+  ELSE
+    H.ws(" in module "); H.ws(mod.name);
+    IF line < 0 THEN
+      H.ws(" at offset "); H.wh(adr - ORD(mod));  H.wsn("H.")
+    ELSE
+      H.ws(" on line "); H.wi(line); H.ws(" in "); H.ws(proc); H.wsn(".")
+    END
+  END
+END HandleTrap;
+
+
+
 (* ----------------------------- Initialisation ----------------------------- *)
 
 PROCEDURE Init;
-VAR
-  fn16:  ARRAY H.MaxPath OF SYSTEM.CARD16;
-  fn8:   ARRAY H.MaxPath OF CHAR;
 BEGIN
+  Root := SYSTEM.VAL(Module, H.Preload.ImgHeader);
   Files.Init;
-  PreloadNext := 0;
   ActCnt      := 0;
-  PreloadNext := H.Preload.MadrPreload
+  PreloadNext := H.Preload.MadrPreload;
+  (*H.SetTrapHandler(HandleTrap);*)
 END Init;
 
 BEGIN Init;

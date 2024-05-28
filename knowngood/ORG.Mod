@@ -13,7 +13,7 @@ MODULE ORG;  (* DCWB Jun 2023 to Feb 2024; Code generator for X64 *)
     applied.
 *)
 
-IMPORT SYSTEM, H := WinHost, Files, Texts, ORS, ORB, X64, l := Listing, K := Kernel;
+IMPORT SYSTEM, H := WinHost, Files, Modules, Texts, ORS, ORB, X64, l := Listing, K := Kernel;
 
 CONST
   WordSize* = ORB.WordSize;
@@ -77,24 +77,9 @@ TYPE
     lastline:  LineAnnotation
   END;
 
-  ModuleDesc = H.ModuleDesc;
-
-  (* Temporary new code header
-  ModuleDesc* = RECORD-
-    length*:   SYSTEM.CARD32;  (* File length *)
-    initcode*: SYSTEM.CARD32;
-    pointers*: SYSTEM.CARD32;
-    commands*: SYSTEM.CARD32;
-    exports*:  SYSTEM.CARD32;
-    imports*:  SYSTEM.CARD32;  (* VARs start here following import resolution *)
-    varsize*:  SYSTEM.CARD32;
-    key*:      INTEGER;
-  END;
-  *)
-
 VAR
   W:        Texts.Writer;
-  Hdr*:     ModuleDesc;
+  Hdr*:     Modules.ModDesc;
 
   Str:      ARRAY 8192 OF CHAR;  (* Max bytes of string per module body *)
   Strx:     INTEGER;
@@ -2910,7 +2895,7 @@ l.Init(ORS.SourceFile());
   VarFInx         := 0;
   ImpFInx         := 0;
   Disasmpc        := 0;
-  X64.SetPC(SYSTEM.SIZE(ModuleDesc));
+  X64.SetPC(SYSTEM.SIZE(Modules.ModDesc));
   Disasmpc := X64.PC;
 
   (* Emit imported module names and keys *)
@@ -3153,8 +3138,8 @@ BEGIN
   (* Write compiled module *)
   fname := "";  H.Append(modid, fname);  H.Append(".x64", fname);
   codefile := Files.New(fname);  Files.Set(R, codefile, 0);
-  Files.WriteBytes(R, Hdr, 0, SYSTEM.SIZE(ModuleDesc));
-  Files.WriteBytes(R, X64.Text, SYSTEM.SIZE(ModuleDesc), X64.PC - SYSTEM.SIZE(ModuleDesc));
+  Files.WriteBytes(R, Hdr, 0, SYSTEM.SIZE(Modules.ModDesc));
+  Files.WriteBytes(R, X64.Text, SYSTEM.SIZE(Modules.ModDesc), X64.PC - SYSTEM.SIZE(Modules.ModDesc));
   Files.Register(codefile);
 
   BodyAnnotations := NIL

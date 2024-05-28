@@ -24,26 +24,6 @@ CONST
   PAGEEXECUTEREADWRITE = 40H;
 
 TYPE
-  Module*     = POINTER- TO ModuleDesc;
-  ModuleName* = ARRAY 32 OF CHAR;
-
-  ModuleDesc* = RECORD-
-    name*:    ModuleName;  (* 00H *)
-    next*:    Module;      (* 20H Set on load *)
-    key*:     INTEGER;     (* 28H *)
-    num*:     INTEGER;     (* 30H Module num, set on load *)
-    size*:    INTEGER;     (* 38H Allocated memory, set on load (image size in file) *)
-    refcnt*:  INTEGER;     (* 40H Managed by module loader *)
-    vars*:    INTEGER;     (* 48H Start of global VARs / in code file start of import ref table *)
-    init*:    INTEGER;     (* 50H Module initialisation entry point *)
-    imprefs*: INTEGER;     (* 58H Imports references *)
-    cmd*:     INTEGER;     (* 60H PO2013 Commands: address of seq of command strings and code offsets *)
-    exports*: INTEGER;     (* 68H PO2013 Entries: address of array of exported offsets *)
-    ptr*:     INTEGER;     (* 70H PO2013 Pointers: address of array of pointer var addresses *)
-    lines*:   INTEGER;     (* 78H Line numbers etc. to address mapping *)
-    varsize*: INTEGER;     (* 80H Size of module VARs *)
-    magic*:   ARRAY 8 OF CHAR; (* 88H *)
-  END;
 
 
   (* -------------------- Windows exception structures -------------------- *)
@@ -84,18 +64,18 @@ TYPE
   END;
 
   PreLoadVars* = RECORD-
-    Exeadr*:      INTEGER;    (* Image PE header loaded address *)
-    ImgHeader*:   Module;     (* Image Oberon section loaded address *)
-    MadrPreload*: INTEGER;
-    dummy1:       INTEGER;    (* Offset into exe file of first embedded file *)
-    dummy2:       INTEGER;
-    dummy3:       INTEGER;
+    Exeadr*:      INTEGER;  (* Image PE header loaded address      *)
+    ImgHeader*:   INTEGER;  (* Image Oberon section loaded address *)
+    MadrPreload*: INTEGER;  (* Start of preload section            *)
+    CoreSize*:    INTEGER;  (* End of core allocation              *)
     dummy4:       INTEGER;
     dummy5:       INTEGER;
+    dummy6:       INTEGER;
+    dummy7:       INTEGER;
   END;
 
 
-(* Start of pre-loaded variables (preset by WinPE.mod or Link.mod) *)
+(* Start of pre-loaded variables (preset by Link.mod/Windows loader) *)
 
 VAR
   Preload*: PreLoadVars;
@@ -219,7 +199,6 @@ VAR
   ModuleSpace*: INTEGER;   (* Start of module space *)
   AllocPtr*:    INTEGER;   (* Start of remaining free module space *)
   CommitLen*:   INTEGER;   (* Committed module space memory *)
-  Root*:        Module;    (* List of loaded and free'd modules *)
 
 
   (* Partially parsed command line *)
@@ -228,9 +207,10 @@ VAR
   CmdCommand*:  ARRAY 32 OF CHAR;
   ArgStart*:    INTEGER;
 
-  ExitCode:  INTEGER;
-  Reset:     PROCEDURE;
-  TrapDepth: INTEGER;
+  ExitCode:    INTEGER;
+  Reset:       PROCEDURE;
+  TrapDepth:   INTEGER;
+  TrapHandler: PROCEDURE(adr: INTEGER; desc: ARRAY OF CHAR);
 
 
 PROCEDURE Min*(a, b: INTEGER): INTEGER;
@@ -300,9 +280,9 @@ BEGIN Syslog := sl END SetSyslog;
 PROCEDURE Log*(s: ARRAY OF BYTE);
 VAR written, res: INTEGER;
 BEGIN
-  IF (*Syslog # NIL*) FALSE THEN Syslog(s)
-  ELSE res := WriteFile(Stdout, SYSTEM.ADR(s), Length(s), SYSTEM.ADR(written), 0);
-  END
+  (*IF Syslog # NIL THEN Syslog(s)
+  ELSE *)res := WriteFile(Stdout, SYSTEM.ADR(s), Length(s), SYSTEM.ADR(written), 0);
+  (*END*)
 END Log;
 
 PROCEDURE wc*(c: CHAR); BEGIN Log(c) END wc;
@@ -500,16 +480,14 @@ END DumpMem;
 
 (* -------------------- Pulling variables out of memory --------------------- *)
 
-PROCEDURE GetString(VAR adr: INTEGER; VAR str: ARRAY OF CHAR);
-VAR i: INTEGER;
-BEGIN
-  i := -1;
-  REPEAT
-    INC(i);  SYSTEM.GET(adr, str[i]);  INC(adr)
-  UNTIL (i >= LEN(str)) OR (str[i] = 0X)
+PROCEDURE GetString(VAR p: INTEGER; VAR s: ARRAY OF CHAR);
+VAR i: INTEGER; ch: CHAR;
+BEGIN i := 0;
+  REPEAT SYSTEM.GET(p, ch);  s[i] := ch;  INC(p);  INC(i) UNTIL ch = 0X
 END GetString;
 
-PROCEDURE GetUnsigned(VAR adr, n: INTEGER);
+
+PROCEDURE GetUnsigned*(VAR adr, n: INTEGER);
 VAR i: BYTE; s: INTEGER;
 BEGIN
   n := 0; s := 0;
@@ -536,97 +514,49 @@ PROCEDURE SetReset*(r: PROCEDURE);
 BEGIN Reset := r
 END SetReset;
 
-(* ----------------------- Windows exception handling ----------------------- *)
+(* ---------------------- Exception and trap handling ----------------------- *)
 
-PROCEDURE LocateModule(adr: INTEGER): Module;
-VAR  (*modadr: INTEGER;*)  hdr: Module;
-BEGIN
-  hdr := Root;
-  WHILE (hdr # NIL) & ((adr < ORD(hdr)) OR (adr >= (*ORD(hdr)+*)hdr.vars)) DO
-    hdr := hdr.next
-  END;
-RETURN hdr END LocateModule;
-
-PROCEDURE LocateLine(hdr: Module; offset: INTEGER; modname: ARRAY OF CHAR);
-VAR
-  adr, line, pc, i: INTEGER;
-  name: ARRAY 32 OF CHAR;
-BEGIN
-  IF hdr.lines # 0 THEN
-    adr := ORD(hdr) + hdr.lines;
-    GetString(adr, name);
-    WHILE name[0] # 0X DO
-      SYSTEM.GET(adr, line);  INC(adr, 8);
-      SYSTEM.GET(adr, pc);    INC(adr, 8);
-      GetUnsigned(adr, i);
-      WHILE (i # 0) & (offset > pc + i) DO
-        INC(pc, i);  GetUnsigned(adr, i);  INC(line, i);
-        GetUnsigned(adr, i)
-      END;
-      IF (offset > pc) & (offset <= pc + i) THEN
-        IF name # modname THEN ws("."); ws(name) ELSE ws(" initialisation") END;
-        wc("["); wi(line); wc("]");
-        name[0] := 0X
-      ELSE
-        GetString(adr, name)
-      END;
-    END
-  END
-END LocateLine;
-
-PROCEDURE LocateAddress(adr: INTEGER; p: ExceptionPointers);  (* Writes location info about address, if any *)
-VAR mod: Module;
-BEGIN
-  mod := Root;
-  WHILE (mod # NIL) & ((adr < ORD(mod)) OR (adr >= mod.vars)) DO mod := mod.next END;
-  IF mod = NIL THEN
-    ws(". At address ");  wh(adr); wc("H");
-  ELSE
-    DEC(adr, ORD(mod));
-    ws(". In ");  ws(mod.name);
-    LocateLine(mod, adr, mod.name);
-    ws(" (");  wh(adr);  ws("H)");
-  END;
-  IF p = NIL THEN wsn(".")
-  ELSE
-    wsn(":");
-    ws("  rax "); whz(p.context.rax, 16);  ws("  rbx "); whz(p.context.rbx, 16);
-    ws("  rcx "); whz(p.context.rcx, 16);  ws("  rdx "); whz(p.context.rdx, 16);  wn;
-    ws("  rsp "); whz(p.context.rsp, 16);  ws("  rbp "); whz(p.context.rbp, 16);
-    ws("  rsi "); whz(p.context.rsi, 16);  ws("  rdi "); whz(p.context.rdi, 16);  wn;
-    ws("  r8  "); whz(p.context.r8,  16);  ws("  r9  "); whz(p.context.r9,  16);
-    ws("  r10 "); whz(p.context.r10, 16);  ws("  r11 "); whz(p.context.r11, 16);  wn;
-    ws("  r12 "); whz(p.context.r12, 16);  ws("  r13 "); whz(p.context.r13, 16);
-    ws("  r14 "); whz(p.context.r14, 16);  ws("  r15 "); whz(p.context.r15, 16);  wn;
-    wsn("  Top of stack:");
-    DumpMem(2, p.context.rsp, p.context.rsp, 128)
-  END
-END LocateAddress;
 
 PROCEDURE- ExceptionHandler(p: ExceptionPointers);  (* Called by Windows *)
-VAR modadr, excpadr, excpcode: INTEGER;
+VAR excpcode: INTEGER;  desc, hex: ARRAY 32 OF CHAR;
 BEGIN
   INC(TrapDepth);
-  excpcode := p.exception.ExceptionCode;
-  excpadr  := p.exception.ExceptionAddress;
-
-  wn;
-  IF    excpcode = 080000003H THEN ws("  Trap: Breakpoint (INT 3)");
-  ELSIF excpcode = 080000004H THEN ws("  Trap: Single step (0F1H instr)");
-  ELSIF excpcode = 0C0000005H THEN ws("  Trap: Access violation");
-  ELSIF excpcode = 0C0000006H THEN ws("  Trap: In-page error");
-  ELSIF excpcode = 0C000001DH THEN ws("  Trap: Illegal instruction");
-  ELSIF excpcode = 0C000008EH THEN ws("  Trap: Divide by zero");
-  ELSIF excpcode = 0C0000094H THEN ws("  Trap: Integer divide by zero");
-  ELSIF excpcode = 0C0000096H THEN ws("  Trap: Privileged instruction");
-  ELSIF excpcode = 0C00000FDH THEN ws("  Trap: Stack Overflow");
-  ELSE ws("  Trap: Exception ");  wh(excpcode);  wc("H")
-  END;
-
-  IF TrapDepth < 2 THEN
-    LocateAddress(excpadr, p)
+  IF TrapDepth > 1 THEN
+    wsn("  Nested exception.")
   ELSE
-    wsn(": nested exception.")
+    excpcode := p.exception.ExceptionCode;
+    IF    excpcode = 080000003H THEN desc := "Breakpoint (INT 3)";
+    ELSIF excpcode = 080000004H THEN desc := "Single step (0F1H instr)";
+    ELSIF excpcode = 0C0000005H THEN desc := "Access violation";
+    ELSIF excpcode = 0C0000006H THEN desc := "In-page error";
+    ELSIF excpcode = 0C000001DH THEN desc := "Illegal instruction";
+    ELSIF excpcode = 0C000008EH THEN desc := "Divide by zero";
+    ELSIF excpcode = 0C0000094H THEN desc := "Integer divide by zero";
+    ELSIF excpcode = 0C0000096H THEN desc := "Privileged instruction";
+    ELSIF excpcode = 0C00000FDH THEN desc := "Stack Overflow";
+    ELSE
+      desc := "Exception "; IntToHex(excpcode, hex);
+      Append(hex, desc); Append("H", desc)
+    END;
+    IF TrapHandler = NIL THEN
+      ws("  Trap: "); ws(desc);
+      ws(" at address "); wh(p.exception.ExceptionAddress); wsn("H.")
+    ELSE
+      TrapHandler(p.exception.ExceptionAddress, desc)
+    END;
+    IF p # NIL THEN
+      wsn("Dump:");
+      ws("  rax "); whz(p.context.rax, 16);  ws("  rbx "); whz(p.context.rbx, 16);
+      ws("  rcx "); whz(p.context.rcx, 16);  ws("  rdx "); whz(p.context.rdx, 16);  wn;
+      ws("  rsp "); whz(p.context.rsp, 16);  ws("  rbp "); whz(p.context.rbp, 16);
+      ws("  rsi "); whz(p.context.rsi, 16);  ws("  rdi "); whz(p.context.rdi, 16);  wn;
+      ws("  r8  "); whz(p.context.r8,  16);  ws("  r9  "); whz(p.context.r9,  16);
+      ws("  r10 "); whz(p.context.r10, 16);  ws("  r11 "); whz(p.context.r11, 16);  wn;
+      ws("  r12 "); whz(p.context.r12, 16);  ws("  r13 "); whz(p.context.r13, 16);
+      ws("  r14 "); whz(p.context.r14, 16);  ws("  r15 "); whz(p.context.r15, 16);  wn;
+      wsn("  Top of stack:");
+      DumpMem(2, p.context.rsp, p.context.rsp, 128)
+    END
   END;
   Abort
 END ExceptionHandler;
@@ -634,17 +564,22 @@ END ExceptionHandler;
 
 (* ----------------------------- Trap handlers ------------------------------ *)
 
+PROCEDURE SetTrapHandler*(handler: PROCEDURE(adr: INTEGER; desc: ARRAY OF CHAR));
+BEGIN TrapHandler := handler END SetTrapHandler;
+
+
 PROCEDURE Trap*(retoffset: INTEGER; desc: ARRAY OF CHAR);
 VAR adr, modadr: INTEGER;
 BEGIN  (* retoffset is callers local var size *)
+  IF retoffset < 0 THEN retoffset := -32 END;  (* Address our own return address *)
+  SYSTEM.GET(SYSTEM.ADR(LEN(desc)) + 16 + retoffset, adr);
   INC(TrapDepth);
-  wn;  ws("  Trap: ");  ws(desc);
-  IF TrapDepth < 2 THEN
-    IF retoffset < 0 THEN retoffset := -32 END;  (* Address our own return address *)
-    SYSTEM.GET(SYSTEM.ADR(LEN(desc)) + 16 + retoffset, adr);
-    LocateAddress(adr, NIL);
+  IF TrapDepth > 1 THEN
+    wsn("  Nested trap.")
+  ELSIF TrapHandler = NIL THEN
+    wn;  ws("  Trap: ");  ws(desc);  ws(" at address "); wh(adr); wsn("H.")
   ELSE
-    wsn(": nested exception.")
+    TrapHandler(adr, desc);
   END;
   Abort
 END Trap;
@@ -908,16 +843,6 @@ RETURN info.write END FileTime;
 
 (* -------------------------------------------------------------------------- *)
 
-PROCEDURE SetRoot*(r: Module); BEGIN
-  (*
-  ws("* Change Root from "); wh(ORD(Root));
-  ws("H (");                 ws(Root.name);
-  ws(") to ");               wh(ORD(r)); wsn("H.");
-  *)
-  Root := r
-END SetRoot;
-
-
 PROCEDURE Allocate*(size: INTEGER; VAR p, alloc: INTEGER);
 VAR adr, newcommitlen: INTEGER;
 BEGIN
@@ -933,14 +858,12 @@ BEGIN
   IF AllocPtr - ModuleSpace + size < 80000000H THEN  (* Hard limit on reserved size 2GB due to relative addressing *)
     IF AllocPtr + size > ModuleSpace + CommitLen THEN
 
-      (*ws("* CommitLen increasing from "); wh(CommitLen);*)
-
+      ws("* CommitLen increasing from "); wh(CommitLen);
       (* Round up to a multiple of 256K *)
       newcommitlen := (AllocPtr + size + 40000H - 1) DIV 40000H * 40000H - ModuleSpace;
-
-      (*
       ws("H to "); wh(newcommitlen); wsn("H *");
 
+      (*
       ws("Calling VirtualAlloc(addr "); wh(ModuleSpace+CommitLen);
       ws("H, size "); wh(newcommitlen-CommitLen);
       wsn("H, MEMCOMMIT, PAGEEXECUTEREADWRITE).");
@@ -1042,10 +965,8 @@ END ParseCommandLine;
 PROCEDURE Init*;  (* Called from Kernel.init *)
 VAR
   res:        INTEGER;
-  loadedlen:  INTEGER;
   reserveadr: INTEGER;
   reservelen: INTEGER;
-  mod:        Module;
 BEGIN
   HWnd      := 0;
   Syslog    := NIL;
@@ -1058,8 +979,7 @@ BEGIN
   SetConsoleOutputCP(65001);    (* 65001: UTF8            *)
   crlf := $0D 0A 00$;
 
-  ModuleSpace := ORD(Preload.ImgHeader);
-  Root        := Preload.ImgHeader;
+  ModuleSpace := Preload.ImgHeader;
 
   Handlers[NewProc]                   := NewPointerHandler;
   Handlers[AssertionFailureProc]      := AssertionFailureHandler;
@@ -1069,18 +989,12 @@ BEGIN
   Handlers[NilPointerDereferenceProc] := NilPointerDereferenceHandler;
   Handlers[TypeGuardFailureProc]      := TypeGuardFailureHandler;
 
-  mod := Preload.ImgHeader;
-  WHILE mod # NIL DO
-    AllocPtr := ORD(mod) + mod.size;
-    mod := mod.next;
-  END;
+  AllocPtr  := Preload.ImgHeader + Preload.CoreSize;
+  CommitLen := (Preload.CoreSize + 0FFFFH) DIV 10000H * 10000H;
 
-  CommitLen := (AllocPtr + 0FFFFH) DIV 10000H * 10000H - ModuleSpace;
-  loadedlen := (AllocPtr - ORD(Preload.ImgHeader) + 65535) DIV 65536 * 65536;
-
-  (* Extend memory to 2GB reserve *)
-  reserveadr := ORD(Preload.ImgHeader) + loadedlen;
-  reservelen := 80000000H - loadedlen;
+  (* Reserve memroy beyond committed up to 2GB *)
+  reserveadr := Preload.ImgHeader + CommitLen;
+  reservelen := 80000000H - CommitLen;
   res := VirtualAlloc(reserveadr, reservelen, MEMRESERVE, PAGEEXECUTEREADWRITE);
   IF res = 0 THEN AssertWinError(GetLastError()) END;
 

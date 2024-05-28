@@ -39,5 +39,6 @@ ORP.Compile Splines.Mod/s ~
 
 
 ORP.Compile Test.Mod/s ~
-Test.RunArrayIndexTest
-Test.RunNilDereferenceTest
+Test.ArrayIndexTest
+Test.NilDereferenceTest
+Test.DivideByZeroTest

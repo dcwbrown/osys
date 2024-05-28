@@ -321,7 +321,7 @@ BEGIN T := TextFrames.Text("");
   Oberon.AllocateSystemViewer(Oberon.Par.vwr.X, X, Y);
   V := MenuViewers.New(TextFrames.NewMenu("System.ShowModules", StandardMenu),
       TextFrames.NewText(T, 0), TextFrames.menuH, X, Y);
-  M := H.Root;
+  M := Modules.Root;
   WHILE M # NIL DO
     IF M.name[0] # 0X THEN
       Texts.WriteString(W, M.name); Texts.Write(W, 9X); Texts.WriteHex(W, ORD(M));

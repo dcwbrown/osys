@@ -15,13 +15,14 @@ CONST
   User32ImportCount   = 35;
 
 TYPE
-  ModuleDesc = H.ModuleDesc;
-
   EmbeddedModule = POINTER TO EmbeddedModuleDesc;
   EmbeddedModuleDesc = RECORD
     next: EmbeddedModule;
+    mod:  Modules.ModDesc;
+    (*
     name: Modules.ModuleName;
     key:  INTEGER;
+    *)
     file: Files.File;
     size: INTEGER
   END;
@@ -137,7 +138,7 @@ TYPE
   END;
 
   BootstrapBuffer = RECORD
-    Header:  ModuleDesc;
+    Header:  Modules.ModDesc;
     Content: ARRAY 10000H OF BYTE
   END;
 
@@ -231,11 +232,6 @@ BEGIN
   Files.WriteBytes(Exe, shdr, 0, SYSTEM.SIZE(SectionHeader));
 END WriteSectionHeader;
 
-(*
-  i := 0; WHILE i < LEN(name) DO Files.Write(Exe, name[i]) INC(i) END;
-  WHILE i < 8 DO Files.Write(Exe, 0); INC(i) END;
-  Files.WriteBytes(Exe,
-*)
 
 PROCEDURE WritePEHeader(ImageBase,   HeaderSize,
                         FadrPreload, RvaPreload,
@@ -470,8 +466,9 @@ BEGIN
     SYSTEM.GET(ptradr, ptroff)
   END;
 
+  mod.refcnt := 1;
   INC(mod.cmd, OberonCoreBase + CoreSize);
-  mod.size := (mod.vars + mod.varsize + 16) DIV 16 * 16;
+  mod.size := (mod.vars + mod.varsize + 15) DIV 16 * 16;
   INC(mod.vars, OberonCoreBase + CoreSize);
   INC(CoreSize, mod.size);
   INC(CoreModCount)
@@ -655,17 +652,17 @@ END BuildImportTables;
 
 PROCEDURE PresetWinHost(FadrModules, ImageBase, MadrPreload: INTEGER);
 VAR
-  mod:         Modules.Module;
   varpos:      INTEGER;
-  i:           INTEGER;
+  commit:      INTEGER;
   preloadvars: H.PreLoadVars;
 BEGIN
   varpos := CoreHostVars;
 
   H.ZeroFill(preloadvars);
   preloadvars.Exeadr      := ImageBase;
-  preloadvars.ImgHeader   := SYSTEM.VAL(H.Module, OberonCoreBase);
+  preloadvars.ImgHeader   := OberonCoreBase;
   preloadvars.MadrPreload := MadrPreload;
+  preloadvars.CoreSize    := CoreSize;
 
   SYSTEM.COPY(SYSTEM.ADR(preloadvars), SYSTEM.ADR(CoreMem[varpos]), SYSTEM.SIZE(H.PreLoadVars));
   INC(varpos, SYSTEM.SIZE(H.PreLoadVars));
@@ -735,7 +732,7 @@ BEGIN
     emb := FirstPreload;
     spos(FadrPreload);
     WHILE emb # NIL DO
-      IF ~IsInnerCore(emb.name) THEN
+      IF ~IsInnerCore(emb.mod.name) THEN
         CopyFile(emb.file, Exe, emb.size);
         INC(PreloadSize, emb.size)
       END;
@@ -807,7 +804,7 @@ END Generate;
 PROCEDURE IsPreloaded(name: ARRAY OF CHAR): BOOLEAN;
 VAR emb: EmbeddedModule;
 BEGIN emb := FirstPreload;
-  WHILE (emb # NIL) & (emb.name # name) DO emb := emb.next END;
+  WHILE (emb # NIL) & (emb.mod.name # name) DO emb := emb.next END;
 RETURN emb # NIL END IsPreloaded;
 
 
@@ -857,8 +854,7 @@ BEGIN
           NEW(emb);
           emb.size := size;
           emb.next := NIL;
-          emb.name := hdr.name;
-          emb.key  := hdr.key;
+          emb.mod  := hdr;
           emb.file := f;
           IF FirstPreload = NIL THEN FirstPreload := emb ELSE LastPreload.next := emb END;
           LastPreload := emb;

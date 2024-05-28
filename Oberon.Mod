@@ -327,7 +327,7 @@ VAR mod: Modules.Module;  start, mark, files, scan: INTEGER;
 BEGIN
   IF (Modules.ActCnt <= 0)
   OR (Kernel.allocated >= Kernel.heapLim - Kernel.heapOrg - 10000H) THEN
-    mod := H.Root;
+    mod := Modules.Root;
     start := H.Time();
     WHILE mod # NIL DO
       IF mod.name[0] # 0X THEN
