@@ -193,7 +193,6 @@ VAR
   Stdin:   INTEGER;
   Stdout:  INTEGER;
   crlf*:   ARRAY 3 OF CHAR;
-  Syslog*: PROCEDURE(s: ARRAY OF BYTE);  (* Logging to Oberon system *)
   HWnd:    INTEGER;        (* Set when a window has been created *)
 
   ModuleSpace*: INTEGER;   (* Start of module space *)
@@ -208,7 +207,6 @@ VAR
   ArgStart*:    INTEGER;
 
   ExitCode:    INTEGER;
-  Reset:       PROCEDURE;
   TrapDepth:   INTEGER;
   TrapHandler: PROCEDURE(adr: INTEGER; desc: ARRAY OF CHAR);
 
@@ -274,15 +272,10 @@ BEGIN FOR i := 0 TO LEN(buf)-1 DO buf[i] := 0 END END ZeroFill;
 (* ---------------- Simple logging/debugging console output ----------------- *)
 (* -------------------------------------------------------------------------- *)
 
-PROCEDURE SetSyslog*(sl: PROCEDURE(s: ARRAY OF BYTE));
-BEGIN Syslog := sl END SetSyslog;
-
 PROCEDURE Log*(s: ARRAY OF BYTE);
 VAR written, res: INTEGER;
 BEGIN
-  (*IF Syslog # NIL THEN Syslog(s)
-  ELSE *)res := WriteFile(Stdout, SYSTEM.ADR(s), Length(s), SYSTEM.ADR(written), 0);
-  (*END*)
+  res := WriteFile(Stdout, SYSTEM.ADR(s), Length(s), SYSTEM.ADR(written), 0);
 END Log;
 
 PROCEDURE wc*(c: CHAR); BEGIN Log(c) END wc;
@@ -503,16 +496,8 @@ END GetUnsigned;
 PROCEDURE SetExitCode*(code: INTEGER);
 BEGIN ExitCode := code END SetExitCode;
 
-PROCEDURE ExitToHost*;
-BEGIN ExitProcess(ExitCode) END ExitToHost;
-
-PROCEDURE Abort();
-BEGIN IF Reset # NIL THEN TrapDepth := 0; Reset ELSE ExitProcess(99) END
-END Abort;
-
-PROCEDURE SetReset*(r: PROCEDURE);
-BEGIN Reset := r
-END SetReset;
+PROCEDURE Exit*;
+BEGIN ExitProcess(ExitCode) END Exit;
 
 (* ---------------------- Exception and trap handling ----------------------- *)
 
@@ -558,7 +543,7 @@ BEGIN
       DumpMem(2, p.context.rsp, p.context.rsp, 128)
     END
   END;
-  Abort
+  ExitProcess(99)
 END ExceptionHandler;
 
 
@@ -566,6 +551,8 @@ END ExceptionHandler;
 
 PROCEDURE SetTrapHandler*(handler: PROCEDURE(adr: INTEGER; desc: ARRAY OF CHAR));
 BEGIN TrapHandler := handler END SetTrapHandler;
+
+PROCEDURE ResetTrap*; BEGIN TrapDepth := 0 END ResetTrap;
 
 
 PROCEDURE Trap*(retoffset: INTEGER; desc: ARRAY OF CHAR);
@@ -581,29 +568,29 @@ BEGIN  (* retoffset is callers local var size *)
   ELSE
     TrapHandler(adr, desc);
   END;
-  Abort
+  ExitProcess(99)
 END Trap;
 
 PROCEDURE NewPointerHandler();
-BEGIN wn; Trap(0, "New pointer handler not istalled") END NewPointerHandler;
+BEGIN Trap(0, "New pointer handler not istalled") END NewPointerHandler;
 
 PROCEDURE AssertionFailureHandler();
-BEGIN wn; Trap(0, "Assertion failure")      END AssertionFailureHandler;
+BEGIN Trap(0, "Assertion failure")      END AssertionFailureHandler;
 
 PROCEDURE ArraySizeMismatchHandler();
-BEGIN wn; Trap(0, "Array size mismatch")     END ArraySizeMismatchHandler;
+BEGIN Trap(0, "Array size mismatch")     END ArraySizeMismatchHandler;
 
 PROCEDURE UnterminatedStringHandler();
-BEGIN wn; Trap(0, "Unterminated string")     END UnterminatedStringHandler;
+BEGIN Trap(0, "Unterminated string")     END UnterminatedStringHandler;
 
 PROCEDURE IndexOutOfRangeHandler();
-BEGIN wn; Trap(0, "Index out of range")      END IndexOutOfRangeHandler;
+BEGIN Trap(0, "Index out of range")      END IndexOutOfRangeHandler;
 
 PROCEDURE NilPointerDereferenceHandler();
-BEGIN wn; Trap(0, "NIL pointer dereference") END NilPointerDereferenceHandler;
+BEGIN Trap(0, "NIL pointer dereference") END NilPointerDereferenceHandler;
 
 PROCEDURE TypeGuardFailureHandler();
-BEGIN wn; Trap(0, "Type guard failure")      END TypeGuardFailureHandler;
+BEGIN Trap(0, "Type guard failure")      END TypeGuardFailureHandler;
 
 
 (* -------------------------------------------------------------------------- *)
@@ -858,10 +845,13 @@ BEGIN
   IF AllocPtr - ModuleSpace + size < 80000000H THEN  (* Hard limit on reserved size 2GB due to relative addressing *)
     IF AllocPtr + size > ModuleSpace + CommitLen THEN
 
-      ws("* CommitLen increasing from "); wh(CommitLen);
       (* Round up to a multiple of 256K *)
       newcommitlen := (AllocPtr + size + 40000H - 1) DIV 40000H * 40000H - ModuleSpace;
+
+      (*
+      ws("* CommitLen increasing from "); wh(CommitLen);
       ws("H to "); wh(newcommitlen); wsn("H *");
+      *)
 
       (*
       ws("Calling VirtualAlloc(addr "); wh(ModuleSpace+CommitLen);
@@ -923,7 +913,7 @@ BEGIN
   IF ch # 32 THEN
     modstart := 0;
     WHILE (i < LEN(CommandLine) - 3) & (ch # 0) & ((ch # 32) OR quoted) DO  (* Skip to first unquoted space *)
-      IF    ch = ORD(".")                 THEN modlimit := i
+      IF     ch = ORD(".")                THEN modlimit := i
       ELSIF (ch = ORD("/")) OR (ch = 5CH) THEN modlimit := -1;  modstart := i + 1
       END;
       PutUtf8(ch, CommandLine, i);
@@ -957,7 +947,9 @@ BEGIN
   ArgStart := i;  (* Note: may be end of command line *)
 
   (* Copy remainder of command line *)
-  WHILE (i < LEN(CommandLine) - 3) & (ch # 0) DO PutUtf8(ch, CommandLine, i);  GetUtf16Mem(adr, ch) END;
+  WHILE (i < LEN(CommandLine) - 3) & (ch # 0) DO
+    PutUtf8(ch, CommandLine, i);  GetUtf16Mem(adr, ch)
+  END;
   CommandLine[i] := 0X
 END ParseCommandLine;
 
@@ -969,7 +961,6 @@ VAR
   reservelen: INTEGER;
 BEGIN
   HWnd      := 0;
-  Syslog    := NIL;
   TrapDepth := 0;
   ExitCode  := 0;
 

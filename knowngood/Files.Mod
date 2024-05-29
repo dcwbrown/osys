@@ -165,17 +165,10 @@ PROCEDURE Rename*(old, new: ARRAY OF CHAR; VAR res: INTEGER);
 VAR f: File;
 BEGIN
   UnregisterByName(new);
-  f := first;  WHILE (f # NIL) & (f.name # old) DO f := f.next END;
-
-  IF f # NIL THEN
-    IF f.registered THEN CloseHostHandle(f)
-    ELSE f := NIL END
-  END;
-
   res := H.MoveFile(old, new);
-  IF (res = 0) & (f # NIL) THEN
-    f.registered := TRUE;
-    f.name := new
+  IF res # 0 THEN
+    f := first;  WHILE (f # NIL) & (f.name # old) DO f := f.next END;
+    IF (f # NIL) & f.registered THEN f.name := new END
   END;
 END Rename;
 
@@ -211,7 +204,9 @@ PROCEDURE SetFilePos(f: File; pos: INTEGER);
 VAR res: INTEGER;
 BEGIN
   IF pos # f.pos THEN
-    ASSERT(H.SetFilePointerEx(f.handle, pos, 0, 0) # 0);
+    IF H.SetFilePointerEx(f.handle, pos, 0, 0) = 0 THEN
+      H.Trap(8, "Files.SetFilePos: SetFilePointerEx failed")
+    END;
     f.pos := pos
   END
 END SetFilePos;

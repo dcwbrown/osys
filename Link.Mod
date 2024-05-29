@@ -19,10 +19,6 @@ TYPE
   EmbeddedModuleDesc = RECORD
     next: EmbeddedModule;
     mod:  Modules.ModDesc;
-    (*
-    name: Modules.ModuleName;
-    key:  INTEGER;
-    *)
     file: Files.File;
     size: INTEGER
   END;

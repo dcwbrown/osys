@@ -37,8 +37,5 @@ ORP.Compile Graphics.Mod/s GraphicFrames.Mod/s Draw.Mod/s ~
 ORP.Compile Curves.Mod/s Rectangles.Mod/s ~
 ORP.Compile Splines.Mod/s ~
 
-
 ORP.Compile Test.Mod/s ~
-Test.ArrayIndexTest
-Test.NilDereferenceTest
-Test.DivideByZeroTest
+Test.ArrayIndexTest  Test.NilDereferenceTest  Test.DivideByZeroTest

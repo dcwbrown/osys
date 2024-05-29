@@ -454,7 +454,28 @@ BEGIN n := SYSTEM.REG(15); Texts.WriteString(W, "  ABORT  "); Texts.WriteHex(W, 
 END Abort;
 *)
 
+(* GUI trap handler *)
+PROCEDURE Trap(adr: INTEGER; desc: ARRAY OF CHAR);
+VAR mod: Modules.Module;  line: INTEGER;  proc: Modules.ModuleName;
+BEGIN
+  Modules.Locate(adr, mod, line, proc);
+  Texts.WriteLn(W);
+  Texts.WriteString(W, "  TRAP ");  Texts.WriteString(W, desc);
+  IF mod = NIL THEN
+    Texts.WriteString(W, " at address ");
+    Texts.WriteHex(W, adr);  Texts.WriteString(W, "H.")
+  ELSE Texts.WriteString(W, " in "); Texts.WriteString(W, mod.name);
+    IF line < 0 THEN Texts.WriteString(W, " at offset ");
+      Texts.WriteHex(W, adr - ORD(mod));  Texts.WriteString(W, "H.")
+    ELSE Texts.WriteString(W, " on line "); Texts.WriteInt(W, line, 1);
+    Texts.WriteString(W, " in "); Texts.WriteString(W, proc);
+    END
+  END;
+  Texts.WriteLn(W);  Texts.Append(Oberon.Log, W.buf);
+  Oberon.Reset
+END Trap;
 
+(*
 PROCEDURE Syslog(s: ARRAY OF BYTE);
 VAR i: INTEGER;  eatlf: BOOLEAN;
 BEGIN i := 0;  eatlf := FALSE;
@@ -465,12 +486,10 @@ BEGIN i := 0;  eatlf := FALSE;
     INC(i)
   END
 END Syslog;
-
+*)
 
 BEGIN Texts.OpenWriter(W);
   Oberon.OpenLog(TextFrames.Text("")); OpenViewers;
-  H.SetSyslog(Syslog);
-  (*
-  Kernel.Install(SYSTEM.ADR(Trap), 20H); Kernel.Install(SYSTEM.ADR(Abort), 0);
-  *)
+  H.SetTrapHandler(Trap);
+(*Kernel.Install(SYSTEM.ADR(Trap), 20H); Kernel.Install(SYSTEM.ADR(Abort), 0);*)
 END System.

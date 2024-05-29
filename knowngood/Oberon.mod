@@ -405,7 +405,7 @@ PROCEDURE Loop*;
 VAR V: Viewers.Viewer; M: InputMsg; N: ControlMsg;
      prevX, prevY, X, Y, t: INTEGER; keys: SET; ch: CHAR;
 BEGIN
-  REPEAT
+  REPEAT H.SetExitCode(0);
     Input.Mouse(keys, X, Y);
     IF Input.Available() > 0 THEN Input.Read(ch);
       IF ch = ESC THEN
@@ -438,13 +438,14 @@ BEGIN
       END
     END
   UNTIL WinGui.WmQuit;
-  H.ExitToHost
+  H.Exit
 END Loop;
 
 
 PROCEDURE Reset*;
 BEGIN
   IF CurTask.state = active THEN Remove(CurTask) END;
+  H.ResetTrap;
   SYSTEM.LDREG(4, Modules.StackOrg); (*reset stack pointer*)
   Loop
 END Reset;
@@ -476,6 +477,5 @@ BEGIN Texts.OpenWriter(W);
     ELSIF Modules.res = 7 THEN wsn(" insufficient space")
     END
   END;
-  H.SetReset(Reset);
-  Mod := NIL; Loop
+  Mod := NIL;  Loop
 END Oberon.

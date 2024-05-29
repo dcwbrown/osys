@@ -395,14 +395,10 @@ VAR mod: Module; line: INTEGER; proc: ModuleName;
 BEGIN
   Locate(adr, mod, line, proc);
   H.ws("  Trap: ");  H.ws(desc);
-  IF mod = NIL THEN
-    H.ws(" at address ");  H.wh(adr);  H.wsn("H.")
-  ELSE
-    H.ws(" in module "); H.ws(mod.name);
-    IF line < 0 THEN
-      H.ws(" at offset "); H.wh(adr - ORD(mod));  H.wsn("H.")
-    ELSE
-      H.ws(" on line "); H.wi(line); H.ws(" in "); H.ws(proc); H.wsn(".")
+  IF mod = NIL THEN H.ws(" at address ");  H.wh(adr);  H.wsn("H.")
+  ELSE H.ws(" in module "); H.ws(mod.name);
+    IF line < 0 THEN H.ws(" at offset "); H.wh(adr - ORD(mod));  H.wsn("H.")
+    ELSE H.ws(" on line "); H.wi(line); H.ws(" in "); H.ws(proc); H.wsn(".")
     END
   END
 END HandleTrap;
@@ -417,7 +413,7 @@ BEGIN
   Files.Init;
   ActCnt      := 0;
   PreloadNext := H.Preload.MadrPreload;
-  (*H.SetTrapHandler(HandleTrap);*)
+  H.SetTrapHandler(HandleTrap);
 END Init;
 
 BEGIN Init;
@@ -428,8 +424,7 @@ BEGIN Init;
     IF res = 0 THEN P END
   END;
 
-  ASSERT(res = 0);
-  (*
+  (*LED(res);  REPEAT UNTIL FALSE*)  (*only if load fails*)
   IF res # 0 THEN
     H.ws("Load error: "); H.ws(Importing);
     IF    res = 1 THEN H.wsn(" module not found")
@@ -441,8 +436,5 @@ BEGIN Init;
     END;
     H.SetExitCode(res)
   END;
-  *)
-
-  H.ExitToHost
-  (*LED(res);  REPEAT UNTIL FALSE*)  (*only if load fails*)
+  H.Exit
 END Modules.
