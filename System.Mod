@@ -413,7 +413,7 @@ BEGIN
   menu := TextFrames.NewMenu("System.Tool", StandardMenu);
   main := TextFrames.NewText(TextFrames.Text("System.Tool"), 0);
   toolV := MenuViewers.New(menu, main, TextFrames.menuH, X, Y);
-  Texts.WriteString(W, "To exit, middle click (press scoll wheel) on 'System.Quit' in the title bar.");
+  Texts.WriteString(W, "To exit, middle click (press scroll wheel) on 'System.Quit' in the topmost menu bar.");
   EndLine;
 END OpenViewers;
 

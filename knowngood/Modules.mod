@@ -132,13 +132,6 @@ BEGIN
 END LinkImport;
 
 
-PROCEDURE GetString(VAR p: INTEGER; VAR s: ARRAY OF CHAR);
-VAR i: INTEGER; ch: CHAR;
-BEGIN i := 0;
-  REPEAT SYSTEM.GET(p, ch);  s[i] := ch;  INC(p);  INC(i) UNTIL ch = 0X
-END GetString;
-
-
 PROCEDURE Preload;  (* Load all modules from EXE preload section *)
 VAR
   hdr, mod:  Module;
@@ -166,12 +159,12 @@ BEGIN
 
       (* Load Imported modules array - for preload Link guarantees all will be present *)
       nimpmods := 0;
-      GetString(p, impname);
+      H.GetString(p, impname);
       WHILE impname[0] # 0X DO
         SYSTEM.GET(p, impkey);  INC(p, 8);
         impmod := FindModule(impname);  ASSERT(impmod # NIL);  ASSERT(impmod.key = impkey);
         import[nimpmods] := impmod;  INC(nimpmods);
-        GetString(p, impname);
+        H.GetString(p, impname);
       END;
 
       (* Link imports *)
@@ -371,19 +364,19 @@ BEGIN
   IF (mod # NIL) & (mod.lines > 0) THEN
     offset := adr - ORD(mod);
     p := ORD(mod) + mod.lines;
-    GetString(p, name);
+    H.GetString(p, name);
     WHILE name[0] # 0X DO
-      SYSTEM.GET(p, l);  SYSTEM.GET(p+8, pc);  INC(p, 16);
-      H.GetUnsigned(p, i);
+      SYSTEM.GET(p, l);  SYSTEM.GET(p+8, pc);  INC(p, 16);  H.GetUnsigned(p, i);
       WHILE (i # 0) & (offset > pc + i) DO
         INC(pc, i);  H.GetUnsigned(p, i);  INC(l, i);  H.GetUnsigned(p, i)
       END;
       IF (offset > pc) & (offset <= pc + i) THEN
         IF name = mod.name THEN proc := "<init>" ELSE proc := name END;
-        line := l
+        line := l;
+        name[0] := 0X;  (* Terminate loop *)
       ELSE
-        GetString(p, name)
-      END;
+        H.GetString(p, name)
+      END
     END
   END
 END Locate;

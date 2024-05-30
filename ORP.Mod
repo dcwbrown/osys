@@ -719,6 +719,15 @@ BEGIN
   END
 RETURN result END Alignment;
 
+PROCEDURE Align(VAR adr: INTEGER; size: INTEGER);
+(* Advance adr to be aligned suitably for a variable of given size *)
+BEGIN
+  IF    size > 4 THEN adr := (adr + 7) DIV 8 * 8
+  ELSIF size > 2 THEN adr := (adr + 3) DIV 4 * 4
+  ELSIF size > 1 THEN adr := (adr + 1) DIV 2 * 2
+  END
+END Align;
+
 PROCEDURE RecordType(VAR type: ORB.Type; native: BOOLEAN);
 VAR obj, obj0, new, bot, base: ORB.Object;
     typ, tp: ORB.Type;
@@ -760,24 +769,19 @@ BEGIN NEW(typ);
       ELSIF sym = ORS.comma THEN ORS.Get(sym)
       END
     END;
-    Check(ORS.colon, "colon expected");  Type(tp);
+    Check(ORS.colon, "colon expected");
+    Type(tp);
     IF (tp.form = ORB.Array) & (tp.len < 0) THEN ORS.Mark("dyn array not allowed") END;
-
-    (*IF tp.size > 1 THEN offset := (offset + 7) DIV 8 * 8 END;*)
-
-    (* Align suitably for size of field *)
-    align := Alignment(tp);
-    IF    align > 4 THEN offset := (offset + 7) DIV 8 * 8
-    ELSIF align > 2 THEN offset := (offset + 3) DIV 4 * 4
-    ELSIF align > 1 THEN offset := (offset + 1) DIV 2 * 2
-    END;
-
+    Align(offset, Alignment(tp));
     offset := offset + n * tp.size;  off := offset;  obj0 := obj;
-    WHILE obj0 # bot DO obj0.type := tp;  obj0.lev := 0;  off := off - tp.size;  obj0.val := off;  obj0 := obj0.next END;
+    WHILE obj0 # bot DO
+      obj0.type := tp;  obj0.lev := 0;  off := off - tp.size;
+      obj0.val := off;  obj0 := obj0.next
+    END;
     bot := obj;
     IF sym = ORS.semicolon THEN ORS.Get(sym) ELSIF sym # ORS.end THEN ORS.Mark(" ;  or END") END
   END;
-  typ.form := ORB.Record;  typ.dsc := bot;  typ.size := (offset + 7) DIV 8 * 8;
+  typ.form := ORB.Record;  typ.dsc := bot;  typ.size := offset;
   type := typ
 END RecordType;
 
@@ -910,16 +914,6 @@ BEGIN type := ORB.intType;  (*sync*)
 END Type0;
 
 
-PROCEDURE AlignUp(VAR adr: INTEGER; size: INTEGER);
-(* Advance adr to be aligned suitably for a variable of given size *)
-BEGIN
-  IF    size > 4 THEN adr := (adr + 7) DIV 8 * 8
-  ELSIF size > 2 THEN adr := (adr + 3) DIV 4 * 4
-  ELSIF size > 1 THEN adr := (adr + 1) DIV 2 * 2
-  END
-END AlignUp;
-
-
 PROCEDURE Declarations(VAR varsize: INTEGER);
 VAR obj, first: ORB.Object;
   x: X64.Item; tp: ORB.Type; ptbase: PtrBase;
@@ -980,7 +974,7 @@ BEGIN (*sync*) pbsList := NIL;
       obj := first;
       WHILE obj # NIL DO
         obj.type := tp;  obj.lev  := level;
-        AlignUp(varsize, tp.size);
+        Align(varsize, tp.size);
         obj.val := varsize;  varsize := varsize + obj.type.size;
         IF obj.expo THEN obj.exno := 1 END;
         obj := obj.next

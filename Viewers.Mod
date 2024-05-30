@@ -25,8 +25,8 @@ MODULE Viewers; (*JG 14.9.90 / NW 15.9.2013*)
 
   PROCEDURE AllocateTitleViewer*(V: Viewer);
   BEGIN TitleViewer := V;
-    V.X := 0;  V.W := Display.Width;
-    V.Y := DH; V.H := Display.Height - DH
+    V.X := 0;      V.W := Display.Width;
+    V.Y := DH + 1; V.H := Display.Height - DH - 1
   END AllocateTitleViewer;
 
   PROCEDURE Open* (V: Viewer; X, Y: INTEGER);
@@ -207,7 +207,7 @@ MODULE Viewers; (*JG 14.9.90 / NW 15.9.2013*)
   END Broadcast;
 
 BEGIN backup := NIL; curW := 0; minH := 1;
-  DH := Display.Height - (Fonts.Default.height + 1);  (* Reserve space for host title bar *)
+  DH := Display.Height - (Fonts.Default.height + 2);  (* Reserve space for host title bar *)
   NEW(FillerViewer); FillerViewer.X := 0; FillerViewer.W := inf; FillerViewer.Y := 0; FillerViewer.H := DH;
   FillerViewer.next := FillerViewer;
   NEW(FillerTrack);

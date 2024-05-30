@@ -5,6 +5,7 @@
 *.x64
 *.code
 t[0-9]
+projects/*
 knowngood/Oberon.exe
 knowngood.prev*/*
 background docs/*

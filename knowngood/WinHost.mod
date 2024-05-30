@@ -473,10 +473,13 @@ END DumpMem;
 
 (* -------------------- Pulling variables out of memory --------------------- *)
 
-PROCEDURE GetString(VAR p: INTEGER; VAR s: ARRAY OF CHAR);
+PROCEDURE GetString*(VAR p: INTEGER; VAR s: ARRAY OF CHAR);
 VAR i: INTEGER; ch: CHAR;
 BEGIN i := 0;
-  REPEAT SYSTEM.GET(p, ch);  s[i] := ch;  INC(p);  INC(i) UNTIL ch = 0X
+  REPEAT SYSTEM.GET(p, ch);
+    IF i < LEN(s) THEN s[i] := ch END;
+    INC(p);  INC(i)
+  UNTIL ch = 0X
 END GetString;
 
 
@@ -561,9 +564,7 @@ BEGIN  (* retoffset is callers local var size *)
   IF retoffset < 0 THEN retoffset := -32 END;  (* Address our own return address *)
   SYSTEM.GET(SYSTEM.ADR(LEN(desc)) + 16 + retoffset, adr);
   INC(TrapDepth);
-  IF TrapDepth > 1 THEN
-    wsn("  Nested trap.")
-  ELSIF TrapHandler = NIL THEN
+  IF (TrapHandler = NIL) OR (TrapDepth > 1) THEN
     wn;  ws("  Trap: ");  ws(desc);  ws(" at address "); wh(adr); wsn("H.")
   ELSE
     TrapHandler(adr, desc);
@@ -575,7 +576,7 @@ PROCEDURE NewPointerHandler();
 BEGIN Trap(0, "New pointer handler not istalled") END NewPointerHandler;
 
 PROCEDURE AssertionFailureHandler();
-BEGIN Trap(0, "Assertion failure")      END AssertionFailureHandler;
+BEGIN Trap(0, "Assertion failure")       END AssertionFailureHandler;
 
 PROCEDURE ArraySizeMismatchHandler();
 BEGIN Trap(0, "Array size mismatch")     END ArraySizeMismatchHandler;

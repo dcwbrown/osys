@@ -392,8 +392,9 @@ BEGIN
 END LinkImport;
 
 
-PROCEDURE LoadModule(f: Files.File): Modules.Module;
+PROCEDURE LoadModule(fn: ARRAY OF CHAR): Modules.Module;
 VAR
+  f:       Files.File;
   mod:     Modules.Module;
   R:       Files.Rider;
   i, m:    INTEGER;
@@ -410,7 +411,8 @@ VAR
   (* debug logging only *)
   mod2:    Modules.Module;
 BEGIN
-  ASSERT(f # NIL);
+  f := Files.Old(fn);
+  IF f = NIL THEN ws("Cannot load ");  ws(fn);  wn; ASSERT(FALSE) END;
   Files.Set(R, f, 0);
   mod := SYSTEM.VAL(Modules.Module, SYSTEM.ADR(CoreMem[CoreSize]));
   Files.ReadVar(R, mod^);
@@ -482,10 +484,10 @@ BEGIN
   CoreSize       := 0;
   CoreEntryPoint := 0;
 
-  WinHostHdr := LoadModule(Files.Old("WinHost.x64"));
-  KernelHdr  := LoadModule(Files.Old("Kernel.x64"));
-  FilesHdr   := LoadModule(Files.Old("Files.x64"));
-  ModulesHdr := LoadModule(Files.Old("Modules.x64"));
+  WinHostHdr := LoadModule("WinHost.x64");
+  KernelHdr  := LoadModule("Kernel.x64");
+  FilesHdr   := LoadModule("Files.x64");
+  ModulesHdr := LoadModule("Modules.x64");
 
   WinHostHdr.next := SYSTEM.VAL(Modules.Module, OberonCoreBase + ORD(KernelHdr)  - SYSTEM.ADR(CoreMem));
   KernelHdr.next  := SYSTEM.VAL(Modules.Module, OberonCoreBase + ORD(FilesHdr)   - SYSTEM.ADR(CoreMem));
