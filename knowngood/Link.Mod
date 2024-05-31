@@ -133,10 +133,22 @@ TYPE
     User32Dllname:   ARRAY 12 OF CHAR;  (*  "user32.dll"   *)
   END;
 
+  IHDR = RECORD  (* PNG file header *)
+    width:       SYSTEM.CARD32;
+    height:      SYSTEM.CARD32;
+    bitdepth:    BYTE;
+    coltype:     BYTE;
+    compression: BYTE;
+    filter:      BYTE;
+    interlace:   BYTE
+  END;
+
   BootstrapBuffer = RECORD
     Header:  Modules.ModDesc;
     Content: ARRAY 10000H OF BYTE
   END;
+
+
 
 
 VAR
@@ -168,6 +180,9 @@ VAR
   CoreEntryPoint: INTEGER;  (* Relative to OberonCoreBase *)
   CoreSize:       INTEGER;
   CoreHostVars:   INTEGER;  (* Loaded address of vars relative to OberonCoreBase *)
+
+  IconPng: Files.File;
+  IconHdr: IHDR;
 
 
 
@@ -229,8 +244,9 @@ BEGIN
 END WriteSectionHeader;
 
 
-PROCEDURE WritePEHeader(ImageBase,   HeaderSize,
+PROCEDURE WritePEHeader(ImageBase,   HeaderSize,  numsections,
                         FadrPreload, RvaPreload,
+                        FadrIcon,    RvaIcon,
                         FadrImport,  RvaImport,
                         FadrModules, RvaModules: INTEGER);
 CONST
@@ -259,11 +275,7 @@ BEGIN
 
   (* COFF file header*)
   hdr.machine              := 8664H;  (* AMD64/Intel 64 *)
-  IF FadrImport > FadrPreload THEN
-    hdr.numberOfSections   := 3
-  ELSE
-    hdr.numberOfSections   := 2
-  END;
+  hdr.numberOfSections     := numsections;
   hdr.sizeOfOptionalHeader := 240;
   hdr.characteristics      := 200H  (* Windows debug information stripped *)
                             + 20H   (* Large address aware                *)
@@ -306,14 +318,24 @@ BEGIN
   Files.WriteBytes(Exe, hdr, 0, SYSTEM.SIZE(PEheader));
 
   (* Write section headers *)
-  IF FadrImport > FadrPreload THEN
+  IF FadrIcon > FadrPreload THEN
     WriteSectionHeader("Preload",
-                     RvaImport  - RvaPreload,    (* Size in memory *)
-                     FadrImport - FadrPreload,   (* Size on disk   *)
+                     RvaIcon  - RvaPreload,    (* Size in memory *)
+                     FadrIcon - FadrPreload,   (* Size on disk   *)
                      RvaPreload,
                      FadrPreload,
                      SReadable + SInitialised);
   END;
+
+  IF FadrImport > FadrIcon THEN
+    WriteSectionHeader("Icon",
+                     RvaImport  - RvaIcon,    (* Size in memory *)
+                     FadrImport - FadrIcon,   (* Size on disk   *)
+                     RvaIcon,
+                     FadrIcon,
+                     SReadable + SInitialised);
+  END;
+
 
   WriteSectionHeader("Imports",
                      RvaModules - RvaImport,    (* Section size in memory *)
@@ -699,27 +721,46 @@ BEGIN
 END CopyFile;
 
 
+PROCEDURE MakeIconResource(fadr: INTEGER): INTEGER;
+BEGIN
+  Files.Set(Exe, ExeFile, fadr);
+  Files.WriteString(Exe, "Dummy icon resoure.");
+
+RETURN Files.Pos(Exe) - fadr END MakeIconResource;
+
+
 PROCEDURE Generate*(PEname: ARRAY OF CHAR);
-CONST NumSections = 2;
 VAR
   emb:         EmbeddedModule;
   prev1:       Files.FileName;
   prev2:       Files.FileName;
   prev3:       Files.FileName;
   res:         INTEGER;
-  HeaderSize:  INTEGER;    PreloadSize: INTEGER;
+  HeaderSize:  INTEGER;
+  FadrPreload: INTEGER;    RvaPreload:  INTEGER;    PreloadSize: INTEGER;
+  FadrIcon:    INTEGER;    RvaIcon:     INTEGER;    IconSize:    INTEGER;
   FadrImport:  INTEGER;    RvaImport:   INTEGER;
-  FadrPreload: INTEGER;    RvaPreload:  INTEGER;
   FadrModules: INTEGER;    RvaModules:  INTEGER;
   ImageBase:   INTEGER;    MadrPreload: INTEGER;
+  numsections: INTEGER;
 BEGIN
   ExeFile := Files.New(PEname);
   Files.Set(Exe, ExeFile, 0);
 
   LinkInnerCore;
 
+  (* Section order:                   *)
+  (*   o  Preload binaries (optional) *)
+  (*   o  Icon resource    (optional) *)
+  (*   o  Import table                *)
+  (*   o  Inner core                  *)
+
+  numsections := 2;
+  IF FirstPreload # NIL THEN INC(numsections) END;
+  IF IconPng      # NIL THEN INC(numsections) END;
+
   HeaderSize := FileAlign(SYSTEM.SIZE(PEheader)
-              + NumSections * SYSTEM.SIZE(SectionHeader));
+              + numsections * SYSTEM.SIZE(SectionHeader));
 
   FadrPreload := FileAlign(HeaderSize);
   RvaPreload  := MemAlign(HeaderSize);
@@ -740,8 +781,14 @@ BEGIN
     INC(PreloadSize, 16);
   END;
 
-  FadrImport := FileAlign(FadrPreload + PreloadSize);
-  RvaImport  := MemAlign(RvaPreload + PreloadSize);
+  (* Copy icon section (as PE resources) *)
+  IconSize := 0;
+  FadrIcon := FileAlign(FadrPreload + PreloadSize);
+  RvaIcon  := MemAlign(RvaPreload + PreloadSize);
+  IF IconPng # NIL THEN IconSize := MakeIconResource(FadrIcon) END;
+
+  FadrImport := FileAlign(FadrIcon + IconSize);
+  RvaImport  := MemAlign(RvaIcon + IconSize);
   BuildImportTables(RvaImport);
 
   (* Determine file and virtual addresses *)
@@ -768,8 +815,9 @@ BEGIN
   Files.WriteBytes(Exe, ImportHints, 0, ImportHintSize);
   ASSERT(ImportSize = Align(Files.Pos(Exe), 16) - FadrImport);
 
-  WritePEHeader(ImageBase,   HeaderSize,
+  WritePEHeader(ImageBase,   HeaderSize,  numsections,
                 FadrPreload, RvaPreload,
+                FadrIcon,    RvaIcon,
                 FadrImport,  RvaImport,
                 FadrModules, RvaModules);
 
@@ -797,7 +845,7 @@ BEGIN
 END Generate;
 
 
-(* ---------------------------- Embedded modules ---------------------------- *)
+(* --------------------------- Preloaded modules ---------------------------- *)
 
 PROCEDURE IsPreloaded(name: ARRAY OF CHAR): BOOLEAN;
 VAR emb: EmbeddedModule;
@@ -864,6 +912,73 @@ BEGIN
 END AddPreloadModule;
 
 
+(* -------------------- Check for icon file <target>.png -------------------- *)
+
+PROCEDURE ReadType(VAR r: Files.Rider; VAR s: ARRAY OF CHAR);
+VAR i: INTEGER;
+BEGIN i := 0;  WHILE i < 4 DO Files.Read(r, s[i]); INC(i) END;  s[i] := 0X
+END ReadType;
+
+PROCEDURE SwapDW(x: INTEGER): INTEGER;
+RETURN
+    x            MOD 100H * 1000000H
+  + x DIV 100H   MOD 100H * 10000H
+  + x DIV 10000H MOD 100H * 100H
+  + x DIV 1000000H
+END SwapDW;
+
+PROCEDURE LoadPngHeader*(f: Files.File; VAR hdr: IHDR);
+VAR
+  r:   Files.Rider;
+  i:   INTEGER;
+  len: SYSTEM.CARD32  ;
+  typ: ARRAY 5 OF CHAR;
+  end: BOOLEAN;
+BEGIN
+  H.ZeroFill(hdr);  hdr.width := 0FFFFFFFFH;  (* Mark as not found *)
+  Files.Set(r, f, 0);
+  Files.ReadInt(r, i);  end := r.res # 0;
+  IF ~end THEN end := i # 0A1A0A0D474E5089H END;
+  IF ~end THEN
+    REPEAT
+      Files.ReadVar(r, len);  end := r.res # 0;
+      IF ~end THEN len := SwapDW(len);  ReadType(r, typ);  end := r.res # 0 END;
+      IF ~end THEN end := typ = "IEND" END;
+      IF ~end THEN
+        IF (typ = "IHDR") & (len = SYSTEM.SIZE(IHDR)) THEN
+          Files.ReadVar(r, hdr);
+          IF r.res = 0 THEN
+            hdr.width  := SwapDW(hdr.width);  hdr.height := SwapDW(hdr.height)
+          ELSE
+            hdr.width := 0FFFFFFFFH   (* Mark as not found *)
+          END;
+          end := TRUE
+        ELSE
+          Files.Set(r, f, Files.Pos(r) + len + 4);  (* skip content and checksum *)
+        END
+      END
+    UNTIL end
+  END
+END LoadPngHeader;
+
+
+PROCEDURE CheckIcon(target: ARRAY OF CHAR);
+VAR fn: ARRAY 64 OF CHAR;
+BEGIN
+  fn := target;  H.Append(".png", fn);  IconPng := Files.Old(fn);
+  (*IF IconPng = NIL THEN ws("(no icon png '"); ws(fn); wsn("' found.)") END;*)
+  IF IconPng # NIL THEN
+    LoadPngHeader(IconPng, IconHdr);
+    IF (IconHdr.width       # 256)  OR (IconHdr.height  # 256)
+    OR (IconHdr.bitdepth    # 8)    OR (IconHdr.coltype # 6)
+    OR (IconHdr.compression # 0) THEN
+      IconPng := NIL;
+      ws("(icon png '"); ws(fn); wsn("' unsuitable.)")
+    END
+  END
+END CheckIcon;
+
+
 PROCEDURE ParseTarget(
   VAR r: Texts.Reader;
   VAR ch: CHAR;
@@ -910,6 +1025,8 @@ BEGIN
     AddPreloadModule(modname, 0);
     (* Special knowledge: Oberon.Mod loads System.Mod *)
     IF IsPreloaded("Oberon") THEN AddPreloadModule("System", 0) END;
+
+    CheckIcon(target);
 
     H.Append(".exe", target);
     Generate(target);

@@ -459,7 +459,7 @@ END WriteLn;
 PROCEDURE WriteString* (VAR W: Writer; s: ARRAY OF CHAR);
 VAR i: INTEGER;
 BEGIN i := 0;
-  WHILE s[i] >= " " DO Write(W, s[i]); INC(i) END
+  WHILE (i < LEN(s)) & (s[i] >= " ") DO Write(W, s[i]); INC(i) END
 END WriteString;
 
 PROCEDURE WriteInt* (VAR W: Writer; x, n: LONGINT);
