@@ -149,8 +149,6 @@ TYPE
   END;
 
 
-
-
 VAR
   W:            Texts.Writer;
   FileName:     ARRAY 512 OF CHAR;
@@ -311,6 +309,10 @@ BEGIN
   hdr.numberOfRvaAndSizes     := 16;
 
   (* Optional header data directories *)
+  IF IconPng # NIL THEN
+    hdr.resourceTableRVA      := RvaIcon;
+    hdr.resourceTableSize     := RvaImport - RvaIcon;
+  END;
   hdr.importTableRVA          := RvaImport;
   hdr.importTableSize         := RvaModules - RvaImport;
 
@@ -335,7 +337,6 @@ BEGIN
                      FadrIcon,
                      SReadable + SInitialised);
   END;
-
 
   WriteSectionHeader("Imports",
                      RvaModules - RvaImport,    (* Section size in memory *)
@@ -630,7 +631,7 @@ BEGIN
   s.n := 0;  INC(s.dll);
   AddImport(Idt.User32Lookups, s, "AdjustWindowRectEx");
   AddImport(Idt.User32Lookups, s, "BeginPaint");
-  AddImport(Idt.User32Lookups, s, "CreateIconIndirect");
+  AddImport(Idt.User32Lookups, s, "CreateIconFromResourceEx");
   AddImport(Idt.User32Lookups, s, "CreateWindowExW");
   AddImport(Idt.User32Lookups, s, "DefWindowProcW");
   AddImport(Idt.User32Lookups, s, "DispatchMessageW");
@@ -670,7 +671,7 @@ BEGIN
 END BuildImportTables;
 
 
-PROCEDURE PresetWinHost(FadrModules, ImageBase, MadrPreload: INTEGER);
+PROCEDURE PresetWinHost(FadrModules, ImageBase, MadrPreload, IconSize, RvaIcon: INTEGER);
 VAR
   varpos:      INTEGER;
   commit:      INTEGER;
@@ -683,6 +684,10 @@ BEGIN
   preloadvars.ImgHeader   := OberonCoreBase;
   preloadvars.MadrPreload := MadrPreload;
   preloadvars.CoreSize    := CoreSize;
+  IF IconSize > 0 THEN
+    preloadvars.MadrIcon  := ImageBase + RvaIcon + 0B4H;  (* See MakeIconResource for 0B4H *)
+    preloadvars.IconSize  := IconSize
+  END;
 
   SYSTEM.COPY(SYSTEM.ADR(preloadvars), SYSTEM.ADR(CoreMem[varpos]), SYSTEM.SIZE(H.PreLoadVars));
   INC(varpos, SYSTEM.SIZE(H.PreLoadVars));
@@ -697,8 +702,6 @@ BEGIN
   SYSTEM.COPY(SYSTEM.ADR(Idt.Gdi32Lookups), SYSTEM.ADR(CoreMem[varpos]), Gdi32ImportCount * 8);
 END PresetWinHost;
 
-
-(* -------------------------- Generate one target --------------------------- *)
 
 PROCEDURE CopyFile(f: Files.File; VAR r2: Files.Rider; size: INTEGER);
 VAR
@@ -721,13 +724,95 @@ BEGIN
 END CopyFile;
 
 
-PROCEDURE MakeIconResource(fadr: INTEGER): INTEGER;
-BEGIN
-  Files.Set(Exe, ExeFile, fadr);
-  Files.WriteString(Exe, "Dummy icon resoure.");
+(* ---------------- Windows PE resource section construction ---------------- *)
 
+PROCEDURE WriteWord(i: INTEGER);
+BEGIN Files.WriteByte(Exe, i); Files.WriteByte(Exe, i DIV 100H) END WriteWord;
+
+PROCEDURE WriteDWord(i: INTEGER);
+BEGIN WriteWord(i); WriteWord(i DIV 10000H) END WriteDWord;
+
+PROCEDURE WriteResourceDirectoryTable(numids: INTEGER);  (* 16 bytes *)
+VAR i: INTEGER;
+BEGIN
+  Files.WriteInt(Exe, 0);  (* characteristics and timestamp *)
+  WriteDWord(0);           (* version *)
+  WriteWord(0);            (* # name entries *)
+  WriteWord(numids);       (* # id entries *)
+END WriteResourceDirectoryTable;
+
+PROCEDURE WriteResourceDirectoryEntry(id, offset: INTEGER); (* 8 bytes *)
+BEGIN
+  WriteDWord(id);
+  WriteDWord(offset)
+END WriteResourceDirectoryEntry;
+
+PROCEDURE WriteResourceDataEntry(rva, size: INTEGER);  (* 16 bytes *)
+BEGIN
+  WriteDWord(rva);
+  WriteDWord(size);
+  Files.WriteInt(Exe, 1033);  (* codepage and 0 (reserved) *)
+END WriteResourceDataEntry;
+
+PROCEDURE WriteICONDIR(count: INTEGER); (* 6 bytes *)
+VAR i: INTEGER;
+BEGIN
+  WriteWord(0);     (* reserved *)
+  WriteWord(1);     (* type     *)
+  WriteWord(count); (* # icons  *)
+END WriteICONDIR;
+
+PROCEDURE WriteIconDirEntry(width, height, size, index: INTEGER); (* 16 bytes *)
+VAR i: INTEGER;
+BEGIN
+  Files.WriteByte(Exe, width  MOD 256);
+  Files.WriteByte(Exe, height MOD 256);
+  Files.WriteByte(Exe, 0);  (* no colour palette *)
+  Files.WriteByte(Exe, 0);  (* reserved *)
+  WriteWord(1);  (* colour planes *)
+  WriteWord(8);  (* bits per pixel *)
+  WriteDWord(size);
+  WriteDWord(index)
+END WriteIconDirEntry;
+
+PROCEDURE WriteRESDIR(width, height, size, ordinal: INTEGER); (* 14 bytes *)
+VAR i: INTEGER;
+BEGIN
+  Files.WriteByte(Exe, width  MOD 256);
+  Files.WriteByte(Exe, height MOD 256);
+  Files.WriteByte(Exe, 0);  (* no colour palette *)
+  Files.WriteByte(Exe, 0);  (* reserved *)
+  WriteWord(1);  (* colour planes *)
+  WriteWord(8);  (* bits per pixel *)
+  WriteDWord(size);
+  WriteWord(ordinal)
+END WriteRESDIR;
+
+PROCEDURE MakeIconResource(fadr, rva: INTEGER): INTEGER;
+VAR size: INTEGER;
+BEGIN
+  size := Files.Length(IconPng);
+  Files.Set(Exe, ExeFile, fadr);
+  (*00*) WriteResourceDirectoryTable(2);
+  (*10*) WriteResourceDirectoryEntry(3,    80000020H); (* -> 2d lev for icons *)
+  (*18*) WriteResourceDirectoryEntry(14,   80000038H); (* -> 2d lev for icon group *)
+  (*20*) WriteResourceDirectoryTable(1);
+  (*30*) WriteResourceDirectoryEntry(1,    80000050H); (* -> lang table for icon *)
+  (*38*) WriteResourceDirectoryTable(1);
+  (*48*) WriteResourceDirectoryEntry(1,    80000068H); (* -> lang table for icon group *)
+  (*50*) WriteResourceDirectoryTable(1);
+  (*60*) WriteResourceDirectoryEntry(1033,       80H); (* -> resource data entry for icon *)
+  (*68*) WriteResourceDirectoryTable(1);
+  (*78*) WriteResourceDirectoryEntry(1,          90H); (* -> resource data entry for icon group *)
+  (*80*) WriteResourceDataEntry(rva + 0B4H, size + 0B4H);  (* Icon data at 0B4H *)
+  (*90*) WriteResourceDataEntry(rva + 0A0H, 20);           (* Icon group at 0A0H *)
+  (*A0*) WriteICONDIR(1);  (* 1 icon *)
+  (*A6*) WriteRESDIR(256, 256, size, 1);
+  (*B4*) CopyFile(IconPng, Exe, size);
 RETURN Files.Pos(Exe) - fadr END MakeIconResource;
 
+
+(* -------------------------- Generate one target --------------------------- *)
 
 PROCEDURE Generate*(PEname: ARRAY OF CHAR);
 VAR
@@ -785,7 +870,7 @@ BEGIN
   IconSize := 0;
   FadrIcon := FileAlign(FadrPreload + PreloadSize);
   RvaIcon  := MemAlign(RvaPreload + PreloadSize);
-  IF IconPng # NIL THEN IconSize := MakeIconResource(FadrIcon) END;
+  IF IconPng # NIL THEN IconSize := MakeIconResource(FadrIcon, RvaIcon) END;
 
   FadrImport := FileAlign(FadrIcon + IconSize);
   RvaImport  := MemAlign(RvaIcon + IconSize);
@@ -808,7 +893,7 @@ BEGIN
   (* of initialising Files, Kernel and WinHost.        *)
   MadrPreload := 0;
   IF PreloadSize > 0 THEN MadrPreload := ImageBase + RvaPreload END;
-  PresetWinHost(FadrModules, ImageBase, MadrPreload);
+  PresetWinHost(FadrModules, ImageBase, MadrPreload, IconSize, RvaIcon);
 
   spos(FadrImport);
   Files.WriteBytes(Exe, Idt, 0, SYSTEM.SIZE(ImportDirectoryTable));

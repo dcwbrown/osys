@@ -68,8 +68,8 @@ TYPE
     ImgHeader*:   INTEGER;  (* Image Oberon section loaded address *)
     MadrPreload*: INTEGER;  (* Start of preload section            *)
     CoreSize*:    INTEGER;  (* End of core allocation              *)
-    dummy4:       INTEGER;
-    dummy5:       INTEGER;
+    MadrIcon*:    INTEGER;
+    IconSize*:    INTEGER;
     dummy6:       INTEGER;
     dummy7:       INTEGER;
   END;
@@ -151,7 +151,7 @@ VAR
   (* Pre-loaded User32 imports *)
   AdjustWindowRectEx*:             PROCEDURE-(rect, style, menu, exstyle: INTEGER): INTEGER;
   BeginPaint*:                     PROCEDURE-(wn, ps: INTEGER): INTEGER;
-  CreateIconIndirect*:             PROCEDURE-(ic: INTEGER): INTEGER;
+  CreateIconFromResourceEx*:       PROCEDURE-(adr, size, ficon, ver, cx, cy, fl: INTEGER): INTEGER;
   CreateWindowExW*:                PROCEDURE-(es, cn, wn, st, x, y, w, h, pa, me, in, lp: INTEGER): INTEGER;
   DefWindowProcW*:                 PROCEDURE-(wn, ms, wp, lp: INTEGER): INTEGER;
   DispatchMessageW*:               PROCEDURE-(ms: INTEGER): INTEGER;

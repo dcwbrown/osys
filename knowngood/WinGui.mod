@@ -493,6 +493,15 @@ RETURN res END WndProc;
 
 (* -------------------------- Host window creation -------------------------- *)
 
+PROCEDURE MakeIcon(): INTEGER;
+VAR icon: INTEGER;
+BEGIN icon := 0;
+  IF H.Preload.MadrIcon # 0 THEN
+    icon := H.CreateIconFromResourceEx(H.Preload.MadrIcon, H.Preload.IconSize,
+                                       1, 30000H, 0, 0, 0);
+  END;
+RETURN icon END MakeIcon;
+
 PROCEDURE CreateWindow*(x, y, width, height: INTEGER);
 CONST
   (*
@@ -533,7 +542,7 @@ BEGIN
   class.style     := 3;  (* CS_HREDRAW | CS_VREDRAW *)
   class.wndproc   := SYSTEM.ADR(WndProc);
   class.className := SYSTEM.ADR(classname);
-  class.hIcon     := 0; (*MakeIcon();*)
+  class.hIcon     := MakeIcon();
   classAtom       := H.RegisterClassExW(SYSTEM.ADR(class));
   ASSERT(classAtom # 0);
 
