@@ -1,4 +1,4 @@
-MODULE ORG;  (* DCWB Jun 2023 to Feb 2024; Code generator for X64 *)
+MODULE ORG;  (* DCWB 2023/06 to 2024/05; Code generator for X64 *)
 
 (* Originally: N.Wirth, 16.4.2016 / 4.4.2017 / 31.5.2019  Oberon compiler; code generator for RISC*)
 
@@ -3138,8 +3138,8 @@ BEGIN
   (* Write compiled module *)
   fname := "";  H.Append(modid, fname);  H.Append(".x64", fname);
   codefile := Files.New(fname);  Files.Set(R, codefile, 0);
-  Files.WriteBytes(R, Hdr, 0, SYSTEM.SIZE(Modules.ModDesc));
-  Files.WriteBytes(R, X64.Text, SYSTEM.SIZE(Modules.ModDesc), X64.PC - SYSTEM.SIZE(Modules.ModDesc));
+  Files.WriteRaw(R, Hdr);
+  Files.WriteMem(R, SYSTEM.ADR(X64.Text) + SYSTEM.SIZE(Modules.ModDesc), X64.PC - SYSTEM.SIZE(Modules.ModDesc));
   Files.Register(codefile);
 
   BodyAnnotations := NIL

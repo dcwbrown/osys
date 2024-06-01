@@ -245,7 +245,7 @@ BEGIN
 
     IF res = 0 THEN
       nimpmods := 0;
-      Files.Set(R, F, 0);  Files.ReadVar(R, header);
+      Files.Set(R, F, 0);  Files.ReadRaw(R, header);
       IF header.magic # "Oberon5" THEN res := 4 ELSE
         name1     := header.name;
         Importing := name1;
@@ -279,9 +279,9 @@ BEGIN
       (* Link imports *)
 
       Files.Set(R, F, header.imprefs);
-      Files.ReadVar(R, impcount);
+      Files.ReadRaw(R, impcount);
       FOR i := 1 TO impcount DO
-        Files.ReadVar(R, offset);  Files.ReadVar(R, impno);  Files.ReadVar(R, modno);
+        Files.ReadRaw(R, offset);  Files.ReadRaw(R, impno);  Files.ReadRaw(R, modno);
         LinkImport(ORD(mod), offset, impno, modno, import)
       END;
 

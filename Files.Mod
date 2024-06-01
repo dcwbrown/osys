@@ -228,42 +228,35 @@ BEGIN
   SetFilePos(f, r.pos);
   IF len > 0 THEN
     res := H.ReadFile(f.handle, adr, len, SYSTEM.ADR(bytesread), 0);
-    INC(f.pos, bytesread);
-    INC(r.pos, bytesread)
+    INC(f.pos, bytesread);  INC(r.pos, bytesread)
   ELSE
     bytesread := 0;
   END;
   IF bytesread < len THEN
-    r.eof := TRUE;
-    r.res := len - bytesread;
+    r.eof := TRUE;  r.res := len - bytesread;
     ZeroMem(adr + bytesread, r.res)
   ELSE
     ASSERT(bytesread = len)
   END;
 END ReadMem;
 
-PROCEDURE ReadVar*(VAR r: Rider;  VAR var: ARRAY OF BYTE);
-BEGIN ReadMem(r, SYSTEM.ADR(var), LEN(var)) END ReadVar;
-
-PROCEDURE ReadBytes*(VAR r: Rider; VAR x: ARRAY OF BYTE; n: INTEGER);
-VAR bytesread: INTEGER;
-BEGIN ASSERT(n <= LEN(x)); ReadMem(r, SYSTEM.ADR(x), n) END ReadBytes;
-
+PROCEDURE ReadRaw*(VAR r: Rider;  VAR var: ARRAY OF BYTE);
+BEGIN ReadMem(r, SYSTEM.ADR(var), LEN(var)) END ReadRaw;
 
 PROCEDURE ReadByte*(VAR r: Rider; VAR x: BYTE);
-BEGIN ReadVar(r, x) END ReadByte;
+BEGIN ReadMem(r, SYSTEM.ADR(x), 1) END ReadByte;
 
 PROCEDURE Read*(VAR r: Rider; VAR ch: CHAR);
-BEGIN ReadVar(r, ch) END Read;
+BEGIN ReadMem(r, SYSTEM.ADR(ch), 1) END Read;
 
 PROCEDURE ReadInt*(VAR r: Rider; VAR x: INTEGER);
-BEGIN ReadVar(r, x) END ReadInt;
+BEGIN ReadMem(r, SYSTEM.ADR(x), 8) END ReadInt;
 
 PROCEDURE ReadSet*(VAR r: Rider; VAR s: SET);
-BEGIN ReadVar(r, s) END ReadSet;
+BEGIN ReadMem(r, SYSTEM.ADR(s), 8) END ReadSet;
 
 PROCEDURE ReadReal*(VAR r: Rider; VAR x: REAL);
-BEGIN ReadVar(r, x) END ReadReal;
+BEGIN ReadMem(r, SYSTEM.ADR(x), 8) END ReadReal;
 
 PROCEDURE ReadString*(VAR r: Rider; VAR x: ARRAY OF CHAR);
 VAR i: INTEGER;  ch: CHAR;
@@ -295,53 +288,38 @@ END ReadNum;
 
 (* ---------------------------------- Write --------------------------------- *)
 
-PROCEDURE WriteByte*(VAR r: Rider; x: BYTE);
+PROCEDURE WriteMem*(VAR r: Rider; adr, len: INTEGER);
 VAR res, byteswritten: INTEGER;  f: File;
 BEGIN
-  f := r.file;
-  SetFilePos(f, r.pos);
-  res := H.WriteFile(f.handle, SYSTEM.ADR(x), 1, SYSTEM.ADR(byteswritten), 0);
-  ASSERT(byteswritten = 1);
-  INC(r.pos);  f.pos := r.pos
-END WriteByte;
+  f := r.file;  SetFilePos(f, r.pos);
+  res := H.WriteFile(f.handle, adr, len, SYSTEM.ADR(byteswritten), 0);
+  ASSERT(byteswritten = len);
+  INC(r.pos, len);  f.pos := r.pos
+END WriteMem;
 
-PROCEDURE WriteBytes*(VAR r: Rider; x: ARRAY OF BYTE;  offset, length: INTEGER);
-VAR res, byteswritten: INTEGER;  f: File;
-BEGIN
-  IF length > 0 THEN
-    ASSERT(offset + length <= LEN(x));
-    f := r.file;
-    SetFilePos(f, r.pos);
-    res := H.WriteFile(f.handle, SYSTEM.ADR(x) + offset, length, SYSTEM.ADR(byteswritten), 0);
-    ASSERT(byteswritten = length);
-    INC(r.pos, length);  f.pos := r.pos
-  END
-END WriteBytes;
+PROCEDURE WriteRaw*(VAR r: Rider; var: ARRAY OF BYTE);
+BEGIN WriteMem(r, SYSTEM.ADR(var), LEN(var)) END WriteRaw;
+
+PROCEDURE WriteByte*(VAR r: Rider; x: BYTE);
+BEGIN WriteMem(r, SYSTEM.ADR(x), 1) END WriteByte;
 
 PROCEDURE Write*(VAR r: Rider; ch: CHAR);
-VAR res, byteswritten: INTEGER;  f: File;
-BEGIN
-  f := r.file;
-  SetFilePos(f, r.pos);
-  res := H.WriteFile(f.handle, SYSTEM.ADR(ch), 1, SYSTEM.ADR(byteswritten), 0);
-  ASSERT(byteswritten = 1);
-  INC(r.pos);  f.pos := r.pos
-END Write;
+BEGIN WriteMem(r, SYSTEM.ADR(ch), 1) END Write;
 
 PROCEDURE WriteInt*(VAR r: Rider; x: INTEGER);
-BEGIN WriteBytes(r, x, 0, 8) END WriteInt;
+BEGIN WriteMem(r, SYSTEM.ADR(x), 8) END WriteInt;
 
 PROCEDURE WriteSet*(VAR r: Rider; s: SET);
-BEGIN WriteInt(r, ORD(s)) END WriteSet;
+BEGIN WriteMem(r, SYSTEM.ADR(s), 8) END WriteSet;
 
 PROCEDURE WriteReal*(VAR r: Rider; x: REAL);
-BEGIN WriteInt(r, ORD(x)) END WriteReal;
+BEGIN WriteMem(r, SYSTEM.ADR(x), 8) END WriteReal;
 
 PROCEDURE WriteString*(VAR r: Rider; x: ARRAY OF CHAR);
 VAR l: INTEGER;
 BEGIN
   l := 0;  WHILE (l < LEN(x)) & (x[l] # 0X) DO INC(l) END;
-  IF l > 0 THEN WriteBytes(r, x, 0, l) END;
+  IF l > 0 THEN WriteMem(r, SYSTEM.ADR(x), l) END;
   Write(r, 0X)
 END WriteString;
 

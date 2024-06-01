@@ -238,7 +238,7 @@ BEGIN
   shdr.SizeOfRawData    := fsize;
   shdr.PointerToRawData := fadr;
   shdr.Characteristics  := flags;
-  Files.WriteBytes(Exe, shdr, 0, SYSTEM.SIZE(SectionHeader));
+  Files.WriteRaw(Exe, shdr);
 END WriteSectionHeader;
 
 
@@ -317,7 +317,7 @@ BEGIN
   hdr.importTableSize         := RvaModules - RvaImport;
 
   spos(0);
-  Files.WriteBytes(Exe, hdr, 0, SYSTEM.SIZE(PEheader));
+  Files.WriteRaw(Exe, hdr);
 
   (* Write section headers *)
   IF FadrIcon > FadrPreload THEN
@@ -438,7 +438,7 @@ BEGIN
   IF f = NIL THEN ws("Cannot load ");  ws(fn);  wn; ASSERT(FALSE) END;
   Files.Set(R, f, 0);
   mod := SYSTEM.VAL(Modules.Module, SYSTEM.ADR(CoreMem[CoreSize]));
-  Files.ReadVar(R, mod^);
+  Files.ReadRaw(R, mod^);
   CoreModAdr[CoreModCount].name := mod.name;
   CoreModAdr[CoreModCount].key  := mod.key;
   CoreModAdr[CoreModCount].adr  := CoreSize;  (* Offset into CoreMem = relative to OberonCoreBase *)
@@ -470,11 +470,11 @@ BEGIN
 
   (* Link imports *)
   Files.Set(R, f, mod.imprefs);
-  Files.ReadBytes(R, impcnt, 4);
+  Files.ReadRaw(R, impcnt);
   FOR i := 1 TO impcnt DO
-    Files.ReadVar(R, offset);
-    Files.ReadVar(R, impno);
-    Files.ReadVar(R, modno);
+    Files.ReadRaw(R, offset);
+    Files.ReadRaw(R, impno);
+    Files.ReadRaw(R, modno);
     LinkImport(CoreSize, offset, impno, modno, modules)
   END;
 
@@ -712,14 +712,14 @@ BEGIN
   Files.Set(r1, f, 0);
   i := size DIV LEN(buf);
   WHILE i > 0 DO
-    Files.ReadBytes(r1, buf, LEN(buf));
-    Files.WriteBytes(r2, buf, 0, LEN(buf));
+    Files.ReadRaw(r1, buf);
+    Files.WriteRaw(r2, buf);
     DEC(i)
   END;
   i := size MOD LEN(buf);
   IF i > 0 THEN
-    Files.ReadBytes(r1, buf, i);
-    Files.WriteBytes(r2, buf, 0, i)
+    Files.ReadMem(r1, SYSTEM.ADR(buf), i);
+    Files.WriteMem(r2, SYSTEM.ADR(buf), i)
   END
 END CopyFile;
 
@@ -727,10 +727,10 @@ END CopyFile;
 (* ---------------- Windows PE resource section construction ---------------- *)
 
 PROCEDURE WriteWord(i: INTEGER);
-BEGIN Files.WriteByte(Exe, i); Files.WriteByte(Exe, i DIV 100H) END WriteWord;
+BEGIN Files.WriteMem(Exe, SYSTEM.ADR(i), 2) END WriteWord;
 
 PROCEDURE WriteDWord(i: INTEGER);
-BEGIN WriteWord(i); WriteWord(i DIV 10000H) END WriteDWord;
+BEGIN Files.WriteMem(Exe, SYSTEM.ADR(i), 4) END WriteDWord;
 
 PROCEDURE WriteResourceDirectoryTable(numids: INTEGER);  (* 16 bytes *)
 VAR i: INTEGER;
@@ -767,8 +767,7 @@ VAR i: INTEGER;
 BEGIN
   Files.WriteByte(Exe, width  MOD 256);
   Files.WriteByte(Exe, height MOD 256);
-  Files.WriteByte(Exe, 0);  (* no colour palette *)
-  Files.WriteByte(Exe, 0);  (* reserved *)
+  WriteWord(0);  (* no colour palette, reserved *)
   WriteWord(1);  (* colour planes *)
   WriteWord(8);  (* bits per pixel *)
   WriteDWord(size);
@@ -896,8 +895,8 @@ BEGIN
   PresetWinHost(FadrModules, ImageBase, MadrPreload, IconSize, RvaIcon);
 
   spos(FadrImport);
-  Files.WriteBytes(Exe, Idt, 0, SYSTEM.SIZE(ImportDirectoryTable));
-  Files.WriteBytes(Exe, ImportHints, 0, ImportHintSize);
+  Files.WriteRaw(Exe, Idt);
+  Files.WriteMem(Exe, SYSTEM.ADR(ImportHints), ImportHintSize);
   ASSERT(ImportSize = Align(Files.Pos(Exe), 16) - FadrImport);
 
   WritePEHeader(ImageBase,   HeaderSize,  numsections,
@@ -907,7 +906,7 @@ BEGIN
                 FadrModules, RvaModules);
 
   spos(FadrModules);
-  Files.WriteBytes(Exe, CoreMem, 0, CoreSize);
+  Files.WriteMem(Exe, SYSTEM.ADR(CoreMem), CoreSize);
 
   IF Files.Pos(Exe) MOD FileAlignment # 0 THEN
     spos(FileAlign(Files.Pos(Exe))-1);
@@ -957,7 +956,7 @@ BEGIN
       ws("Link.Mod cannot find "); ws(fn);
       wsn(".");  ASSERT(FALSE)
     ELSE
-      Files.Set(r, f, 0);  Files.ReadVar(r, hdr);
+      Files.Set(r, f, 0);  Files.ReadRaw(r, hdr);
       IF hdr.magic # "Oberon5" THEN
         ws("Link.Mod: "); ws(fn); wsn(" corrupt header.");
         ASSERT(FALSE)
@@ -1026,12 +1025,12 @@ BEGIN
   IF ~end THEN end := i # 0A1A0A0D474E5089H END;
   IF ~end THEN
     REPEAT
-      Files.ReadVar(r, len);  end := r.res # 0;
+      Files.ReadRaw(r, len);  end := r.res # 0;
       IF ~end THEN len := SwapDW(len);  ReadType(r, typ);  end := r.res # 0 END;
       IF ~end THEN end := typ = "IEND" END;
       IF ~end THEN
         IF (typ = "IHDR") & (len = SYSTEM.SIZE(IHDR)) THEN
-          Files.ReadVar(r, hdr);
+          Files.ReadRaw(r, hdr);
           IF r.res = 0 THEN
             hdr.width  := SwapDW(hdr.width);  hdr.height := SwapDW(hdr.height)
           ELSE
