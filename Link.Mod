@@ -998,17 +998,12 @@ END AddPreloadModule;
 
 (* -------------------- Check for icon file <target>.png -------------------- *)
 
-PROCEDURE ReadType(VAR r: Files.Rider; VAR s: ARRAY OF CHAR);
-VAR i: INTEGER;
-BEGIN i := 0;  WHILE i < 4 DO Files.Read(r, s[i]); INC(i) END;  s[i] := 0X
-END ReadType;
-
 PROCEDURE SwapDW(x: INTEGER): INTEGER;
 RETURN
-    x            MOD 100H * 1000000H
-  + x DIV 100H   MOD 100H * 10000H
-  + x DIV 10000H MOD 100H * 100H
-  + x DIV 1000000H
+    x              MOD 100H * 1000000H
+  + x DIV 100H     MOD 100H * 10000H
+  + x DIV 10000H   MOD 100H * 100H
+  + x DIV 1000000H MOD 100H
 END SwapDW;
 
 PROCEDURE LoadPngHeader*(f: Files.File; VAR hdr: IHDR);
@@ -1026,7 +1021,8 @@ BEGIN
   IF ~end THEN
     REPEAT
       Files.ReadRaw(r, len);  end := r.res # 0;
-      IF ~end THEN len := SwapDW(len);  ReadType(r, typ);  end := r.res # 0 END;
+      IF ~end THEN len := SwapDW(len);
+      Files.ReadMem(r, SYSTEM.ADR(typ), 4);  typ[4] := 0X;  end := r.res # 0 END;
       IF ~end THEN end := typ = "IEND" END;
       IF ~end THEN
         IF (typ = "IHDR") & (len = SYSTEM.SIZE(IHDR)) THEN
@@ -1050,7 +1046,6 @@ PROCEDURE CheckIcon(target: ARRAY OF CHAR);
 VAR fn: ARRAY 64 OF CHAR;
 BEGIN
   fn := target;  H.Append(".png", fn);  IconPng := Files.Old(fn);
-  (*IF IconPng = NIL THEN ws("(no icon png '"); ws(fn); wsn("' found.)") END;*)
   IF IconPng # NIL THEN
     LoadPngHeader(IconPng, IconHdr);
     IF (IconHdr.width       # 256)  OR (IconHdr.height  # 256)
@@ -1073,7 +1068,7 @@ VAR
 BEGIN
   WHILE ch = " " DO Texts.Read(r, ch) END;
   i := 0;  j := 0;  k := -1;
-  WHILE ch > " " DO
+  WHILE (ch > " ") & (ch # "+") DO
     target[i] := ch;
     IF ch = "." THEN k := i END;
     INC(i);
@@ -1097,6 +1092,7 @@ VAR
   ch:      CHAR;
   target:  ARRAY 64 OF CHAR;
   modname: ARRAY 64 OF CHAR;
+  i:       INTEGER;
 BEGIN
   (* Parse argument modname[.commandname] from parameter as arg *)
   Texts.OpenReader(r, Texts.Par.text, Texts.Par.pos);
@@ -1107,8 +1103,19 @@ BEGIN
     ws("  linking ");  wsn(target);
 
     AddPreloadModule(modname, 0);
-    (* Special knowledge: Oberon.Mod loads System.Mod *)
-    IF IsPreloaded("Oberon") THEN AddPreloadModule("System", 0) END;
+
+    (* Add any further requested preload modules *)
+    WHILE ch = " " DO Texts.Read(r, ch) END;
+    WHILE ch = "+" DO
+      Texts.Read(r, ch);  WHILE ch = " " DO Texts.Read(r,ch) END;
+      i := 0;
+      WHILE (ch > " ") & (ch # "+") DO
+        modname[i] := ch; INC(i); Texts.Read(r,ch)
+      END;
+      modname[i] := 0X;
+      AddPreloadModule(modname, 0);
+      WHILE ch = " " DO Texts.Read(r, ch) END;
+    END;
 
     CheckIcon(target);
 

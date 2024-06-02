@@ -74,7 +74,7 @@ ORP.Compile FileDir.Mod/s WinGui.Mod/s Input.Mod/s Display.Mod/s ~ || goto end
 ORP.Compile Viewers.Mod/s Oberon.Mod/s MenuViewers.Mod/s ~         || goto end
 ORP.Compile TextFrames.Mod/s Edit.Mod/s System.Mod/s ~             || goto end
 copy /Y ..\*.png >NUL 2>NUL
-Link.Link Oberon                                                   || goto end
+Link.Link Oberon+System+ORP+Link                                   || goto end
 
 echo.
 echo --------------------------- Run Oberon system ----------------------------
