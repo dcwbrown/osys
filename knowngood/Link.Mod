@@ -1,5 +1,5 @@
 MODULE Link;  (* Create exe for a given module + optional command *)
-(* DCWB 2023/04/14 .. 2024/05/25 *)
+(* DCWB 2023-04-14 .. 2024-05-25 *)
 
 IMPORT SYSTEM, H := WinHost, Kernel, Files, Texts, Modules;
 
