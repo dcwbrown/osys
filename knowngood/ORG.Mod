@@ -1413,15 +1413,17 @@ BEGIN
     Disassemble(x.mode, "proc address to be called");
     ASSERT(x.type.len MOD 8 = 0);
     x.mode   := Eadr;
-    IF ~x.type.native THEN  (* Normal, simple calling process *)
+    IF x.type.native = 0 THEN  (* Normal, simple calling process *)
       x.n      := RSP;
       x.offset := -8 * (X64.SPO - (x.type.len DIV 8 + 1))
-    ELSE  (* Windows ABI calling process *)
+    ELSIF x.type.native = 2 THEN (* Linux ABI *)
+      ASSERT(FALSE)
+    ELSE ASSERT(x.type.native = 3); (* Windows ABI calling process *)
       x.n      := RBP;
       x.offset := -8 * (X64.SPO - (stackspace DIV 8 + 2))
     END
   END;
-  IF x.type.native THEN  (* Prepare stack space for windows abi *)
+  IF x.type.native = 3 THEN  (* Prepare stack space for windows abi *)
     (* We need to place parameters aligned so that the first parameter (at the
        lowest address) is 16 byte aligned. This alignemnet will only be known at
        run time. However we need to keep SPO matching SP so that expressions
@@ -1447,7 +1449,7 @@ BEGIN
   ASSERT(x.type.form = ORB.Proc);
   ASSERT(x.mode IN {Eadr, Global, Code, Import, Impcode});
 
-  IF x.type.native THEN  (* Adjust to 16 byte aligned pos *)
+  IF x.type.native = 3 THEN  (* Adjust to 16 byte aligned pos *)
     OpModRegRm(87H, Reg, RBP, 8, RSP, -1, 0, 0, 0);  (* xchg rsp,rbp *)
     Disassemble(0, "Switch to Windows ABI aligned stack frame")
   END;
@@ -1474,9 +1476,11 @@ BEGIN
   END;
   Disassemble(x.mode, "Call");
 
-  IF ~x.type.native THEN   (* Normal (simple) stack handling *)
+  IF x.type.native = 0 THEN   (* Normal (simple) stack handling *)
     X64.AdjustStack(-(x.type.len DIV 8));  (* matches stack adjustment by <ret n> *)
-  ELSE (* Windows ABI stack handling *)
+  ELSIF x.type.native = 2 THEN  (* Linux ABI *)
+    ASSERT(FALSE)
+  ELSE ASSERT(x.type.native = 3);  (* Windows ABI stack handling *)
     stackspace := x.type.len;  IF stackspace < 32 THEN stackspace := 32 END;
     OpModRegRm(8DH, Eadr, RSP, 8, RBP, -1, 0, stackspace + 8, 0);  (* lea rsp, rbp + parmreserved *)
     Disassemble(0, "Drop Windows ABI parameter area from stack");
@@ -1512,19 +1516,33 @@ BEGIN
   END
 END Call;
 
-PROCEDURE Enter*(parmsize, locsize: INTEGER; native: BOOLEAN);
+PROCEDURE Enter*(parmsize, locsize: INTEGER; native: BYTE);
 VAR i, count: INTEGER;
 BEGIN
   Trace(TraceAny, "Enter(parmsize $"); l.h(parmsize, Tr);
   l.s(", locsize $", Tr);             l.h(locsize, Tr);   l.sn(")", Tr);
 
-  IF native THEN
+  IF native = 2 THEN  (* Linux X64 ABI *)
+    (* For native procedures, deposit reg params on stack *)
+    StoreRegToMem(RDI, Eadr, 8, RSP, -1, 0, 08H);
+    StoreRegToMem(RSI, Eadr, 8, RSP, -1, 0, 10H);
+    StoreRegToMem(RDX, Eadr, 8, RSP, -1, 0, 18H);
+    StoreRegToMem(RCX, Eadr, 8, RSP, -1, 0, 20H);
+    StoreRegToMem(8,   Eadr, 8, RSP, -1, 0, 28H);
+    StoreRegToMem(9,   Eadr, 8, RSP, -1, 0, 30H);
+    Disassemble(Eadr, "Save Linux native procedure parameters to stack.");
+    ASSERT(locsize >= 48);
+    (* Save X64 ABI non-volatile registers *)
+    PushReg(RBX);  PushReg(RBP);
+    PushReg(12);   PushReg(13);   PushReg(14);   PushReg(15);
+    DEC(locsize, 48)
+  ELSIF native = 3 THEN  (* Windows X64 ABI *)
     (* For native procedures, deposit reg params on stack *)
     StoreRegToMem(RCX, Eadr, 8, RSP, -1, 0, 08H);
     StoreRegToMem(RDX, Eadr, 8, RSP, -1, 0, 10H);
     StoreRegToMem(8,   Eadr, 8, RSP, -1, 0, 18H);
     StoreRegToMem(9,   Eadr, 8, RSP, -1, 0, 20H);
-    Disassemble(Eadr, "Save native procedure parameters to stack.");
+    Disassemble(Eadr, "Save Windows native procedure parameters to stack.");
     ASSERT(locsize >= 64);
     (* Save X64 ABI non-volatile registers *)
     PushReg(RBX);  PushReg(RSI);  PushReg(RDI);  PushReg(RBP);
@@ -1579,7 +1597,7 @@ PROCEDURE Return*(
   VAR x:     Item;
   parmsize:  INTEGER;
   locsize:   INTEGER;
-  native:    BOOLEAN);
+  native:    BYTE);
 BEGIN
   Trace(TraceAny, "Return("); l.Form(form, Tr);
   l.s(", x: ", Tr);       l.Item(x, Tr);
@@ -1593,11 +1611,20 @@ BEGIN
     Disassemble(x.mode, "Load function result")
   END;
 
-  IF native THEN
+  IF native = 2 THEN  (* Linux ABI *)
+    ASSERT(locsize >= 48);
+    IF locsize > 64 THEN
+      AluOpFromImmediate(Plus, Reg, locsize - 48, 8, RSP, -1, 0, 0);
+      Disassemble(0, "release Linux ABI local variable space")
+    END;
+    PopReg(15);   PopReg(14);   PopReg(13);   PopReg(12);
+    PopReg(RBP);  PopReg(RBX);
+    X64.Emit(0C3H)  (* ret *)
+  ELSIF native = 3 THEN  (* Windows ABI *)
     ASSERT(locsize >= 64);
     IF locsize > 64 THEN
       AluOpFromImmediate(Plus, Reg, locsize - 64, 8, RSP, -1, 0, 0);
-      Disassemble(0, "release local variable space")
+      Disassemble(0, "release Windows ABI local variable space")
     END;
     PopReg(15);   PopReg(14);   PopReg(13);   PopReg(12);
     PopReg(RBP);  PopReg(RDI);  PopReg(RSI);  PopReg(RBX);
@@ -2772,7 +2799,7 @@ VAR
   fld:  ORB.Object;
   i, s: INTEGER;
 BEGIN
-  IF (typ.form = ORB.Pointer) & ~typ.native OR (typ.form = ORB.NilTyp) THEN
+  IF (typ.form = ORB.Pointer) & (typ.native = 0) OR (typ.form = ORB.NilTyp) THEN
     EmitInt(off, "pointer/niltype field offset")
   ELSIF typ.form = ORB.Record THEN
     fld := typ.dsc;
@@ -2929,10 +2956,10 @@ END wsize;
 PROCEDURE EmitPtrs(typ: ORB.Type; adr: INTEGER);
 VAR fld: ORB.Object;  i, s: INTEGER;
 BEGIN
-  IF (~typ.native) & ((typ.form = ORB.Pointer) OR (typ.form = ORB.NilTyp)) THEN
+  IF (typ.native = 0) & ((typ.form = ORB.Pointer) OR (typ.form = ORB.NilTyp)) THEN
     (*l.s("  ptrec  ", Tr); l.h(adr, Tr); l.sn("H.", Tr);*)
     X64.EmitBytes(8, adr)
-  ELSIF ~typ.native & (typ.form = ORB.Record) THEN
+  ELSIF (typ.native = 0) & (typ.form = ORB.Record) THEN
     fld := typ.dsc;
     WHILE fld # NIL DO EmitPtrs(fld.type, fld.val + adr); fld := fld.next END
   ELSIF typ.form = ORB.Array THEN

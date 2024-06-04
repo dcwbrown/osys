@@ -81,7 +81,7 @@ VAR
   Preload*: PreLoadVars;
 
   (* Pre-loaded Kernel32 imports *)
-  AddVectoredExceptionHandler*:    PROCEDURE-(first, filter: INTEGER): INTEGER;
+  AddVectoredExceptionHandler*:    PROCEDURE\(first, filter: INTEGER): INTEGER;
   CloseHandle*:                    PROCEDURE-(hObject: INTEGER): INTEGER;
   CreateFileW*:                    PROCEDURE-(lpFileName, dwDesiredAccess, dwShareMode, lpSecurityAttributes, dwCreationDisposition, dwFlagsAndAttributes, hTemplateFile: INTEGER): INTEGER;
   CreateProcessW*:                 PROCEDURE-(appname, cmdline, procattr, threadattr,
