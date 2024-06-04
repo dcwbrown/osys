@@ -96,7 +96,7 @@ END CheckExport;
 PROCEDURE CheckNative(VAR native: BYTE);
 BEGIN
   native := 0;
-  IF sym IN {ORS.minus, ORS.rdiv, ORS.bslash} THEN
+  IF sym IN {ORS.rdiv, ORS.bslash} THEN
     IF sym = ORS.rdiv THEN native := 2 (* Linux *)
     ELSE                   native := 3 (* Windows *)
     END;

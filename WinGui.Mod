@@ -464,7 +464,7 @@ END WriteWindowsMessageName;
 
 (* ------- Host window message handling callback procedure - wndproc -------- *)
 
-PROCEDURE- WndProc(hwnd, msg, wp, lp: INTEGER): INTEGER;
+PROCEDURE\ WndProc(hwnd, msg, wp, lp: INTEGER): INTEGER;
 VAR res: INTEGER;  scan: BYTE;
 BEGIN
   (*

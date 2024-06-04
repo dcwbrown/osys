@@ -82,108 +82,108 @@ VAR
 
   (* Pre-loaded Kernel32 imports *)
   AddVectoredExceptionHandler*:    PROCEDURE\(first, filter: INTEGER): INTEGER;
-  CloseHandle*:                    PROCEDURE-(hObject: INTEGER): INTEGER;
-  CreateFileW*:                    PROCEDURE-(lpFileName, dwDesiredAccess, dwShareMode, lpSecurityAttributes, dwCreationDisposition, dwFlagsAndAttributes, hTemplateFile: INTEGER): INTEGER;
-  CreateProcessW*:                 PROCEDURE-(appname, cmdline, procattr, threadattr,
+  CloseHandle*:                    PROCEDURE\(hObject: INTEGER): INTEGER;
+  CreateFileW*:                    PROCEDURE\(lpFileName, dwDesiredAccess, dwShareMode, lpSecurityAttributes, dwCreationDisposition, dwFlagsAndAttributes, hTemplateFile: INTEGER): INTEGER;
+  CreateProcessW*:                 PROCEDURE\(appname, cmdline, procattr, threadattr,
                                               handles, flags, env, dir,
                                               startupinfo, processinfo: INTEGER): INTEGER;
-  DeleteFileW*:                    PROCEDURE-(lpFilename: INTEGER): INTEGER;
-  ExitProcess*:                    PROCEDURE-(exitcode: INTEGER);
-  FileTimeToLocalFileTime*:        PROCEDURE-(filetime, localfiletime: INTEGER): INTEGER;
-  FileTimeToSystemTime*:           PROCEDURE-(filetime, systemtime: INTEGER): INTEGER;
-  FindClose*:                      PROCEDURE-(hfind: INTEGER): INTEGER;
-  FindFirstFileExW*:               PROCEDURE-(name, levels, data, op, filter, flags: INTEGER): INTEGER;
-  FindNextFileW*:                  PROCEDURE-(hfind, data: INTEGER): INTEGER;
-  FlushFileBuffers*:               PROCEDURE-(hFile: INTEGER): INTEGER;
-  FormatMessageW:                  PROCEDURE-(flags, source, mid, lid, buf, size, args: INTEGER): INTEGER;
-  GetCommandLineW*:                PROCEDURE-(): INTEGER;
-  GetCurrentDirectoryW*:           PROCEDURE-(nsize, pbuffer: INTEGER): INTEGER;
-  GetCurrentProcessId*:            PROCEDURE-(): INTEGER;
-  GetEnvironmentVariableW*:        PROCEDURE-(lpName, lpBuffer, nSize: INTEGER): INTEGER;
-  GetFileAttributesExW*:           PROCEDURE-(lpName, fInfoLevelId, lpFileInformation: INTEGER): INTEGER;  (* fInfoLevelId Must be 0 (GetFileExInfoStandard) *)
-  GetFileAttributesW*:             PROCEDURE-(lpFileName: INTEGER): INTEGER;
-  GetFileInformationByHandleEx:    PROCEDURE-(hfile, infoclass, infoptr, bufsize: INTEGER): INTEGER;
-  GetFileSizeEx*:                  PROCEDURE-(hFile, lpFileSize: INTEGER): INTEGER;
-  GetLastError*:                   PROCEDURE-(): INTEGER;
-  GetModuleFileNameW*:             PROCEDURE-(hModule, lpFilename, nSize: INTEGER): INTEGER;
-  GetProcAddress*:                 PROCEDURE-(hmodule, procname: INTEGER): INTEGER;
-  GetStdHandle*:                   PROCEDURE-(nStdHandle: SYSTEM.INT32): INTEGER;
-  GetSystemTimePreciseAsFileTime*: PROCEDURE-(tickAdr: INTEGER);
-  GetTempFileNameA*:               PROCEDURE-(pathadr, prefixadr, unique, tempfilenameadr: INTEGER): INTEGER;
-  GetTempPathA*:                   PROCEDURE-(buflen, bufadr: INTEGER): INTEGER;
-  LoadLibraryA*:                   PROCEDURE-(libname: INTEGER): INTEGER;
-  MoveFileExW*:                    PROCEDURE-(lpExistingFileName, lpNewFileName, dwFlags: INTEGER): INTEGER;
-  ReadFile*:                       PROCEDURE-(hFile, lpBuffer, nNumberOfBytesToRead, lpNumberOfBytesRead, lpOverlapped: INTEGER): INTEGER;
-  SetConsoleOutputCP*:             PROCEDURE-(codepage: INTEGER) (* : INTEGER *);
-  SetEndOfFile*:                   PROCEDURE-(hFile: INTEGER): INTEGER;
-  SetFileInformationByHandle*:     PROCEDURE-(hFile, infoClass, info, bufsize: INTEGER): INTEGER;
-  SetFilePointerEx*:               PROCEDURE-(hFile, liDistanceToMove, lpNewFilePointer, dwMoveMethod: INTEGER): INTEGER;
-  Sleep*:                          PROCEDURE-(ms: INTEGER);
-  UnmapViewOfFile:                 PROCEDURE-(adr: INTEGER): INTEGER;
-  VirtualAlloc*:                   PROCEDURE-(address, size, type, protection: INTEGER): INTEGER;
-  VirtualQuery*:                   PROCEDURE-(address, buffer, length: INTEGER): INTEGER;
-  WriteFile*:                      PROCEDURE-(hFile, lpBuffer, nNumberOfBytesToWrite, lpNumberOfBytesWritten, lpOverlapped: INTEGER): INTEGER;
+  DeleteFileW*:                    PROCEDURE\(lpFilename: INTEGER): INTEGER;
+  ExitProcess*:                    PROCEDURE\(exitcode: INTEGER);
+  FileTimeToLocalFileTime*:        PROCEDURE\(filetime, localfiletime: INTEGER): INTEGER;
+  FileTimeToSystemTime*:           PROCEDURE\(filetime, systemtime: INTEGER): INTEGER;
+  FindClose*:                      PROCEDURE\(hfind: INTEGER): INTEGER;
+  FindFirstFileExW*:               PROCEDURE\(name, levels, data, op, filter, flags: INTEGER): INTEGER;
+  FindNextFileW*:                  PROCEDURE\(hfind, data: INTEGER): INTEGER;
+  FlushFileBuffers*:               PROCEDURE\(hFile: INTEGER): INTEGER;
+  FormatMessageW:                  PROCEDURE\(flags, source, mid, lid, buf, size, args: INTEGER): INTEGER;
+  GetCommandLineW*:                PROCEDURE\(): INTEGER;
+  GetCurrentDirectoryW*:           PROCEDURE\(nsize, pbuffer: INTEGER): INTEGER;
+  GetCurrentProcessId*:            PROCEDURE\(): INTEGER;
+  GetEnvironmentVariableW*:        PROCEDURE\(lpName, lpBuffer, nSize: INTEGER): INTEGER;
+  GetFileAttributesExW*:           PROCEDURE\(lpName, fInfoLevelId, lpFileInformation: INTEGER): INTEGER;  (* fInfoLevelId Must be 0 (GetFileExInfoStandard) *)
+  GetFileAttributesW*:             PROCEDURE\(lpFileName: INTEGER): INTEGER;
+  GetFileInformationByHandleEx:    PROCEDURE\(hfile, infoclass, infoptr, bufsize: INTEGER): INTEGER;
+  GetFileSizeEx*:                  PROCEDURE\(hFile, lpFileSize: INTEGER): INTEGER;
+  GetLastError*:                   PROCEDURE\(): INTEGER;
+  GetModuleFileNameW*:             PROCEDURE\(hModule, lpFilename, nSize: INTEGER): INTEGER;
+  GetProcAddress*:                 PROCEDURE\(hmodule, procname: INTEGER): INTEGER;
+  GetStdHandle*:                   PROCEDURE\(nStdHandle: SYSTEM.INT32): INTEGER;
+  GetSystemTimePreciseAsFileTime*: PROCEDURE\(tickAdr: INTEGER);
+  GetTempFileNameA*:               PROCEDURE\(pathadr, prefixadr, unique, tempfilenameadr: INTEGER): INTEGER;
+  GetTempPathA*:                   PROCEDURE\(buflen, bufadr: INTEGER): INTEGER;
+  LoadLibraryA*:                   PROCEDURE\(libname: INTEGER): INTEGER;
+  MoveFileExW*:                    PROCEDURE\(lpExistingFileName, lpNewFileName, dwFlags: INTEGER): INTEGER;
+  ReadFile*:                       PROCEDURE\(hFile, lpBuffer, nNumberOfBytesToRead, lpNumberOfBytesRead, lpOverlapped: INTEGER): INTEGER;
+  SetConsoleOutputCP*:             PROCEDURE\(codepage: INTEGER) (* : INTEGER *);
+  SetEndOfFile*:                   PROCEDURE\(hFile: INTEGER): INTEGER;
+  SetFileInformationByHandle*:     PROCEDURE\(hFile, infoClass, info, bufsize: INTEGER): INTEGER;
+  SetFilePointerEx*:               PROCEDURE\(hFile, liDistanceToMove, lpNewFilePointer, dwMoveMethod: INTEGER): INTEGER;
+  Sleep*:                          PROCEDURE\(ms: INTEGER);
+  UnmapViewOfFile:                 PROCEDURE\(adr: INTEGER): INTEGER;
+  VirtualAlloc*:                   PROCEDURE\(address, size, type, protection: INTEGER): INTEGER;
+  VirtualQuery*:                   PROCEDURE\(address, buffer, length: INTEGER): INTEGER;
+  WriteFile*:                      PROCEDURE\(hFile, lpBuffer, nNumberOfBytesToWrite, lpNumberOfBytesWritten, lpOverlapped: INTEGER): INTEGER;
 
   (* Pre-loaded Gdi32 imports *)
-  BitBlt*:                         PROCEDURE-(dc, x, y, cx, cy, sc, x1, y1, op: INTEGER): INTEGER;
-  CreateBitmap*:                   PROCEDURE-(w, h, pl, de, bs: INTEGER): INTEGER;
-  CreateCompatibleDC*:             PROCEDURE-(dc: INTEGER): INTEGER;
-  CreateDCA*:                      PROCEDURE-(drive, device, port, devmode: INTEGER): INTEGER;
-  CreateDIBSection*:               PROCEDURE-(dc, bi, us, bs, sc, of: INTEGER): INTEGER;
-  CreateFontA*:                    PROCEDURE-(cHeight,  cWidth,        cEscapement,    cOrientation,
+  BitBlt*:                         PROCEDURE\(dc, x, y, cx, cy, sc, x1, y1, op: INTEGER): INTEGER;
+  CreateBitmap*:                   PROCEDURE\(w, h, pl, de, bs: INTEGER): INTEGER;
+  CreateCompatibleDC*:             PROCEDURE\(dc: INTEGER): INTEGER;
+  CreateDCA*:                      PROCEDURE\(drive, device, port, devmode: INTEGER): INTEGER;
+  CreateDIBSection*:               PROCEDURE\(dc, bi, us, bs, sc, of: INTEGER): INTEGER;
+  CreateFontA*:                    PROCEDURE\(cHeight,  cWidth,        cEscapement,    cOrientation,
                                               cWeight,  bItalic,       bUnderline,     bStrikeOut,
                                               iCharSet, iOutPrecision, iClipPrecision, iQuality,
                                               iPitchAndFamily,         pszFaceName: INTEGER): INTEGER;
-  CreatePen*:                      PROCEDURE-(style, width, colour: INTEGER): INTEGER;
-  CreateRectRgn*:                  PROCEDURE-(x1, y1, x2, y2: INTEGER): INTEGER;
-  DeleteObject*:                   PROCEDURE-(ob: INTEGER): INTEGER;
-  GetGlyphOutlineW*:               PROCEDURE-(hdc, uChar, fuFormat, lpgm, cjBuffer, pvBuffer, lpmat2: INTEGER): INTEGER;
-  GetCharABCWidthsW*:              PROCEDURE-(hdc, first, last, abcadr: INTEGER): INTEGER;
-  GetDeviceCaps*:                  PROCEDURE-(hdc, index: INTEGER): INTEGER;
-  GetOutlineTextMetricsW*:         PROCEDURE-(hdc, bufsize, buffer: INTEGER): INTEGER;
-  GetStockObject*:                 PROCEDURE-(typ: INTEGER): INTEGER;
-  Rectangle*:                      PROCEDURE-(dc, l, t, r, b: INTEGER): INTEGER;
-  SelectObject*:                   PROCEDURE-(dc, ob: INTEGER): INTEGER;
-  SetDCPenColor*:                  PROCEDURE-(dc, col: INTEGER): INTEGER;
-  SetDCBrushColor*:                PROCEDURE-(dc, col: INTEGER): INTEGER;
+  CreatePen*:                      PROCEDURE\(style, width, colour: INTEGER): INTEGER;
+  CreateRectRgn*:                  PROCEDURE\(x1, y1, x2, y2: INTEGER): INTEGER;
+  DeleteObject*:                   PROCEDURE\(ob: INTEGER): INTEGER;
+  GetGlyphOutlineW*:               PROCEDURE\(hdc, uChar, fuFormat, lpgm, cjBuffer, pvBuffer, lpmat2: INTEGER): INTEGER;
+  GetCharABCWidthsW*:              PROCEDURE\(hdc, first, last, abcadr: INTEGER): INTEGER;
+  GetDeviceCaps*:                  PROCEDURE\(hdc, index: INTEGER): INTEGER;
+  GetOutlineTextMetricsW*:         PROCEDURE\(hdc, bufsize, buffer: INTEGER): INTEGER;
+  GetStockObject*:                 PROCEDURE\(typ: INTEGER): INTEGER;
+  Rectangle*:                      PROCEDURE\(dc, l, t, r, b: INTEGER): INTEGER;
+  SelectObject*:                   PROCEDURE\(dc, ob: INTEGER): INTEGER;
+  SetDCPenColor*:                  PROCEDURE\(dc, col: INTEGER): INTEGER;
+  SetDCBrushColor*:                PROCEDURE\(dc, col: INTEGER): INTEGER;
 
 
   (* Pre-loaded User32 imports *)
-  AdjustWindowRectEx*:             PROCEDURE-(rect, style, menu, exstyle: INTEGER): INTEGER;
-  BeginPaint*:                     PROCEDURE-(wn, ps: INTEGER): INTEGER;
-  CreateIconFromResourceEx*:       PROCEDURE-(adr, size, ficon, ver, cx, cy, fl: INTEGER): INTEGER;
-  CreateWindowExW*:                PROCEDURE-(es, cn, wn, st, x, y, w, h, pa, me, in, lp: INTEGER): INTEGER;
-  DefWindowProcW*:                 PROCEDURE-(wn, ms, wp, lp: INTEGER): INTEGER;
-  DispatchMessageW*:               PROCEDURE-(ms: INTEGER): INTEGER;
-  EndPaint*:                       PROCEDURE-(wn, ps: INTEGER): INTEGER;
-  GetClientRect*:                  PROCEDURE-(wn, rec: INTEGER): INTEGER;
-  GetClipboardFormatNameW*:        PROCEDURE-(format, name, maxcount: INTEGER): INTEGER;
-  GetCursorPos*:                   PROCEDURE-(pos: INTEGER);
-  GetDCEx*:                        PROCEDURE-(wn, clip, flags: INTEGER): INTEGER;
-  GetDpiForWindow*:                PROCEDURE-(wn: INTEGER): INTEGER;
-  GetMessageW*:                    PROCEDURE-(lm, wn, mn, mx: INTEGER): INTEGER;
-  GetQueueStatus*:                 PROCEDURE-(fl: INTEGER): INTEGER;
-  GetWindowDC*:                    PROCEDURE-(wn: INTEGER): INTEGER;
-  GetWindowRect*:                  PROCEDURE-(wn, rec: INTEGER): INTEGER;
-  LoadCursorW*:                    PROCEDURE-(in, cn: INTEGER): INTEGER;
-  MessageBoxA*:                    PROCEDURE-(w, t, c, u: INTEGER)(*: INTEGER*);
-  MessageBoxW*:                    PROCEDURE-(w, t, c, u: INTEGER): INTEGER;
-  MoveWindow*:                     PROCEDURE-(wn, x, y, w, h, repaint: INTEGER);
-  MsgWaitForMultipleObjects*:      PROCEDURE-(cn, hs, wa, ms, wm: INTEGER);
-  PeekMessageW*:                   PROCEDURE-(lm, wn, mn, mx, rm: INTEGER): INTEGER;
-  PostMessageW*:                   PROCEDURE-(hwnd, msg, wp, lp: INTEGER): INTEGER;
-  PostQuitMessage*:                PROCEDURE-(rc: INTEGER);
-  RegisterClassExW*:               PROCEDURE-(wc: INTEGER): INTEGER;
-  ReleaseCapture*:                 PROCEDURE-;
-  ReleaseDC*:                      PROCEDURE-(wn, dc: INTEGER): INTEGER;
-  SetCapture*:                     PROCEDURE-(wn: INTEGER);
-  SetProcessDpiAwarenessContext*:  PROCEDURE-(cx: INTEGER): INTEGER;
-  SetWindowRgn*:                   PROCEDURE-(wn, rgn, redraw: INTEGER): INTEGER;
-  ShowCursor*:                     PROCEDURE-(sh: INTEGER);
-  ShowWindow*:                     PROCEDURE-(wn, cm: INTEGER);
-  TrackMouseEvent*:                PROCEDURE-(evtrk: INTEGER): INTEGER;
-  TranslateMessage*:               PROCEDURE-(ms: INTEGER): INTEGER;
-  InvalidateRect*:                 PROCEDURE-(wn, rc, er: INTEGER): INTEGER;
+  AdjustWindowRectEx*:             PROCEDURE\(rect, style, menu, exstyle: INTEGER): INTEGER;
+  BeginPaint*:                     PROCEDURE\(wn, ps: INTEGER): INTEGER;
+  CreateIconFromResourceEx*:       PROCEDURE\(adr, size, ficon, ver, cx, cy, fl: INTEGER): INTEGER;
+  CreateWindowExW*:                PROCEDURE\(es, cn, wn, st, x, y, w, h, pa, me, in, lp: INTEGER): INTEGER;
+  DefWindowProcW*:                 PROCEDURE\(wn, ms, wp, lp: INTEGER): INTEGER;
+  DispatchMessageW*:               PROCEDURE\(ms: INTEGER): INTEGER;
+  EndPaint*:                       PROCEDURE\(wn, ps: INTEGER): INTEGER;
+  GetClientRect*:                  PROCEDURE\(wn, rec: INTEGER): INTEGER;
+  GetClipboardFormatNameW*:        PROCEDURE\(format, name, maxcount: INTEGER): INTEGER;
+  GetCursorPos*:                   PROCEDURE\(pos: INTEGER);
+  GetDCEx*:                        PROCEDURE\(wn, clip, flags: INTEGER): INTEGER;
+  GetDpiForWindow*:                PROCEDURE\(wn: INTEGER): INTEGER;
+  GetMessageW*:                    PROCEDURE\(lm, wn, mn, mx: INTEGER): INTEGER;
+  GetQueueStatus*:                 PROCEDURE\(fl: INTEGER): INTEGER;
+  GetWindowDC*:                    PROCEDURE\(wn: INTEGER): INTEGER;
+  GetWindowRect*:                  PROCEDURE\(wn, rec: INTEGER): INTEGER;
+  LoadCursorW*:                    PROCEDURE\(in, cn: INTEGER): INTEGER;
+  MessageBoxA*:                    PROCEDURE\(w, t, c, u: INTEGER)(*: INTEGER*);
+  MessageBoxW*:                    PROCEDURE\(w, t, c, u: INTEGER): INTEGER;
+  MoveWindow*:                     PROCEDURE\(wn, x, y, w, h, repaint: INTEGER);
+  MsgWaitForMultipleObjects*:      PROCEDURE\(cn, hs, wa, ms, wm: INTEGER);
+  PeekMessageW*:                   PROCEDURE\(lm, wn, mn, mx, rm: INTEGER): INTEGER;
+  PostMessageW*:                   PROCEDURE\(hwnd, msg, wp, lp: INTEGER): INTEGER;
+  PostQuitMessage*:                PROCEDURE\(rc: INTEGER);
+  RegisterClassExW*:               PROCEDURE\(wc: INTEGER): INTEGER;
+  ReleaseCapture*:                 PROCEDURE\;
+  ReleaseDC*:                      PROCEDURE\(wn, dc: INTEGER): INTEGER;
+  SetCapture*:                     PROCEDURE\(wn: INTEGER);
+  SetProcessDpiAwarenessContext*:  PROCEDURE\(cx: INTEGER): INTEGER;
+  SetWindowRgn*:                   PROCEDURE\(wn, rgn, redraw: INTEGER): INTEGER;
+  ShowCursor*:                     PROCEDURE\(sh: INTEGER);
+  ShowWindow*:                     PROCEDURE\(wn, cm: INTEGER);
+  TrackMouseEvent*:                PROCEDURE\(evtrk: INTEGER): INTEGER;
+  TranslateMessage*:               PROCEDURE\(ms: INTEGER): INTEGER;
+  InvalidateRect*:                 PROCEDURE\(wn, rc, er: INTEGER): INTEGER;
 
 (* End of pre-loaded variables *)
 
@@ -505,7 +505,7 @@ BEGIN ExitProcess(ExitCode) END Exit;
 (* ---------------------- Exception and trap handling ----------------------- *)
 
 
-PROCEDURE- ExceptionHandler(p: ExceptionPointers);  (* Called by Windows *)
+PROCEDURE\ ExceptionHandler(p: ExceptionPointers);  (* Called by Windows *)
 VAR excpcode: INTEGER;  desc, hex: ARRAY 32 OF CHAR;
 BEGIN
   INC(TrapDepth);
