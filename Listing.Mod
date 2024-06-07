@@ -570,6 +570,16 @@ BEGIN
     IF reghigh   & (reg   < 8) THEN INC(reg,   8) END;
     Reg(8, reg, Args)
 
+  ELSIF opcode = 063H THEN
+
+    s("movsxd", Inst);
+    DisModRegRm(pc, reg, base, index, disp, scale, regsize, indirect, Args);
+    IF reghigh   & (reg   < 8) THEN INC(reg,   8) END;
+    IF indexhigh & (index < 8) THEN INC(index, 8) END;
+    IF basehigh  & (base  < 8) THEN INC(base,  8) END;
+    Reg(8, reg, Args);  s(",", Args);
+    BaseIndexScaleDisp(indirect, -1, regsize DIV 2, base, index, scale, disp, itemmode, Args)
+
   ELSIF (opcode = 68H) OR (opcode = 6AH) THEN
 
     IF opcode = 6AH THEN regsize := 1 END;
