@@ -93,25 +93,25 @@ BEGIN
   END
 END CheckExport;
 
-PROCEDURE CheckNative(VAR native: BYTE);
+PROCEDURE CheckNative(VAR hosted: BYTE);
 BEGIN
-  native := 0;
+  hosted := 0;
   IF sym IN {ORS.rdiv, ORS.bslash} THEN
-    IF sym = ORS.rdiv THEN native := 2 (* Linux *)
-    ELSE                   native := 3 (* Windows *)
+    IF sym = ORS.rdiv THEN hosted := 2 (* Linux *)
+    ELSE                   hosted := 3 (* Windows *)
     END;
     ORS.Get(sym);
     IF ~ORB.SystemImported() THEN
-      ORS.Mark("'/' or '\' native procedure mark requires importing SYSTEM.")
+      ORS.Mark("'/' or '\' hosted procedure mark requires importing SYSTEM.")
     END
   END
 END CheckNative;
 
-PROCEDURE CheckNoGC(VAR native: BYTE);
+PROCEDURE CheckNoGC(VAR hosted: BYTE);
 BEGIN
-  native := 0;
+  hosted := 0;
   IF sym = ORS.minus THEN
-    native := 1; (* no-gc *)
+    hosted := 1; (* no-gc *)
     ORS.Get(sym);
     IF ~ORB.SystemImported() THEN
       ORS.Mark("'-' no-gc mark requires importing SYSTEM.")
@@ -237,17 +237,17 @@ BEGIN (*check for assignment compatibility*)
       OR (t0.form = ORB.Int64) & (t1.form = ORB.Int64)  (* All int types are value compatible *)
 END CompTypes;
 
-PROCEDURE Parameter(par: ORB.Object; native: BYTE);
+PROCEDURE Parameter(par: ORB.Object; hosted: BYTE);
 VAR x: X64.Item;  varpar: BOOLEAN;  stkoff: INTEGER;
 BEGIN
   IF ORS.ListCodegen THEN l.StartRightCol; l.s("Parameter: ", Tr); l.Object(par, Tr); l.sn(".", Tr) END;
   expression(x);
   IF par # NIL THEN
     varpar := par.class = ORB.Par;
-    IF native IN {2,3} THEN stkoff := par.val ELSE stkoff := 0 END;
+    IF hosted IN {2,3} THEN stkoff := par.val ELSE stkoff := 0 END;
     IF CompTypes(par.type, x.type, varpar) THEN
       IF ~varpar THEN
-        ORG.ValueParam(x, stkoff)
+        ORG.ValueParam(x, stkoff, hosted)
       ELSE (*par.class = Par*)
         IF ~par.rdo THEN CheckReadOnly(x) END;
         ORG.VarParam(x, par.type, stkoff)
@@ -261,11 +261,11 @@ BEGIN
         & (par.type.len < 0) THEN
       ORG.StringParam(x, stkoff)
     ELSIF ~varpar & (par.type.form = ORB.Int64) & (x.type.form = ORB.Int64) THEN
-      ORG.ValueParam(x, stkoff)  (* BYTE/INTEGER interop *)
+      ORG.ValueParam(x, stkoff, hosted)  (* BYTE/INTEGER interop *)
     ELSIF (x.type.form = ORB.String) & (x.n = 2)
         & (par.class = ORB.Var) & (par.type.form = ORB.Char) THEN
       ASSERT(x.mode = X64.String);
-      ORG.StrToChar(x);  ORG.ValueParam(x, stkoff)
+      ORG.StrToChar(x);  ORG.ValueParam(x, stkoff, hosted)
     ELSIF (par.type.form = ORB.Array) & (par.type.base = ORB.byteType) & (par.type.len < 0) THEN
       IF ~par.rdo THEN CheckReadOnly(x) END;
       ORG.ArrayOfByteParam(x, stkoff)  (* Can pass anything to a dynamic array of byte *)
@@ -286,12 +286,12 @@ PROCEDURE ParamList(VAR x: X64.Item);
 VAR n: INTEGER;  par: ORB.Object;
 BEGIN par := x.type.dsc;  n := 0;
   IF sym # ORS.rparen THEN
-    Parameter(par, x.type.native);  n := 1;
+    Parameter(par, x.type.hosted);  n := 1;
     WHILE sym <= ORS.comma DO
       Check(ORS.comma, "comma?");
       IF par # NIL THEN par := par.next END;
       INC(n);
-      Parameter(par, x.type.native)
+      Parameter(par, x.type.hosted)
     END;
     Check(ORS.rparen, ") missing")
   ELSE ORS.Get(sym);
@@ -743,7 +743,7 @@ BEGIN
   END
 END Align;
 
-PROCEDURE RecordType(VAR type: ORB.Type; native: BYTE);
+PROCEDURE RecordType(VAR type: ORB.Type; hosted: BYTE);
 VAR obj, obj0, new, bot, base: ORB.Object;
     typ, tp: ORB.Type;
     offset, off, align, n: INTEGER;
@@ -752,7 +752,7 @@ BEGIN NEW(typ);
   typ.base   := NIL;
   typ.mno    := -level;
   typ.nofpar := 0;
-  typ.native := native;
+  typ.hosted := hosted;
   offset     := 0;
   bot        := NIL;
   IF sym = ORS.lparen THEN
@@ -835,10 +835,7 @@ BEGIN ptype.base := ORB.noType;  offset := 0;  nofpar := 0;  ptype.dsc := NIL;
     IF sym = ORS.rparen THEN ORS.Get(sym)
     ELSE
       FPSection(offset, nofpar);
-      WHILE sym = ORS.semicolon DO
-        ORS.Get(sym);
-        FPSection(offset, nofpar)
-      END;
+      WHILE sym = ORS.semicolon DO ORS.Get(sym); FPSection(offset, nofpar) END;
       Check(ORS.rparen, "no )")
     END;
     IF sym = ORS.colon THEN                    (* Parse function result type *)
@@ -870,7 +867,7 @@ BEGIN
   ELSIF sym = ORS.procedure THEN
     ORS.Get(sym);  ORB.OpenScope;
     NEW(typ);  typ.form := ORB.Proc;  typ.size := ORG.WordSize;
-    typ.native := 0;  dmy := 0;
+    typ.hosted := 0;  dmy := 0;
     ProcedureType(typ);
     typ.dsc := ORB.topScope.next;  ORB.CloseScope
   ELSE ORS.Mark("identifier expected");  typ := ORB.noType
@@ -883,7 +880,7 @@ BEGIN
 END CheckRecLevel;
 
 PROCEDURE Type0(VAR type: ORB.Type);
-VAR obj: ORB.Object;  ptbase: PtrBase;  native: BYTE;
+VAR obj: ORB.Object;  ptbase: PtrBase;  hosted: BYTE;
 BEGIN type := ORB.intType;  (*sync*)
   IF (sym # ORS.ident) & (sym < ORS.array) THEN ORS.Mark("not a type");
     REPEAT ORS.Get(sym) UNTIL (sym = ORS.ident) OR (sym >= ORS.array)
@@ -896,18 +893,18 @@ BEGIN type := ORB.intType;  (*sync*)
     END
   ELSIF sym = ORS.array THEN ORS.Get(sym);  ArrayType(type)
   ELSIF sym = ORS.record THEN
-    ORS.Get(sym);  CheckNoGC(native);  RecordType(type, native);  Check(ORS.end, "no END")
+    ORS.Get(sym);  CheckNoGC(hosted);  RecordType(type, hosted);  Check(ORS.end, "no END")
   ELSIF sym = ORS.pointer THEN
-    ORS.Get(sym);  CheckNoGC(native);  Check(ORS.to, "no TO");
+    ORS.Get(sym);  CheckNoGC(hosted);  Check(ORS.to, "no TO");
     NEW(type); type.form   := ORB.Pointer; type.size   := ORG.WordSize; type.base   := ORB.intType;
-    type.native := native;
+    type.hosted := hosted;
     IF sym = ORS.ident THEN
       obj := ORB.thisObj();
       IF obj # NIL THEN
         IF (obj.class = ORB.Typ) & (obj.type.form IN {ORB.Record, ORB.NoTyp}) THEN
           CheckRecLevel(obj.lev); type.base := obj.type;
-          IF (obj.type.native # 0) & (type.native = 0) THEN
-            ORS.Mark("Collected pointer may not point to native record")
+          IF (obj.type.hosted # 0) & (type.hosted = 0) THEN
+            ORS.Mark("Collected pointer may not point to hosted record")
           END;
         ELSIF obj.class = ORB.Mod THEN ORS.Mark("external base type not implemented")
         ELSE ORS.Mark("no valid base type")
@@ -918,15 +915,15 @@ BEGIN type := ORB.intType;  (*sync*)
       ORS.Get(sym)
     ELSE Type(type.base);
       IF (type.base.form # ORB.Record) OR (type.base.typobj = NIL) THEN ORS.Mark("must point to named record") END;
-      IF (type.base.native # 0) & (type.native = 0) THEN
-        ORS.Mark("Collected pointer may not point to native record")
+      IF (type.base.hosted # 0) & (type.hosted = 0) THEN
+        ORS.Mark("Collected pointer may not point to hosted record")
       END;
       CheckRecLevel(level)
     END
   ELSIF sym = ORS.procedure THEN
     ORS.Get(sym);  ORB.OpenScope;
     NEW(type);  type.form := ORB.Proc;  type.size := ORG.WordSize;
-    CheckNative(type.native);
+    CheckNative(type.hosted);
     ProcedureType(type);  type.dsc := ORB.topScope.next;  ORB.CloseScope
   ELSE ORS.Mark("illegal type")
   END
@@ -975,8 +972,8 @@ BEGIN (*sync*) pbsList := NIL;
         WHILE ptbase # NIL DO
           IF obj.name = ptbase.name THEN
             ptbase.type.base := obj.type;
-            IF (ptbase.type.base.native # 0) & (ptbase.type.native = 0) THEN
-              ORS.Mark("Collected pointer may not point to native record")
+            IF (ptbase.type.base.hosted # 0) & (ptbase.type.hosted = 0) THEN
+              ORS.Mark("Collected pointer may not point to hosted record")
             END
           END;
           ptbase := ptbase.next
@@ -1028,15 +1025,15 @@ VAR proc:        ORB.Object;
     L:           INTEGER;
     i:           INTEGER;
     longestname: INTEGER;
-    native:      BYTE;
+    hosted:      BYTE;
     ann:         ORG.BodyAnnotation;
-BEGIN (* ProcedureDecl *) ORS.Get(sym);  CheckNative(native);
+BEGIN (* ProcedureDecl *) ORS.Get(sym);  CheckNative(hosted);
   IF sym = ORS.ident THEN
     ORS.CopyId(procid);  ORS.Get(sym);
     ORG.NewBodyAnnotation(procid, ann);
     ORB.NewObj(proc, ORS.id, ORB.Const);
     NEW(type);  type.form := ORB.Proc;  type.size := ORG.WordSize;
-    type.native := native;
+    type.hosted := hosted;
     proc.type   := type;  proc.val := -1;  proc.lev := level;
     CheckExport(proc.expo);
     IF proc.expo THEN proc.exno := 1 END;
@@ -1045,12 +1042,16 @@ BEGIN (* ProcedureDecl *) ORS.Get(sym);  CheckNative(native);
     Check(ORS.semicolon, "no ;");
     parmsize := type.len;
     (* Reserve space for Linux/Windows ABI callee-save registers *)
-    IF    native = 2 THEN locsize := 48  (* Linux *)
-    ELSIF native = 3 THEN locsize := 64  (* Windows *)
+    IF    hosted = 2 THEN locsize := 48 + H.Min(48, parmsize)   (* Linux: non-voloatile plus up to 6 params *)
+    ELSIF hosted = 3 THEN locsize := 64  (* Windows: non-volatile reg save area*)
     ELSE                  locsize := 0   (* Locals start at RSP + 0 *)
     END;
     Declarations(locsize);
-    framesize := parmsize + locsize + 8;  (* Frame includes return address *)
+    IF hosted = 2 THEN
+      framesize := H.Max(0, parmsize - 48) + locsize + 8;  (* includes retad & parms 7 and above *)
+    ELSE
+      framesize := parmsize + locsize + 8;  (* Frame includes return address *)
+    END;
     proc.val := ORG.Here();
     type.dsc := ORB.topScope.next;
 
@@ -1061,8 +1062,8 @@ BEGIN (* ProcedureDecl *) ORS.Get(sym);  CheckNative(native);
     (* to the initial stack position before pushing parameters, so we need *)
     (* to add the framesize to each parameter offset to make them relative *)
     (* to the value of rsp during procedure excution.                      *)
-    (* For native procedures the job is a little more complex, as Windows  *)
-    (* pushes parameters in reverse order. Fortunately native parameter    *)
+    (* For hosted procedures the job is a little more complex, as Windows  *)
+    (* pushes parameters in reverse order. Fortunately hosted parameter    *)
     (* passing is limited to 8 byte paremeters: we do not support passing  *)
     (* of arrays or records other than by the use of SYSTEM.ADR.           *)
 
@@ -1070,35 +1071,51 @@ BEGIN (* ProcedureDecl *) ORS.Get(sym);  CheckNative(native);
       l.CatchupSource;
       l.s("Procedure declaration '", Tr);  l.s(procid, Tr);  l.sn("'.", Tr);
       (* --- dump objects --- *)
-      l.s("parmsize: $",    Tr); l.h(parmsize, Tr);
-      l.s(", locsize: $",   Tr); l.h(locsize, Tr);
-      l.s(", framesize: $", Tr); l.h(framesize, Tr); l.n(Tr);
+      l.s("nofpar ", Tr);        l.i(type.nofpar, Tr);
+      l.s(", parmsize: ",  Tr);  l.h(parmsize, Tr);
+      l.s("H, locsize: ",   Tr); l.h(locsize, Tr);
+      l.s("H, framesize: ", Tr); l.h(framesize, Tr); l.sn("H.", Tr);
       longestname := 0;  obj := type.dsc;  WHILE obj # NIL DO
         IF slen(obj.name) > longestname THEN longestname := slen(obj.name) END;
         obj := obj.next
       END
     END;
 
-    obj := type.dsc;
-    WHILE obj # NIL DO
-      IF obj.class IN {ORB.Var, ORB.Par} THEN
-        IF obj.val < 0 THEN (* Fixup parameter offset *)
-          IF native = 3 THEN (* Windows X64 ABI *)
-            obj.val := framesize - type.len - obj.val - 8  (* Note - all native parms are 8 bytes *)
-          ELSE
-            INC(obj.val, framesize)  (* Normal parameter *)
-          END
+    (* Fixup parameter offsets now that we know the stack frame size *)
+    obj := type.dsc;  i := 0;
+    WHILE (obj # NIL) & (i < type.nofpar) DO
+      ASSERT(obj.class IN {ORB.Var, ORB.Par});  ASSERT(obj.val < 0);
+      IF hosted = 0 THEN  (* Oberon ABI *)
+
+        INC(obj.val, framesize)  (* address relative to run time rsp *)
+
+      ELSIF hosted = 2 THEN  (* Linux ABI *)
+
+        obj.val := - obj.val
+
+      ELSE ASSERT(hosted = 3); (* Windows ABI *)
+
+        obj.val := framesize - type.len - obj.val - 8  (* Note - all hosted parms are 8 bytes *)
+
+      END;
+      INC(i); obj := obj.next
+    END;
+
+    (* List parameters and local variable *)
+    IF ORS.ListCodegen THEN
+      obj := type.dsc;  i := 0;
+      WHILE obj # NIL DO
+        IF i < type.nofpar THEN
+          l.s("Param ", Tr); l.i(i, Tr);
+        ELSE
+          l.s("Local ", Tr); l.i(i - type.nofpar, Tr)
         END;
-        IF ORS.ListCodegen THEN
-          l.Class(obj.class, Tr);  l.s(" ", Tr);  l.sl(obj.name, longestname, Tr);
-          l.s(" adr $", Tr);       l.hz(obj.val, 6, Tr)
-        END
-      END;
-      IF ORS.ListCodegen THEN
-        l.s(" type ", Tr);  l.Type(obj.type, Tr);
-        l.n(Tr)
-      END;
-      obj := obj.next
+        l.s(" ", Tr);        l.Class(obj.class, Tr);
+        l.s(" ", Tr);        l.sl(obj.name, longestname, Tr);
+        l.s(" adr ", Tr);    l.hz(obj.val, 6, Tr);
+        l.s("H type ", Tr);  l.Type(obj.type, Tr);   l.sn(".", Tr);
+        INC(i); obj := obj.next
+      END
     END;
 
     (* Parse nested procedures *)
@@ -1109,7 +1126,7 @@ BEGIN (* ProcedureDecl *) ORS.Get(sym);  CheckNative(native);
     END;
 
     (* Compile procedure body *)
-    ORG.Enter(parmsize, locsize, native);
+    ORG.Enter(parmsize, locsize, hosted);
     IF sym = ORS.begin THEN ORS.Get(sym);  StatSequence(ann) END;
     IF sym = ORS.return THEN
       ORG.AddLineAnnotation(ann);
@@ -1127,7 +1144,7 @@ BEGIN (* ProcedureDecl *) ORS.Get(sym);  CheckNative(native);
       ORS.Get(sym)
     ELSE ORS.Mark("no proc id")
     END;
-    ORG.Return(type.base.form, x, parmsize, locsize, native);
+    ORG.Return(type.base.form, x, parmsize, locsize, hosted);
     ORG.AddLineAnnotation(ann);
     ORB.CloseScope;  DEC(level)
   END

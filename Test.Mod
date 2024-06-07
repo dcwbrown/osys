@@ -1,10 +1,45 @@
 MODULE Test;  (* DCWB 27 Feb 2024 *)
 
-IMPORT H := WinHost, Texts;
+IMPORT SYSTEM, H := WinHost, Texts;
 
 TYPE r = RECORD i: INTEGER END;
 
-VAR W: Texts.Writer;
+VAR
+  W:    Texts.Writer;
+
+(*$la+lc+*)
+
+PROCEDURE Obe(a, b, c, d, e, f, g, h: INTEGER): INTEGER;
+VAR i: INTEGER;
+BEGIN
+  i := a + b + c + d + e + f + g + h;
+  RETURN i
+END Obe;
+
+PROCEDURE/ Lin(a, b, c, d, e, f, g, h: INTEGER): INTEGER;
+VAR i: INTEGER;
+BEGIN
+  i := a + b + c + d + e + f + g + h;
+  RETURN i
+END Lin;
+
+PROCEDURE\ Win(a, b, c, d, e, f, g, h: INTEGER): INTEGER;
+VAR i: INTEGER;
+BEGIN
+  i := a + b + c + d + e + f + g + h;
+  RETURN i
+END Win;
+
+(*
+PROCEDURE TestHost*;
+VAR i: INTEGER;
+BEGIN
+  i := Obe(1,2,3,4,5,6,7,8);
+  i := Lin(1,2,3,4,5,6,7,8);
+  i := Win(1,2,3,4,5,6,7,8);
+END TestHost;
+*)
+(*$la-lc-*)
 
 PROCEDURE ArrayIndexTest*;
 VAR i: INTEGER; a: ARRAY 10 OF INTEGER;
