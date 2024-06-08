@@ -237,7 +237,7 @@ BEGIN (*check for assignment compatibility*)
       OR (t0.form = ORB.Int64) & (t1.form = ORB.Int64)  (* All int types are value compatible *)
 END CompTypes;
 
-PROCEDURE Parameter(par: ORB.Object; hosted: BYTE);
+PROCEDURE Parameter(par: ORB.Object;  hosted: BYTE;  n: INTEGER);
 VAR x: X64.Item;  varpar: BOOLEAN;  stkoff: INTEGER;
 BEGIN
   IF ORS.ListCodegen THEN l.StartRightCol; l.s("Parameter: ", Tr); l.Object(par, Tr); l.sn(".", Tr) END;
@@ -247,7 +247,7 @@ BEGIN
     IF hosted IN {2,3} THEN stkoff := par.val ELSE stkoff := 0 END;
     IF CompTypes(par.type, x.type, varpar) THEN
       IF ~varpar THEN
-        ORG.ValueParam(x, stkoff, hosted)
+        ORG.ValueParam(x, hosted, n)
       ELSE (*par.class = Par*)
         IF ~par.rdo THEN CheckReadOnly(x) END;
         ORG.VarParam(x, par.type, stkoff)
@@ -261,11 +261,11 @@ BEGIN
         & (par.type.len < 0) THEN
       ORG.StringParam(x, stkoff)
     ELSIF ~varpar & (par.type.form = ORB.Int64) & (x.type.form = ORB.Int64) THEN
-      ORG.ValueParam(x, stkoff, hosted)  (* BYTE/INTEGER interop *)
+      ORG.ValueParam(x, hosted, n)  (* BYTE/INTEGER interop *)
     ELSIF (x.type.form = ORB.String) & (x.n = 2)
         & (par.class = ORB.Var) & (par.type.form = ORB.Char) THEN
       ASSERT(x.mode = X64.String);
-      ORG.StrToChar(x);  ORG.ValueParam(x, stkoff, hosted)
+      ORG.StrToChar(x);  ORG.ValueParam(x, hosted, n)
     ELSIF (par.type.form = ORB.Array) & (par.type.base = ORB.byteType) & (par.type.len < 0) THEN
       IF ~par.rdo THEN CheckReadOnly(x) END;
       ORG.ArrayOfByteParam(x, stkoff)  (* Can pass anything to a dynamic array of byte *)
@@ -286,12 +286,11 @@ PROCEDURE ParamList(VAR x: X64.Item);
 VAR n: INTEGER;  par: ORB.Object;
 BEGIN par := x.type.dsc;  n := 0;
   IF sym # ORS.rparen THEN
-    Parameter(par, x.type.hosted);  n := 1;
+    Parameter(par, x.type.hosted, n);  n := 1;
     WHILE sym <= ORS.comma DO
       Check(ORS.comma, "comma?");
       IF par # NIL THEN par := par.next END;
-      INC(n);
-      Parameter(par, x.type.hosted)
+      Parameter(par, x.type.hosted, n);  INC(n)
     END;
     Check(ORS.rparen, ") missing")
   ELSE ORS.Get(sym);
@@ -1041,16 +1040,15 @@ BEGIN (* ProcedureDecl *) ORS.Get(sym);  CheckNative(hosted);
     ProcedureType(type);  (*formal parameter list*)
     Check(ORS.semicolon, "no ;");
     parmsize := type.len;
-    (* Reserve space for Linux/Windows ABI callee-save registers *)
-    IF    hosted = 2 THEN locsize := 48 + H.Min(48, parmsize)   (* Linux: non-voloatile plus up to 6 params *)
-    ELSIF hosted = 3 THEN locsize := 64  (* Windows: non-volatile reg save area*)
-    ELSE                  locsize := 0   (* Locals start at RSP + 0 *)
-    END;
+    locsize := 0;
     Declarations(locsize);
-    IF hosted = 2 THEN
-      framesize := H.Max(0, parmsize - 48) + locsize + 8;  (* includes retad & parms 7 and above *)
-    ELSE
+
+    IF hosted = 0 THEN  (* Oberon ABI *)
       framesize := parmsize + locsize + 8;  (* Frame includes return address *)
+    ELSIF hosted = 2 THEN  (* Linux ABI *)
+      framesize := parmsize + locsize + 8 + 48;  (* Frame includes return address *)
+    ELSE ASSERT(hosted = 3);  (* Windows ABI *)
+      framesize := parmsize + locsize + 8 + 64;  (* Frame includes return address *)
     END;
     proc.val := ORG.Here();
     type.dsc := ORB.topScope.next;
@@ -1064,7 +1062,7 @@ BEGIN (* ProcedureDecl *) ORS.Get(sym);  CheckNative(hosted);
     (* to the value of rsp during procedure excution.                      *)
     (* For hosted procedures the job is a little more complex, as Windows  *)
     (* pushes parameters in reverse order. Fortunately hosted parameter    *)
-    (* passing is limited to 8 byte paremeters: we do not support passing  *)
+    (* passing is limited to 8 byte parameters: we do not support passing  *)
     (* of arrays or records other than by the use of SYSTEM.ADR.           *)
 
     IF ORS.ListCodegen THEN
@@ -1091,11 +1089,17 @@ BEGIN (* ProcedureDecl *) ORS.Get(sym);  CheckNative(hosted);
 
       ELSIF hosted = 2 THEN  (* Linux ABI *)
 
-        obj.val := - obj.val
+        IF obj.val >= -48  (* Params 1 to 6 *) THEN
+          obj.val := locsize - 8 - obj.val
+        ELSE
+          obj.val := locsize + 48 - obj.val
+        END;
 
       ELSE ASSERT(hosted = 3); (* Windows ABI *)
 
-        obj.val := framesize - type.len - obj.val - 8  (* Note - all hosted parms are 8 bytes *)
+        H.ws("proc "); H.ws(procid); H.ws(", obj.val "); H.wi(obj.val);
+        obj.val := framesize - type.len - obj.val - 8;  (* Note - all hosted parms are 8 bytes *)
+        H.ws(" -> "); H.wi(obj.val); H.wsn(".");
 
       END;
       INC(i); obj := obj.next

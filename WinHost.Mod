@@ -254,7 +254,7 @@ END IntToHex;
 PROCEDURE IntToDecimal*(n: INTEGER; VAR s: ARRAY OF CHAR);
 VAR i, j: INTEGER;  ch: CHAR;
 BEGIN
-  IF n = 8000000000000000H THEN s := "-9223372036854775808"
+  IF n = 8000000000000000H THEN s[0] := 0X; Append("-9223372036854775808", s)
   ELSE i := 0;
     IF n < 0 THEN s[0] := "-";  i := 1;  n := -n END;
     j := i;
@@ -995,7 +995,7 @@ BEGIN
     AssertWinError(GetLastError())
   END;
 
-  ParseCommandLine
+  ParseCommandLine;
 END Init;
 
 

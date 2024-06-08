@@ -575,12 +575,6 @@ BEGIN
 
   (*Window.DPI := H.GetDpiForWindow(Window.hwnd);*)
 
-  (*
-  rgn := H.CreateRectRgn(0, 0, rect.right - rect.left,  rect.bottom - rect.top);
-  ASSERT(rgn # 0);
-  ASSERT(H.SetWindowRgn(Window.hwnd, rgn, 0) # 0);
-  *)
-
   H.ShowWindow(Window.hwnd, 1);
 END CreateWindow;
 
@@ -666,7 +660,8 @@ END Minimise;
 
 (* ------------------------- Display initialisation ------------------------- *)
 
-BEGIN Texts.OpenWriter(W);
+BEGIN
+  Texts.OpenWriter(W);
   Dirtyleft   := Width;   Dirtyright := 0;
   Dirtybottom := Height;  Dirtytop   := 0;
   Tracking    := FALSE;
@@ -689,6 +684,5 @@ BEGIN Texts.OpenWriter(W);
     00 00 00 00 00 00 00 00  00 00 00 54 61 5B 0E 5D
     00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00
     00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00$);
-  CreateWindow(512, 64, Width, Height);
-  (*wsn("WinGui initialisation complete.");*)
+  CreateWindow(512, 64, Width, Height)
 END WinGui.

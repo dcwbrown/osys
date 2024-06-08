@@ -7,8 +7,22 @@ TYPE r = RECORD i: INTEGER END;
 VAR
   W:    Texts.Writer;
 
-(*$la+lc+*)
+(*
+  p: PROCEDURE\(a, b: INTEGER);
 
+PROCEDURE\ ab (a, b: INTEGER);
+BEGIN H.ws("a "); H.wi(a); H.ws(", b "); H.wi(b); H.wsn(".")
+END ab;
+
+PROCEDURE testab*;
+BEGIN
+  p := ab;
+  ab(1,2);
+  p(1,2);
+END testab;
+*)
+
+(*$la+lc+*)
 PROCEDURE Obe(a, b, c, d, e, f, g, h: INTEGER): INTEGER;
 VAR i: INTEGER;
 BEGIN
@@ -30,15 +44,22 @@ BEGIN
   RETURN i
 END Win;
 
-(*
 PROCEDURE TestHost*;
 VAR i: INTEGER;
 BEGIN
+  H.wsn("Calling Obe.");
   i := Obe(1,2,3,4,5,6,7,8);
+  H.ws("Obe returned "); H.wi(i); H.wsn(".");
+
+  H.wsn("Calling Lin.");
   i := Lin(1,2,3,4,5,6,7,8);
+  H.ws("Lin returned "); H.wi(i); H.wsn(".");
+
+  H.wsn("Calling Win.");
   i := Win(1,2,3,4,5,6,7,8);
+  H.ws("Win returned "); H.wi(i); H.wsn(".");
 END TestHost;
-*)
+
 (*$la-lc-*)
 
 PROCEDURE ArrayIndexTest*;

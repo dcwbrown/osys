@@ -768,10 +768,11 @@ END StoreImmediate;
 (*----*)
 
 PROCEDURE PushReg*(r: INTEGER);
-BEGIN Prefices(Reg, r, 4, -1, -1); X64.Emit(50H + r MOD 8) END PushReg;
+BEGIN Prefices(Reg, 0, 4, r, -1); X64.Emit(50H + r MOD 8) END PushReg;
 
 PROCEDURE PopReg*(r: INTEGER);
-BEGIN Prefices(Reg, r, 4, -1, -1); X64.Emit(58H + r MOD 8) END PopReg;
+BEGIN Prefices(Reg, 0, 4, r, -1); X64.Emit(58H + r MOD 8) END PopReg;
+
 
 PROCEDURE PushImmediate*(i: INTEGER);
 VAR reg: INTEGER;
@@ -910,8 +911,12 @@ BEGIN
     OpModRegRm(0FFH, mode, incdec, size, n, index, scale, offset, 0)  (* inc/dec dest *)
   ELSE
     immsize := size; IF immsize > 4 THEN immsize := 4 END;
-    immlim := LSL(1, immsize);
+    immlim := LSL(1, immsize*8-1);
     IF (imm < -immlim) OR (imm >= immlim) THEN
+
+      H.ws("imm "); H.wi(imm); H.ws(", size "); H.wi(size);
+      H.ws(", immlim "); H.wi(immlim); H.wsn(".");
+
       immreg := Reserve(-1, {});
       LoadImmediate(immreg, imm);                                                       (* mov immreg,imm64 *)
       OpModRegRm(op+1, mode, immreg, size, n, index, scale, offset, 0);                 (* op  dest,immreg  *)
@@ -1240,10 +1245,10 @@ END CopyString;
 
 (* ---- Paramter passing ---- *)
 
-PROCEDURE ValueParam*(VAR x: Item;  stkoff: INTEGER;  hosted: BYTE);
+PROCEDURE ValueParam*(VAR x: Item;  hosted: BYTE; n: INTEGER);
 VAR pos, reg: INTEGER;
 BEGIN
-  Trace(TraceAny, "ValueParam["); l.i(stkoff, Tr); l.s("](x: ", Tr); l.Item(x, Tr); l.sn(")", Tr);
+  Trace(TraceAny, "ValueParam["); l.i(n, Tr); l.s("](x: ", Tr); l.Item(x, Tr); l.sn(")", Tr);
 
   IF hosted = 0 THEN  (* normal (simple) parameter passing *)
 
@@ -1251,43 +1256,41 @@ BEGIN
 
   ELSIF hosted = 2 THEN  (* Linux ABI parameter passing *)
 
-    pos := -(stkoff DIV 8 + 1);
-    H.ws("Linux ABI value parameter, stkoff "); H.wi(stkoff);
-    H.ws(", pos "); H.wi(pos); H.wsn(".");
-    IF    pos = 0 THEN reg := RDI
-    ELSIF pos = 1 THEN reg := RSI
-    ELSIF pos = 2 THEN reg := RDX
-    ELSIF pos = 3 THEN reg := RCX
-    ELSIF pos = 4 THEN reg := 8
-    ELSIF pos = 5 THEN reg := 9
+    H.ws("Linux ABI value parameter, n "); H.wi(n);
+    H.ws(", n "); H.wi(n); H.wsn(".");
+    IF    n = 0 THEN reg := RDI
+    ELSIF n = 1 THEN reg := RSI
+    ELSIF n = 2 THEN reg := RDX
+    ELSIF n = 3 THEN reg := RCX
+    ELSIF n = 4 THEN reg := 8
+    ELSIF n = 5 THEN reg := 9
     ELSE reg := -1
     END;
     IF reg >= 0 THEN
       LoadReg(reg, x)
     ELSE
       IF x.mode = Const THEN
-        StoreImmediateToMem(x.n, Eadr, 8, RSP, -1, 0, pos * 8)
+        StoreImmediateToMem(x.n, Eadr, 8, RSP, -1, 0, (n - 6) * 8)
       ELSE
-        Load(x);  StoreRegToMem(x.n, Eadr, 8, RSP, -1, 0, pos * 8);  FreeRegs(x)
+        Load(x);  StoreRegToMem(x.n, Eadr, 8, RSP, -1, 0, (n - 6) * 8);  FreeRegs(x)
       END
     END
 
-  ELSE  ASSERT(hosted = 3);  (* Windows ABI parameter passing *)
+  ELSE ASSERT(hosted = 3);  (* Windows ABI parameter passing *)
 
-    pos := -(stkoff DIV 8 + 1);
-    IF    pos = 0 THEN reg := RCX
-    ELSIF pos = 1 THEN reg := RDX
-    ELSIF pos = 2 THEN reg := 8
-    ELSIF pos = 3 THEN reg := 9
+    IF    n = 0 THEN reg := RCX
+    ELSIF n = 1 THEN reg := RDX
+    ELSIF n = 2 THEN reg := 8
+    ELSIF n = 3 THEN reg := 9
     ELSE reg := -1
     END;
     IF reg >= 0 THEN
       LoadReg(reg, x)
     ELSE
       IF x.mode = Const THEN
-        StoreImmediateToMem(x.n, Eadr, 8, RBP, -1, 0, pos * 8)
+        StoreImmediateToMem(x.n, Eadr, 8, RBP, -1, 0, n * 8)
       ELSE
-        Load(x);  StoreRegToMem(x.n, Eadr, 8, RBP, -1, 0, pos * 8);  FreeRegs(x)
+        Load(x);  StoreRegToMem(x.n, Eadr, 8, RBP, -1, 0, n * 8);  FreeRegs(x)
       END
     END
 
@@ -1426,6 +1429,7 @@ BEGIN
 
     IF x.type.nofpar > 6 THEN
       AluOpFromImmediate(Minus, Reg, (x.type.nofpar - 6) * 8, 8, RSP, -1, 0, 0);
+      X64.AdjustStack(x.type.nofpar - 6);
       Disassemble(0, "Reserve Linux ABI stack space for params 6 and higher")
     END
 
@@ -1493,6 +1497,10 @@ BEGIN
 
     DEC(parmsize, 48);  (* First 6 parms are not passed on the stack *)
     IF parmsize > 0 THEN
+      (*
+      OpModRegRm(8DH, Eadr, RSP, 8, RSP, -1, 0, parmsize, 0);  (* lea rsp, rbp + parmreserved *)
+      *)
+      AluOpFromImmediate(Plus, Reg, parmsize, 8, RSP, -1, 0, 0);
       X64.AdjustStack(-(parmsize DIV 8));  (* matches stack adjustment by <ret n> *)
     END
 
@@ -1501,7 +1509,7 @@ BEGIN
     stackspace := parmsize;  IF stackspace < 32 THEN stackspace := 32 END;
     OpModRegRm(8DH, Eadr, RSP, 8, RBP, -1, 0, stackspace + 8, 0);  (* lea rsp, rbp + parmreserved *)
     Disassemble(0, "Drop Windows ABI parameter area from stack");
-    X64.AdjustStack(-(stackspace DIV 8 + 1))  (* matches stack adjustment by <ret n> *)
+    X64.AdjustStack(-(stackspace DIV 8 + 1))
 
   END;
 
@@ -1558,9 +1566,6 @@ BEGIN
     IF parmsize >  0 THEN PushReg(RDI) END;
     Disassemble(Eadr, "Save Linux ABI procedure parameters 1-6 to stack.");
 
-    DEC(locsize, 48 + H.Min(parmsize, 48));
-    ASSERT(locsize >= 0);  (* Remainder is size of local variables *)
-
   ELSIF hosted = 3 THEN  (* Windows X64 ABI *)
 
     (* For hosted procedures, deposit reg params on stack *)
@@ -1569,11 +1574,10 @@ BEGIN
     StoreRegToMem(8,   Eadr, 8, RSP, -1, 0, 18H);
     StoreRegToMem(9,   Eadr, 8, RSP, -1, 0, 20H);
     Disassemble(Eadr, "Save Windows hosted procedure parameters to stack.");
-    ASSERT(locsize >= 64);
+
     (* Save Windows X64 ABI non-volatile registers *)
     PushReg(RBX);  PushReg(RSI);  PushReg(RDI);  PushReg(RBP);
     PushReg(12);   PushReg(13);   PushReg(14);   PushReg(15);
-    DEC(locsize, 64)
 
   END;
 
@@ -1652,9 +1656,8 @@ BEGIN
 
   ELSIF hosted = 2 THEN  (* Linux ABI *)
 
-    ASSERT(locsize >= 48);
-    IF locsize > 48 THEN
-      AluOpFromImmediate(Plus, Reg, locsize - 48, 8, RSP, -1, 0, 0);
+    IF locsize > 00 THEN
+      AluOpFromImmediate(Plus, Reg, locsize + H.Min(48, parmsize), 8, RSP, -1, 0, 0);
       Disassemble(0, "release Linux ABI local & parameter  space")
     END;
     PopReg(15);   PopReg(14);
@@ -1662,23 +1665,20 @@ BEGIN
     PopReg(RBP);  PopReg(RBX);
     Disassemble(0, "restore Linux ABI non-volatile registers");
 
-    IF parmsize <= 48 THEN
-      X64.Emit(0C3H)  (* ret *)
-    ELSE
-      X64.Emit(0C2H);  X64.EmitBytes(2, parmsize - 48)  (* retn *)
-    END
+    X64.Emit(0C3H)  (* ret - caller cleans up stack *)
 
   ELSIF hosted = 3 THEN  (* Windows ABI *)
 
-    ASSERT(locsize >= 64);
-    IF locsize > 64 THEN
-      AluOpFromImmediate(Plus, Reg, locsize - 64, 8, RSP, -1, 0, 0);
+    IF locsize > 0 THEN
+      AluOpFromImmediate(Plus, Reg, locsize, 8, RSP, -1, 0, 0);
       Disassemble(0, "release Windows ABI local variable space")
     END;
     PopReg(15);   PopReg(14);   PopReg(13);   PopReg(12);
     PopReg(RBP);  PopReg(RDI);  PopReg(RSI);  PopReg(RBX);
     Disassemble(0, "restore Windows ABI non-volatile registers");
-    X64.Emit(0C3H)  (* ret *)
+
+    X64.Emit(0C3H)  (* ret - caller cleans up stack  *)
+
   END;
   Disassemble(0, "Return");
 
