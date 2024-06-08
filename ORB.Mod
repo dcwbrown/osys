@@ -53,6 +53,14 @@ CONST
   Array*   = 17;
   Record*  = 18;
 
+  (* hosted values *)
+  Nohost*  = 0;  (* Normal Oberon behaviour                      *)
+  Nogc*    = 1;  (* Record or pointer with no garbage collection *)
+  Linux*   = 2;  (* Procedure with Linux X64 ABI                 *)
+  Windows* = 3;  (* Procedure with Windows X64 ABI               *)
+  Syscall* = 4;  (* Linux syscall procedure                      *)
+
+
 TYPE
   Object* = POINTER TO ObjDesc;
   Module* = POINTER TO ModDesc;

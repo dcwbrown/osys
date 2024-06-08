@@ -1250,11 +1250,11 @@ VAR pos, reg: INTEGER;
 BEGIN
   Trace(TraceAny, "ValueParam["); l.i(n, Tr); l.s("](x: ", Tr); l.Item(x, Tr); l.sn(")", Tr);
 
-  IF hosted = 0 THEN  (* normal (simple) parameter passing *)
+  IF hosted = ORB.Nohost THEN  (* normal (simple) parameter passing *)
 
     Push(x); X64.AdjustStack(1)
 
-  ELSIF hosted = 2 THEN  (* Linux ABI parameter passing *)
+  ELSIF hosted = ORB.Linux THEN  (* Linux ABI parameter passing *)
 
     H.ws("Linux ABI value parameter, n "); H.wi(n);
     H.ws(", n "); H.wi(n); H.wsn(".");
@@ -1276,7 +1276,7 @@ BEGIN
       END
     END
 
-  ELSE ASSERT(hosted = 3);  (* Windows ABI parameter passing *)
+  ELSE ASSERT(hosted = ORB.Windows);  (* Windows ABI parameter passing *)
 
     IF    n = 0 THEN reg := RCX
     ELSIF n = 1 THEN reg := RDX
@@ -1402,9 +1402,9 @@ BEGIN
   END;
   ASSERT(x.mode IN {Eadr, Global, Code, Import, Impcode});
 
-  IF x.type.hosted = 2 THEN  (* Linux ABI *)
+  IF x.type.hosted = ORB.Linux THEN  (* Linux ABI *)
     stackspace := x.type.len;
-  ELSIF x.type.hosted = 3 THEN  (* Windows ABI *)
+  ELSIF x.type.hosted = ORB.Windows THEN  (* Windows ABI *)
     stackspace := x.type.len;
     IF stackspace < 32 THEN stackspace := 32 END
   END;
@@ -1414,18 +1414,18 @@ BEGIN
     Disassemble(x.mode, "proc address to be called");
     ASSERT(x.type.len MOD 8 = 0);
     x.mode   := Eadr;
-    IF x.type.hosted = 0 THEN  (* Normal, simple calling process *)
+    IF x.type.hosted = ORB.Nohost THEN  (* Normal, simple calling process *)
       x.n      := RSP;
       x.offset := -8 * (X64.SPO - (x.type.len DIV 8 + 1))
-    ELSIF x.type.hosted = 2 THEN (* Linux ABI *)
+    ELSIF x.type.hosted = ORB.Linux THEN (* Linux ABI *)
       ASSERT(FALSE)
-    ELSE ASSERT(x.type.hosted = 3); (* Windows ABI calling process *)
+    ELSE ASSERT(x.type.hosted = ORB.Windows); (* Windows ABI calling process *)
       x.n      := RBP;
       x.offset := -8 * (X64.SPO - (stackspace DIV 8 + 2))
     END
   END;
 
-  IF x.type.hosted = 2 THEN  (* Prepare stack space for Linux abi *)
+  IF x.type.hosted = ORB.Linux THEN  (* Prepare stack space for Linux abi *)
 
     IF x.type.nofpar > 6 THEN
       AluOpFromImmediate(Minus, Reg, (x.type.nofpar - 6) * 8, 8, RSP, -1, 0, 0);
@@ -1433,7 +1433,7 @@ BEGIN
       Disassemble(0, "Reserve Linux ABI stack space for params 6 and higher")
     END
 
-  ELSIF x.type.hosted = 3 THEN  (* Prepare stack space for Windows abi *)
+  ELSIF x.type.hosted = ORB.Windows THEN  (* Prepare stack space for Windows abi *)
 
     (* We need to place parameters aligned so that the first parameter (at the
        lowest address) is 16 byte aligned. This alignemnet will only be known at
@@ -1461,7 +1461,7 @@ BEGIN
   ASSERT(x.type.form = ORB.Proc);
   ASSERT(x.mode IN {Eadr, Global, Code, Import, Impcode});
 
-  IF x.type.hosted = 3 THEN  (* Windows X64 ABI: Adjust to 16 byte aligned stack *)
+  IF x.type.hosted = ORB.Windows THEN  (* Windows X64 ABI: Adjust to 16 byte aligned stack *)
     OpModRegRm(87H, Reg, RBP, 8, RSP, -1, 0, 0, 0);  (* xchg rsp,rbp *)
     Disassemble(0, "Switch to Windows ABI aligned stack frame")
   END;
@@ -1489,11 +1489,11 @@ BEGIN
   END;
   Disassemble(x.mode, "Call");
 
-  IF x.type.hosted = 0 THEN   (* Normal (simple) stack handling *)
+  IF x.type.hosted = ORB.Nohost THEN   (* Normal (simple) stack handling *)
 
     X64.AdjustStack(-(parmsize DIV 8));  (* matches stack adjustment by <ret n> *)
 
-  ELSIF x.type.hosted = 2 THEN  (* Linux ABI stack handling *)
+  ELSIF x.type.hosted = ORB.Linux THEN  (* Linux ABI stack handling *)
 
     DEC(parmsize, 48);  (* First 6 parms are not passed on the stack *)
     IF parmsize > 0 THEN
@@ -1504,7 +1504,7 @@ BEGIN
       X64.AdjustStack(-(parmsize DIV 8));  (* matches stack adjustment by <ret n> *)
     END
 
-  ELSIF x.type.hosted = 3 THEN  (* Windows ABI stack handling *)
+  ELSIF x.type.hosted = ORB.Windows THEN  (* Windows ABI stack handling *)
 
     stackspace := parmsize;  IF stackspace < 32 THEN stackspace := 32 END;
     OpModRegRm(8DH, Eadr, RSP, 8, RBP, -1, 0, stackspace + 8, 0);  (* lea rsp, rbp + parmreserved *)
@@ -1549,7 +1549,7 @@ BEGIN
   Trace(TraceAny, "Enter(parmsize $"); l.h(parmsize, Tr);
   l.s(", locsize $", Tr);             l.h(locsize, Tr);   l.sn(")", Tr);
 
-  IF hosted = 2 THEN  (* Linux X64 ABI *)
+  IF hosted = ORB.Linux THEN  (* Linux X64 ABI *)
 
     (* Save Linux X64 ABI non-volatile registers *)
     PushReg(RBX);  PushReg(RBP);
@@ -1566,7 +1566,7 @@ BEGIN
     IF parmsize >  0 THEN PushReg(RDI) END;
     Disassemble(Eadr, "Save Linux ABI procedure parameters 1-6 to stack.");
 
-  ELSIF hosted = 3 THEN  (* Windows X64 ABI *)
+  ELSIF hosted = ORB.Windows THEN  (* Windows X64 ABI *)
 
     (* For hosted procedures, deposit reg params on stack *)
     StoreRegToMem(RCX, Eadr, 8, RSP, -1, 0, 08H);
@@ -1642,7 +1642,7 @@ BEGIN
     Disassemble(x.mode, "Load function result")
   END;
 
-  IF hosted = 0 THEN  (* Regular Oberon ABI *)
+  IF hosted = ORB.Nohost THEN  (* Regular Oberon ABI *)
 
     IF locsize > 0 THEN
       AluOpFromImmediate(Plus, Reg, locsize, 8, RSP, -1, 0, 0);
@@ -1654,7 +1654,7 @@ BEGIN
       X64.Emit(0C2H);  X64.EmitBytes(2, parmsize)  (* retn *)
     END
 
-  ELSIF hosted = 2 THEN  (* Linux ABI *)
+  ELSIF hosted = ORB.Linux THEN  (* Linux ABI *)
 
     IF locsize > 00 THEN
       AluOpFromImmediate(Plus, Reg, locsize + H.Min(48, parmsize), 8, RSP, -1, 0, 0);
@@ -1667,7 +1667,7 @@ BEGIN
 
     X64.Emit(0C3H)  (* ret - caller cleans up stack *)
 
-  ELSIF hosted = 3 THEN  (* Windows ABI *)
+  ELSIF hosted = ORB.Windows THEN  (* Windows ABI *)
 
     IF locsize > 0 THEN
       AluOpFromImmediate(Plus, Reg, locsize, 8, RSP, -1, 0, 0);
@@ -2839,7 +2839,7 @@ VAR
   fld:  ORB.Object;
   i, s: INTEGER;
 BEGIN
-  IF (typ.form = ORB.Pointer) & (typ.hosted = 0) OR (typ.form = ORB.NilTyp) THEN
+  IF (typ.form = ORB.Pointer) & (typ.hosted = ORB.Nohost) OR (typ.form = ORB.NilTyp) THEN
     EmitInt(off, "pointer/niltype field offset")
   ELSIF typ.form = ORB.Record THEN
     fld := typ.dsc;
@@ -2996,10 +2996,10 @@ END wsize;
 PROCEDURE EmitPtrs(typ: ORB.Type; adr: INTEGER);
 VAR fld: ORB.Object;  i, s: INTEGER;
 BEGIN
-  IF (typ.hosted = 0) & ((typ.form = ORB.Pointer) OR (typ.form = ORB.NilTyp)) THEN
+  IF (typ.hosted = ORB.Nohost) & ((typ.form = ORB.Pointer) OR (typ.form = ORB.NilTyp)) THEN
     (*l.s("  ptrec  ", Tr); l.h(adr, Tr); l.sn("H.", Tr);*)
     X64.EmitBytes(8, adr)
-  ELSIF (typ.hosted = 0) & (typ.form = ORB.Record) THEN
+  ELSIF (typ.hosted = ORB.Nohost) & (typ.form = ORB.Record) THEN
     fld := typ.dsc;
     WHILE fld # NIL DO EmitPtrs(fld.type, fld.val + adr); fld := fld.next END
   ELSIF typ.form = ORB.Array THEN

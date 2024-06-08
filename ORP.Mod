@@ -13,18 +13,18 @@ TYPE PtrBase = POINTER TO PtrBaseDesc;
     name: ORS.Ident; type: ORB.Type; next: PtrBase
   END;
 
-VAR sym:   INTEGER;    (* last symbol read *)
-  dc:      LONGINT;    (* data counter *)
-  level:   INTEGER;
-  newSF:   BOOLEAN;    (* option flag *)
+VAR sym:       INTEGER;    (* last symbol read *)
+  dc:          LONGINT;    (* data counter *)
+  level:       INTEGER;
+  newSF:       BOOLEAN;    (* option flag *)
   expression:  PROCEDURE(VAR x: X64.Item);  (* to avoid forward reference *)
   Type:        PROCEDURE(VAR type: ORB.Type);
   FormalType:  PROCEDURE(VAR typ: ORB.Type;  dim: INTEGER);
-  modid:   ORS.Ident;
-  pbsList: PtrBase;    (* list of names of pointer base types *)
-  dummy:   ORB.Object;
-  W:       Texts.Writer;
-  Tr:      l.Buffer;
+  modid:       ORS.Ident;
+  pbsList:     PtrBase;    (* list of names of pointer base types *)
+  dummy:       ORB.Object;
+  W:           Texts.Writer;
+  Tr:          l.Buffer;
 
 PROCEDURE Check(s: INTEGER;  msg: ARRAY OF CHAR);
 BEGIN
@@ -93,31 +93,27 @@ BEGIN
   END
 END CheckExport;
 
-PROCEDURE CheckNative(VAR hosted: BYTE);
+PROCEDURE CheckHosted(VAR hosted: BYTE; allowed: SET);
 BEGIN
-  hosted := 0;
-  IF sym IN {ORS.rdiv, ORS.bslash} THEN
-    IF sym = ORS.rdiv THEN hosted := 2 (* Linux *)
-    ELSE                   hosted := 3 (* Windows *)
+  hosted := ORB.Nohost;
+  IF ~ORB.SystemImported() THEN allowed := {} END;
+  IF sym IN {ORS.rdiv, ORS.bslash, ORS.neq, ORS.minus} THEN
+    IF    sym = ORS.rdiv   THEN hosted := ORB.Linux
+    ELSIF sym = ORS.neq    THEN hosted := ORB.Syscall
+    ELSIF sym = ORS.bslash THEN hosted := ORB.Windows
+    ELSE                        hosted := ORB.Nogc
     END;
     ORS.Get(sym);
-    IF ~ORB.SystemImported() THEN
-      ORS.Mark("'/' or '\' hosted procedure mark requires importing SYSTEM.")
-    END
+    IF ~(hosted IN allowed) THEN
+      IF    hosted = ORB.Windows THEN ORS.Mark("'\' Windows procedure mark not allowed here")
+      ELSIF hosted = ORB.Linux   THEN ORS.Mark("'/' Linux procedure mark not allowed here")
+      ELSIF hosted = ORB.Syscall THEN ORS.Mark("'#' Linux syscall procedure mark not allowed here")
+      ELSE                            ORS.Mark("'-' No-garbage-collection mark not allowed here")
+      END
+    END;
+    IF ~ORB.SystemImported() THEN ORS.Mark("Mark requires importing SYSTEM.") END
   END
-END CheckNative;
-
-PROCEDURE CheckNoGC(VAR hosted: BYTE);
-BEGIN
-  hosted := 0;
-  IF sym = ORS.minus THEN
-    hosted := 1; (* no-gc *)
-    ORS.Get(sym);
-    IF ~ORB.SystemImported() THEN
-      ORS.Mark("'-' no-gc mark requires importing SYSTEM.")
-    END
-  END
-END CheckNoGC;
+END CheckHosted;
 
 
 PROCEDURE dbgtype(t: ORB.Type);
@@ -244,7 +240,15 @@ BEGIN
   expression(x);
   IF par # NIL THEN
     varpar := par.class = ORB.Par;
-    IF hosted IN {2,3} THEN stkoff := par.val ELSE stkoff := 0 END;
+    IF hosted IN {ORB.Windows, ORB.Linux, ORB.Syscall} THEN
+      stkoff := par.val
+    ELSE
+      stkoff := 0
+    END;
+
+  (* TODO better restrict param types for hosted procedures. Remove stkoff. *)
+
+
     IF CompTypes(par.type, x.type, varpar) THEN
       IF ~varpar THEN
         ORG.ValueParam(x, hosted, n)
@@ -866,7 +870,7 @@ BEGIN
   ELSIF sym = ORS.procedure THEN
     ORS.Get(sym);  ORB.OpenScope;
     NEW(typ);  typ.form := ORB.Proc;  typ.size := ORG.WordSize;
-    typ.hosted := 0;  dmy := 0;
+    typ.hosted := ORB.Nohost;  dmy := 0;
     ProcedureType(typ);
     typ.dsc := ORB.topScope.next;  ORB.CloseScope
   ELSE ORS.Mark("identifier expected");  typ := ORB.noType
@@ -892,9 +896,9 @@ BEGIN type := ORB.intType;  (*sync*)
     END
   ELSIF sym = ORS.array THEN ORS.Get(sym);  ArrayType(type)
   ELSIF sym = ORS.record THEN
-    ORS.Get(sym);  CheckNoGC(hosted);  RecordType(type, hosted);  Check(ORS.end, "no END")
+    ORS.Get(sym);  CheckHosted(hosted, {ORB.Nogc});  RecordType(type, hosted);  Check(ORS.end, "no END")
   ELSIF sym = ORS.pointer THEN
-    ORS.Get(sym);  CheckNoGC(hosted);  Check(ORS.to, "no TO");
+    ORS.Get(sym);  CheckHosted(hosted, {ORB.Nogc});  Check(ORS.to, "no TO");
     NEW(type); type.form   := ORB.Pointer; type.size   := ORG.WordSize; type.base   := ORB.intType;
     type.hosted := hosted;
     IF sym = ORS.ident THEN
@@ -902,8 +906,8 @@ BEGIN type := ORB.intType;  (*sync*)
       IF obj # NIL THEN
         IF (obj.class = ORB.Typ) & (obj.type.form IN {ORB.Record, ORB.NoTyp}) THEN
           CheckRecLevel(obj.lev); type.base := obj.type;
-          IF (obj.type.hosted # 0) & (type.hosted = 0) THEN
-            ORS.Mark("Collected pointer may not point to hosted record")
+          IF (type.hosted # ORB.Nogc) & (obj.type.hosted = ORB.Nogc) THEN
+            ORS.Mark("Garbage collected pointer may not point to uncollected record")
           END;
         ELSIF obj.class = ORB.Mod THEN ORS.Mark("external base type not implemented")
         ELSE ORS.Mark("no valid base type")
@@ -914,15 +918,15 @@ BEGIN type := ORB.intType;  (*sync*)
       ORS.Get(sym)
     ELSE Type(type.base);
       IF (type.base.form # ORB.Record) OR (type.base.typobj = NIL) THEN ORS.Mark("must point to named record") END;
-      IF (type.base.hosted # 0) & (type.hosted = 0) THEN
-        ORS.Mark("Collected pointer may not point to hosted record")
+      IF (type.hosted # ORB.Nogc) & (type.base.hosted = ORB.Nogc) THEN
+        ORS.Mark("Garbage collected pointer may not point to uncollected record")
       END;
       CheckRecLevel(level)
     END
   ELSIF sym = ORS.procedure THEN
     ORS.Get(sym);  ORB.OpenScope;
     NEW(type);  type.form := ORB.Proc;  type.size := ORG.WordSize;
-    CheckNative(type.hosted);
+    CheckHosted(type.hosted, {ORB.Windows, ORB.Linux});
     ProcedureType(type);  type.dsc := ORB.topScope.next;  ORB.CloseScope
   ELSE ORS.Mark("illegal type")
   END
@@ -971,8 +975,8 @@ BEGIN (*sync*) pbsList := NIL;
         WHILE ptbase # NIL DO
           IF obj.name = ptbase.name THEN
             ptbase.type.base := obj.type;
-            IF (ptbase.type.base.hosted # 0) & (ptbase.type.hosted = 0) THEN
-              ORS.Mark("Collected pointer may not point to hosted record")
+            IF (ptbase.type.base.hosted = ORB.Nogc) & (ptbase.type.hosted # ORB.Nogc) THEN
+              ORS.Mark("Garbage collected pointer may not point to uncollected record")
             END
           END;
           ptbase := ptbase.next
@@ -1007,11 +1011,6 @@ BEGIN (*sync*) pbsList := NIL;
 END Declarations;
 
 
-PROCEDURE slen(s: ARRAY OF CHAR): INTEGER;
-VAR len: INTEGER;
-BEGIN len := 0;  WHILE (len < LEN(s)) & (s[len] # 0X) DO INC(len) END
-RETURN len END slen;
-
 PROCEDURE ProcedureDecl;
 VAR proc:        ORB.Object;
     obj:         ORB.Object;
@@ -1026,7 +1025,7 @@ VAR proc:        ORB.Object;
     longestname: INTEGER;
     hosted:      BYTE;
     ann:         ORG.BodyAnnotation;
-BEGIN (* ProcedureDecl *) ORS.Get(sym);  CheckNative(hosted);
+BEGIN ORS.Get(sym);  CheckHosted(hosted, {ORB.Linux, ORB.Syscall, ORB.Windows});
   IF sym = ORS.ident THEN
     ORS.CopyId(procid);  ORS.Get(sym);
     ORG.NewBodyAnnotation(procid, ann);
@@ -1038,16 +1037,18 @@ BEGIN (* ProcedureDecl *) ORS.Get(sym);  CheckNative(hosted);
     IF proc.expo THEN proc.exno := 1 END;
     ORB.OpenScope;  INC(level);  type.base := ORB.noType;
     ProcedureType(type);  (*formal parameter list*)
+
+
     Check(ORS.semicolon, "no ;");
     parmsize := type.len;
     locsize := 0;
     Declarations(locsize);
 
-    IF hosted = 0 THEN  (* Oberon ABI *)
+    IF hosted = ORB.Nohost THEN  (* Oberon ABI *)
       framesize := parmsize + locsize + 8;  (* Frame includes return address *)
-    ELSIF hosted = 2 THEN  (* Linux ABI *)
+    ELSIF hosted = ORB.Linux THEN  (* Linux ABI *)
       framesize := parmsize + locsize + 8 + 48;  (* Frame includes return address *)
-    ELSE ASSERT(hosted = 3);  (* Windows ABI *)
+    ELSE ASSERT(hosted = ORB.Windows);  (* Windows ABI *)
       framesize := parmsize + locsize + 8 + 64;  (* Frame includes return address *)
     END;
     proc.val := ORG.Here();
@@ -1073,8 +1074,9 @@ BEGIN (* ProcedureDecl *) ORS.Get(sym);  CheckNative(hosted);
       l.s(", parmsize: ",  Tr);  l.h(parmsize, Tr);
       l.s("H, locsize: ",   Tr); l.h(locsize, Tr);
       l.s("H, framesize: ", Tr); l.h(framesize, Tr); l.sn("H.", Tr);
-      longestname := 0;  obj := type.dsc;  WHILE obj # NIL DO
-        IF slen(obj.name) > longestname THEN longestname := slen(obj.name) END;
+      longestname := 0;  obj := type.dsc;
+      WHILE obj # NIL DO
+        IF H.Length(obj.name) > longestname THEN longestname := H.Length(obj.name) END;
         obj := obj.next
       END
     END;
@@ -1083,19 +1085,19 @@ BEGIN (* ProcedureDecl *) ORS.Get(sym);  CheckNative(hosted);
     obj := type.dsc;  i := 0;
     WHILE (obj # NIL) & (i < type.nofpar) DO
       ASSERT(obj.class IN {ORB.Var, ORB.Par});  ASSERT(obj.val < 0);
-      IF hosted = 0 THEN  (* Oberon ABI *)
+      IF hosted = ORB.Nohost THEN  (* Oberon ABI *)
 
         INC(obj.val, framesize)  (* address relative to run time rsp *)
 
-      ELSIF hosted = 2 THEN  (* Linux ABI *)
+      ELSIF hosted = ORB.Linux THEN  (* Linux ABI *)
 
-        IF obj.val >= -48  (* Params 1 to 6 *) THEN
-          obj.val := locsize - 8 - obj.val
+        IF obj.val >= -48 THEN
+          obj.val := locsize - 8 - obj.val   (* Params 1 to 6 follow local variables *)
         ELSE
-          obj.val := locsize + 48 - obj.val
+          obj.val := locsize + 48 - obj.val  (* Params 7+ are above return address *)
         END;
 
-      ELSE ASSERT(hosted = 3); (* Windows ABI *)
+      ELSE ASSERT(hosted = ORB.Windows); (* Windows ABI *)
 
         H.ws("proc "); H.ws(procid); H.ws(", obj.val "); H.wi(obj.val);
         obj.val := framesize - type.len - obj.val - 8;  (* Note - all hosted parms are 8 bytes *)

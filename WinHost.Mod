@@ -504,12 +504,10 @@ BEGIN ExitProcess(ExitCode) END Exit;
 
 (* ---------------------- Exception and trap handling ----------------------- *)
 
-(*$la+lc+*)
 PROCEDURE\ ExceptionHandler(p: ExceptionPointers);  (* Called by Windows *)
 VAR excpcode: INTEGER;  desc, hex: ARRAY 32 OF CHAR;
 BEGIN
   INC(TrapDepth);
-(*$la-lc-*)
   IF TrapDepth > 1 THEN
     wsn("  Nested exception.")
   ELSE
