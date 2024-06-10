@@ -560,14 +560,14 @@ BEGIN
 
     s("push", Inst);
     reg := opcode MOD 8;
-    IF reghigh   & (reg   < 8) THEN INC(reg,   8) END;
+    IF basehigh  & (reg < 8) THEN INC(reg, 8) END;
     Reg(8, reg, Args)
 
   ELSIF (opcode >= 58H) & (opcode <= 5FH) THEN
 
     s("pop", Inst);
     reg := opcode MOD 8;
-    IF reghigh   & (reg   < 8) THEN INC(reg,   8) END;
+    IF basehigh & (reg < 8) THEN INC(reg, 8) END;
     Reg(8, reg, Args)
 
   ELSIF opcode = 063H THEN
@@ -869,8 +869,12 @@ BEGIN
 
     opcode := X64.Text[pc];  INC(pc);  AddHex(1, opcode);
 
-    IF (opcode = 0B6H) OR (opcode = 0B7H)
-    OR (opcode = 0BEH) OR (opcode = 0BFH) THEN  (* movsx/movzx *)
+    IF opcode = 5 THEN
+
+      s("syscall", Inst)
+
+    ELSIF (opcode = 0B6H) OR (opcode = 0B7H)
+    OR    (opcode = 0BEH) OR (opcode = 0BFH) THEN  (* movsx/movzx *)
       IF    opcode = 0B6H THEN s("movzx", Inst);  regsize := 1
       ELSIF opcode = 0B7H THEN s("movzx", Inst);  regsize := 2
       ELSIF opcode = 0BEH THEN s("movsx", Inst);  regsize := 1

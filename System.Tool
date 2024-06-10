@@ -38,7 +38,5 @@ ORP.Compile Curves.Mod/s Rectangles.Mod/s ~
 ORP.Compile Splines.Mod/s ~
 
 ORP.Compile Test.Mod/s ~
-Test.ArrayIndexTest  Test.NilDereferenceTest  Test.DivideByZeroTest  Test.TestHost
-
-ORP.Compile fdump.Mod/s ~
-fdump.Analyze obe5.png ~  fdump.CheckPng obe5.png ~
+Test.ArrayIndexTest  Test.NilDereferenceTest  Test.DivideByZeroTest
+Test.TestHost  Test.testab

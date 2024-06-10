@@ -5,24 +5,42 @@ IMPORT SYSTEM, H := WinHost, Texts;
 TYPE r = RECORD i: INTEGER END;
 
 VAR
-  W:    Texts.Writer;
+  W:  Texts.Writer;
+  p:  ARRAY 1 OF PROCEDURE(a, b: INTEGER);
+  wp: ARRAY 1 OF PROCEDURE\(a, b: INTEGER);
+  lp: ARRAY 1 OF PROCEDURE/(a, b: INTEGER);
 
-(*
-  p: PROCEDURE\(a, b: INTEGER);
-
-PROCEDURE\ ab (a, b: INTEGER);
-BEGIN H.ws("a "); H.wi(a); H.ws(", b "); H.wi(b); H.wsn(".")
+PROCEDURE ab (a, b: INTEGER);
+BEGIN H.ws("   a "); H.wi(a); H.ws(", b "); H.wi(b); H.wsn(".")
 END ab;
 
-PROCEDURE testab*;
-BEGIN
-  p := ab;
-  ab(1,2);
-  p(1,2);
-END testab;
-*)
+PROCEDURE \ wab (a, b: INTEGER);
+BEGIN H.ws("W: a "); H.wi(a); H.ws(", b "); H.wi(b); H.wsn(".")
+END wab;
 
 (*$la+lc+*)
+PROCEDURE / lab (a, b: INTEGER);
+BEGIN H.ws("L: a "); H.wi(a); H.ws(", b "); H.wi(b); H.wsn(".")
+END lab;
+
+PROCEDURE testab*;
+VAR i: INTEGER;
+BEGIN
+  i := 0;
+  ab(1,2);   p[i]  := ab;   p[i](1,2);
+  wab(1,2);  wp[i] := wab;  wp[i](1,2);
+  lab(1,2);  lp[i] := lab;  lp[i](1,2);
+END testab;
+(*$la-lc-*)
+
+PROCEDURE #60 exit(i: INTEGER);
+
+PROCEDURE TestSyscall*;
+BEGIN
+  exit(12)
+END TestSyscall;
+
+
 PROCEDURE Obe(a, b, c, d, e, f, g, h: INTEGER): INTEGER;
 VAR i: INTEGER;
 BEGIN
@@ -30,14 +48,14 @@ BEGIN
   RETURN i
 END Obe;
 
-PROCEDURE/ Lin(a, b, c, d, e, f, g, h: INTEGER): INTEGER;
+PROCEDURE / Lin(a, b, c, d, e, f, g, h: INTEGER): INTEGER;
 VAR i: INTEGER;
 BEGIN
   i := a + b + c + d + e + f + g + h;
   RETURN i
 END Lin;
 
-PROCEDURE\ Win(a, b, c, d, e, f, g, h: INTEGER): INTEGER;
+PROCEDURE \ Win(a, b, c, d, e, f, g, h: INTEGER): INTEGER;
 VAR i: INTEGER;
 BEGIN
   i := a + b + c + d + e + f + g + h;

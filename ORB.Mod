@@ -148,7 +148,7 @@ BEGIN x := topScope;
   IF x.next = NIL THEN
     NEW(new); new.name := id; new.class := class; new.next := NIL; new.rdo := FALSE; new.dsc := NIL;
     new.exno  := 0; new.expo := FALSE; new.lev := 0; new.type  := NIL; new.val := 0;
-    x.next := new; obj    := new
+    x.next := new;  obj := new
   ELSE obj := x.next; ORS.Mark("mult def")
   END
 END NewObj;

@@ -88,7 +88,7 @@ PROCEDURE CheckExport(VAR expo: BOOLEAN);
 BEGIN
   IF sym = ORS.times THEN
     expo := TRUE;  ORS.Get(sym);
-    IF level # 0 THEN ORS.Mark("remove asterisk") END
+      IF level # 0 THEN ORS.Mark("remove asterisk") END
   ELSE expo := FALSE
   END
 END CheckExport;
@@ -234,36 +234,27 @@ BEGIN (*check for assignment compatibility*)
 END CompTypes;
 
 PROCEDURE Parameter(par: ORB.Object;  hosted: BYTE;  n: INTEGER);
-VAR x: X64.Item;  varpar: BOOLEAN;  stkoff: INTEGER;
+VAR x: X64.Item;  varpar: BOOLEAN;
 BEGIN
   IF ORS.ListCodegen THEN l.StartRightCol; l.s("Parameter: ", Tr); l.Object(par, Tr); l.sn(".", Tr) END;
   expression(x);
   IF par # NIL THEN
     varpar := par.class = ORB.Par;
-    IF hosted IN {ORB.Windows, ORB.Linux, ORB.Syscall} THEN
-      stkoff := par.val
-    ELSE
-      stkoff := 0
-    END;
-
-  (* TODO better restrict param types for hosted procedures. Remove stkoff. *)
-
-
     IF CompTypes(par.type, x.type, varpar) THEN
       IF ~varpar THEN
         ORG.ValueParam(x, hosted, n)
       ELSE (*par.class = Par*)
         IF ~par.rdo THEN CheckReadOnly(x) END;
-        ORG.VarParam(x, par.type, stkoff)
+        ORG.VarParam(x, par.type, hosted)
       END
     ELSIF (x.type.form = ORB.Array)     & (par.type.form = ORB.Array)
         & (x.type.base = par.type.base) & (par.type.len < 0) THEN
       IF ~par.rdo THEN CheckReadOnly(x) END;
-      ORG.OpenArrayParam(x, stkoff)
+      ORG.OpenArrayParam(x, hosted)
     ELSIF (x.type.form = ORB.String) & varpar & par.rdo
         & (par.type.form = ORB.Array) & (par.type.base.form = ORB.Char)
         & (par.type.len < 0) THEN
-      ORG.StringParam(x, stkoff)
+      ORG.StringParam(x, hosted)
     ELSIF ~varpar & (par.type.form = ORB.Int64) & (x.type.form = ORB.Int64) THEN
       ORG.ValueParam(x, hosted, n)  (* BYTE/INTEGER interop *)
     ELSIF (x.type.form = ORB.String) & (x.n = 2)
@@ -272,7 +263,7 @@ BEGIN
       ORG.StrToChar(x);  ORG.ValueParam(x, hosted, n)
     ELSIF (par.type.form = ORB.Array) & (par.type.base = ORB.byteType) & (par.type.len < 0) THEN
       IF ~par.rdo THEN CheckReadOnly(x) END;
-      ORG.ArrayOfByteParam(x, stkoff)  (* Can pass anything to a dynamic array of byte *)
+      ORG.ArrayOfByteParam(x, hosted)  (* Can pass anything to a dynamic array of byte *)
     ELSE ORS.Mark("incompatible parameters");
       l.n(Tr);
       l.s("par.type ", Tr);           dbgtype(par.type);
@@ -1025,133 +1016,154 @@ VAR proc:        ORB.Object;
     longestname: INTEGER;
     hosted:      BYTE;
     ann:         ORG.BodyAnnotation;
-BEGIN ORS.Get(sym);  CheckHosted(hosted, {ORB.Linux, ORB.Syscall, ORB.Windows});
+BEGIN ORS.Get(sym);
+  CheckHosted(hosted, {ORB.Linux, ORB.Syscall, ORB.Windows});
+
+  IF hosted = ORB.Syscall THEN
+    IF sym = ORS.int THEN
+      L := ORS.ival;  ORS.Get(sym)
+    ELSE
+      L := 0;  ORS.Mark("Missing syscall number");
+    END;
+  END;
+
   IF sym = ORS.ident THEN
     ORS.CopyId(procid);  ORS.Get(sym);
-    ORG.NewBodyAnnotation(procid, ann);
     ORB.NewObj(proc, ORS.id, ORB.Const);
     NEW(type);  type.form := ORB.Proc;  type.size := ORG.WordSize;
     type.hosted := hosted;
-    proc.type   := type;  proc.val := -1;  proc.lev := level;
+    proc.type := type;  proc.val := -1;  proc.lev := level;
     CheckExport(proc.expo);
-    IF proc.expo THEN proc.exno := 1 END;
+    IF proc.expo THEN
+      IF hosted # ORB.Syscall THEN
+        proc.exno := 1
+      ELSE
+        ORS.Mark("Cannot export Linux syscall procedure.");
+        proc.expo := FALSE
+      END
+    END;
     ORB.OpenScope;  INC(level);  type.base := ORB.noType;
     ProcedureType(type);  (*formal parameter list*)
 
+    IF hosted = ORB.Syscall THEN  (* no body *)
 
-    Check(ORS.semicolon, "no ;");
-    parmsize := type.len;
-    locsize := 0;
-    Declarations(locsize);
+      type.dsc := ORB.topScope.next;
+      proc.val := L
 
-    IF hosted = ORB.Nohost THEN  (* Oberon ABI *)
-      framesize := parmsize + locsize + 8;  (* Frame includes return address *)
-    ELSIF hosted = ORB.Linux THEN  (* Linux ABI *)
-      framesize := parmsize + locsize + 8 + 48;  (* Frame includes return address *)
-    ELSE ASSERT(hosted = ORB.Windows);  (* Windows ABI *)
-      framesize := parmsize + locsize + 8 + 64;  (* Frame includes return address *)
-    END;
-    proc.val := ORG.Here();
-    type.dsc := ORB.topScope.next;
+    ELSE
+      ORG.NewBodyAnnotation(procid, ann);
+      Check(ORS.semicolon, "no ;");
+      parmsize := type.len;
+      locsize := 0;
+      Declarations(locsize);
 
-    (* FPSection has recorded parameter offsets in obj.val. All parameter  *)
-    (* offsets are negative corresponding to val being the offset of the   *)
-    (* previous parameter minus 8 or 16 depending on the parameter size.   *)
-    (* For normal parameter passing these are the correct offsets relative *)
-    (* to the initial stack position before pushing parameters, so we need *)
-    (* to add the framesize to each parameter offset to make them relative *)
-    (* to the value of rsp during procedure excution.                      *)
-    (* For hosted procedures the job is a little more complex, as Windows  *)
-    (* pushes parameters in reverse order. Fortunately hosted parameter    *)
-    (* passing is limited to 8 byte parameters: we do not support passing  *)
-    (* of arrays or records other than by the use of SYSTEM.ADR.           *)
-
-    IF ORS.ListCodegen THEN
-      l.CatchupSource;
-      l.s("Procedure declaration '", Tr);  l.s(procid, Tr);  l.sn("'.", Tr);
-      (* --- dump objects --- *)
-      l.s("nofpar ", Tr);        l.i(type.nofpar, Tr);
-      l.s(", parmsize: ",  Tr);  l.h(parmsize, Tr);
-      l.s("H, locsize: ",   Tr); l.h(locsize, Tr);
-      l.s("H, framesize: ", Tr); l.h(framesize, Tr); l.sn("H.", Tr);
-      longestname := 0;  obj := type.dsc;
-      WHILE obj # NIL DO
-        IF H.Length(obj.name) > longestname THEN longestname := H.Length(obj.name) END;
-        obj := obj.next
-      END
-    END;
-
-    (* Fixup parameter offsets now that we know the stack frame size *)
-    obj := type.dsc;  i := 0;
-    WHILE (obj # NIL) & (i < type.nofpar) DO
-      ASSERT(obj.class IN {ORB.Var, ORB.Par});  ASSERT(obj.val < 0);
       IF hosted = ORB.Nohost THEN  (* Oberon ABI *)
-
-        INC(obj.val, framesize)  (* address relative to run time rsp *)
-
+        framesize := parmsize + locsize + 8;  (* Frame includes return address *)
       ELSIF hosted = ORB.Linux THEN  (* Linux ABI *)
-
-        IF obj.val >= -48 THEN
-          obj.val := locsize - 8 - obj.val   (* Params 1 to 6 follow local variables *)
-        ELSE
-          obj.val := locsize + 48 - obj.val  (* Params 7+ are above return address *)
-        END;
-
-      ELSE ASSERT(hosted = ORB.Windows); (* Windows ABI *)
-
-        H.ws("proc "); H.ws(procid); H.ws(", obj.val "); H.wi(obj.val);
-        obj.val := framesize - type.len - obj.val - 8;  (* Note - all hosted parms are 8 bytes *)
-        H.ws(" -> "); H.wi(obj.val); H.wsn(".");
-
+        framesize := parmsize + locsize + 8 + 48;  (* Frame includes return address *)
+      ELSE ASSERT(hosted = ORB.Windows);  (* Windows ABI *)
+        framesize := parmsize + locsize + 8 + 64;  (* Frame includes return address *)
       END;
-      INC(i); obj := obj.next
-    END;
+      proc.val := ORG.Here();
+      type.dsc := ORB.topScope.next;
 
-    (* List parameters and local variable *)
-    IF ORS.ListCodegen THEN
+      (* FPSection has recorded parameter offsets in obj.val. All parameter  *)
+      (* offsets are negative corresponding to val being the offset of the   *)
+      (* previous parameter minus 8 or 16 depending on the parameter size.   *)
+      (* For normal parameter passing these are the correct offsets relative *)
+      (* to the initial stack position before pushing parameters, so we need *)
+      (* to add the framesize to each parameter offset to make them relative *)
+      (* to the value of rsp during procedure excution.                      *)
+      (* For hosted procedures the job is a little more complex, as Windows  *)
+      (* pushes parameters in reverse order. Fortunately hosted parameter    *)
+      (* passing is limited to 8 byte parameters: we do not support passing  *)
+      (* of arrays or records other than by the use of SYSTEM.ADR.           *)
+
+      IF ORS.ListCodegen THEN
+        l.CatchupSource;
+        l.s("Procedure declaration '", Tr);  l.s(procid, Tr);  l.sn("'.", Tr);
+        (* --- dump objects --- *)
+        l.s("nofpar ", Tr);        l.i(type.nofpar, Tr);
+        l.s(", parmsize: ",  Tr);  l.h(parmsize, Tr);
+        l.s("H, locsize: ",   Tr); l.h(locsize, Tr);
+        l.s("H, framesize: ", Tr); l.h(framesize, Tr); l.sn("H.", Tr);
+        longestname := 0;  obj := type.dsc;
+        WHILE obj # NIL DO
+          IF H.Length(obj.name) > longestname THEN longestname := H.Length(obj.name) END;
+          obj := obj.next
+        END
+      END;
+
+      (* Fixup parameter offsets now that we know the stack frame size *)
       obj := type.dsc;  i := 0;
-      WHILE obj # NIL DO
-        IF i < type.nofpar THEN
-          l.s("Param ", Tr); l.i(i, Tr);
-        ELSE
-          l.s("Local ", Tr); l.i(i - type.nofpar, Tr)
+      WHILE (obj # NIL) & (i < type.nofpar) DO
+        ASSERT(obj.class IN {ORB.Var, ORB.Par});  ASSERT(obj.val < 0);
+        IF hosted = ORB.Nohost THEN  (* Oberon ABI *)
+
+          INC(obj.val, framesize)  (* address relative to run time rsp *)
+
+        ELSIF hosted = ORB.Linux THEN  (* Linux ABI *)
+
+          IF obj.val >= -48 THEN
+            obj.val := locsize - 8 - obj.val   (* Params 1 to 6 follow local variables *)
+          ELSE
+            obj.val := locsize + 48 - obj.val  (* Params 7+ are above return address *)
+          END;
+
+        ELSE ASSERT(hosted = ORB.Windows); (* Windows ABI *)
+
+          obj.val := framesize - type.len - obj.val - 8;  (* Note - all hosted parms are 8 bytes *)
+
         END;
-        l.s(" ", Tr);        l.Class(obj.class, Tr);
-        l.s(" ", Tr);        l.sl(obj.name, longestname, Tr);
-        l.s(" adr ", Tr);    l.hz(obj.val, 6, Tr);
-        l.s("H type ", Tr);  l.Type(obj.type, Tr);   l.sn(".", Tr);
         INC(i); obj := obj.next
-      END
-    END;
-
-    (* Parse nested procedures *)
-    IF sym = ORS.procedure THEN
-      L := 0;  ORG.FJump(L);
-      REPEAT ProcedureDecl;  Check(ORS.semicolon, "no ;") UNTIL sym # ORS.procedure;
-      ORG.FixLink(L);  proc.val := ORG.Here();  proc.type.dsc := ORB.topScope.next
-    END;
-
-    (* Compile procedure body *)
-    ORG.Enter(parmsize, locsize, hosted);
-    IF sym = ORS.begin THEN ORS.Get(sym);  StatSequence(ann) END;
-    IF sym = ORS.return THEN
-      ORG.AddLineAnnotation(ann);
-      ORS.Get(sym);  expression(x);
-      IF type.base = ORB.noType THEN ORS.Mark("this is not a function")
-      ELSIF ~CompTypes(type.base, x.type, FALSE) THEN ORS.Mark("wrong result type")
       END;
+
+      (* List parameters and local variable *)
+      IF ORS.ListCodegen THEN
+        obj := type.dsc;  i := 0;
+        WHILE obj # NIL DO
+          IF i < type.nofpar THEN
+            l.s("Param ", Tr); l.i(i, Tr);
+          ELSE
+            l.s("Local ", Tr); l.i(i - type.nofpar, Tr)
+          END;
+          l.s(" ", Tr);        l.Class(obj.class, Tr);
+          l.s(" ", Tr);        l.sl(obj.name, longestname, Tr);
+          l.s(" adr ", Tr);    l.hz(obj.val, 6, Tr);
+          l.s("H type ", Tr);  l.Type(obj.type, Tr);   l.sn(".", Tr);
+          INC(i); obj := obj.next
+        END
+      END;
+
+      (* Parse nested procedures *)
+      IF sym = ORS.procedure THEN
+        L := 0;  ORG.FJump(L);
+        REPEAT ProcedureDecl;  Check(ORS.semicolon, "no ;") UNTIL sym # ORS.procedure;
+        ORG.FixLink(L);  proc.val := ORG.Here();  proc.type.dsc := ORB.topScope.next
+      END;
+
+      (* Compile procedure body *)
+      ORG.Enter(parmsize, locsize, hosted);
+      IF sym = ORS.begin THEN ORS.Get(sym);  StatSequence(ann) END;
+      IF sym = ORS.return THEN
+        ORG.AddLineAnnotation(ann);
+        ORS.Get(sym);  expression(x);
+        IF type.base = ORB.noType THEN ORS.Mark("this is not a function")
+        ELSIF ~CompTypes(type.base, x.type, FALSE) THEN ORS.Mark("wrong result type")
+        END;
+        ORG.AddLineAnnotation(ann)
+      ELSIF type.base.form # ORB.NoTyp THEN
+        ORS.Mark("function without result");  type.base := ORB.noType
+      END;
+      Check(ORS.end, "no END");
+      IF sym = ORS.ident THEN
+        IF ORS.id # procid THEN ORS.Mark("no match") END;
+        ORS.Get(sym)
+      ELSE ORS.Mark("no proc id")
+      END;
+      ORG.Return(type.base.form, x, parmsize, locsize, hosted);
       ORG.AddLineAnnotation(ann)
-    ELSIF type.base.form # ORB.NoTyp THEN
-      ORS.Mark("function without result");  type.base := ORB.noType
     END;
-    Check(ORS.end, "no END");
-    IF sym = ORS.ident THEN
-      IF ORS.id # procid THEN ORS.Mark("no match") END;
-      ORS.Get(sym)
-    ELSE ORS.Mark("no proc id")
-    END;
-    ORG.Return(type.base.form, x, parmsize, locsize, hosted);
-    ORG.AddLineAnnotation(ann);
     ORB.CloseScope;  DEC(level)
   END
 END ProcedureDecl;

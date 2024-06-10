@@ -765,7 +765,6 @@ BEGIN
   StoreImmediateToMem(imm, x.mode, x.type.size, x.n, x.index, x.scale,  offset);
 END StoreImmediate;
 
-(*----*)
 
 PROCEDURE PushReg*(r: INTEGER);
 BEGIN Prefices(Reg, 0, 4, r, -1); X64.Emit(50H + r MOD 8) END PushReg;
@@ -913,10 +912,6 @@ BEGIN
     immsize := size; IF immsize > 4 THEN immsize := 4 END;
     immlim := LSL(1, immsize*8-1);
     IF (imm < -immlim) OR (imm >= immlim) THEN
-
-      H.ws("imm "); H.wi(imm); H.ws(", size "); H.wi(size);
-      H.ws(", immlim "); H.wi(immlim); H.wsn(".");
-
       immreg := Reserve(-1, {});
       LoadImmediate(immreg, imm);                                                       (* mov immreg,imm64 *)
       OpModRegRm(op+1, mode, immreg, size, n, index, scale, offset, 0);                 (* op  dest,immreg  *)
@@ -1254,10 +1249,8 @@ BEGIN
 
     Push(x); X64.AdjustStack(1)
 
-  ELSIF hosted = ORB.Linux THEN  (* Linux ABI parameter passing *)
+  ELSIF hosted IN {ORB.Linux, ORB.Syscall} THEN  (* Linux ABI parameter passing *)
 
-    H.ws("Linux ABI value parameter, n "); H.wi(n);
-    H.ws(", n "); H.wi(n); H.wsn(".");
     IF    n = 0 THEN reg := RDI
     ELSIF n = 1 THEN reg := RSI
     ELSIF n = 2 THEN reg := RDX
@@ -1300,15 +1293,14 @@ BEGIN
 END ValueParam;
 
 
-PROCEDURE OpenArrayParam*(VAR x: Item; stkoff: INTEGER);
+PROCEDURE OpenArrayParam*(VAR x: Item; hosted: BYTE);
 (* x being passed to open array formal parameter *)
 BEGIN
-  Trace(TraceAny, "OpenArrayParam["); l.i(stkoff, Tr);
-  l.s("](x: ", Tr);                   l.Item(x, Tr);
-  l.s(") SPO ", Tr);                  l.i(X64.SPO, Tr);  l.n(Tr);
+  Trace(TraceAny, "OpenArrayParam(x: ");  l.Item(x, Tr);
+  l.s(") SPO ", Tr);  l.i(X64.SPO, Tr);  l.n(Tr);
   ASSERT(x.mode IN {Stkind, Strucp, String, Eadr, Global, Import});
-  IF stkoff # 0 THEN
-    ORS.Mark("Open array parameters not supported for Windows ABI")
+  IF hosted # ORB.Nohost THEN
+    ORS.Mark("Open array parameters not supported for host platform ABI")
   ELSIF x.mode = Reg THEN
     ORS.Mark("Not compatible with open array parameter")
   ELSE
@@ -1320,15 +1312,14 @@ BEGIN
   Trace(TraceAny, "OpenArrayParam exit: SPO "); l.i(X64.SPO, Tr);  l.n(Tr)
 END OpenArrayParam;
 
-PROCEDURE ArrayOfByteParam*(VAR x: Item; stkoff: INTEGER);
+PROCEDURE ArrayOfByteParam*(VAR x: Item;  hosted: BYTE);
 (* Any type x being passed to ARRAY OF BYTE formal parameter *)
 BEGIN
-  Trace(TraceAny, "ArrayOfByteParam["); l.i(stkoff, Tr);
-  l.s("](x: ", Tr);                   l.Item(x, Tr);
-  l.s(") SPO ", Tr);                  l.i(X64.SPO, Tr);  l.n(Tr);
+  Trace(TraceAny, "ArrayOfByteParam(x: ");  l.Item(x, Tr);
+  l.s(") SPO ", Tr);  l.i(X64.SPO, Tr);  l.n(Tr);
   ASSERT(x.mode IN {Stkind, Strucp, String, Eadr, Global, Import});
-  IF stkoff # 0 THEN
-    ORS.Mark("ARRAY OF BYTE parameters not supported for Windows ABI")
+  IF hosted # ORB.Nohost THEN
+    ORS.Mark("ARRAY OF BYTE parameters not supported for host platform ABI")
   ELSIF x.mode = Reg THEN
     ORS.Mark("Not compatible with ARRAY OF BYTE parameter")
   ELSE
@@ -1341,19 +1332,18 @@ BEGIN
 END ArrayOfByteParam;
 
 
-PROCEDURE VarParam*(VAR x: Item;  ftype: ORB.Type;  stkoff: INTEGER);
+PROCEDURE VarParam*(VAR x: Item;  ftype: ORB.Type;  hosted: BYTE);
 VAR reg: INTEGER;
 BEGIN
-  Trace(TraceAny, "VarParam["); l.i(stkoff, Tr);
-  l.s("](x: ", Tr);             l.Item(x, Tr);
-  l.s(", ftype: ", Tr);         l.Type(ftype, Tr);
-  l.s(") SPO ", Tr);            l.i(X64.SPO, Tr);  l.n(Tr);
-  IF stkoff # 0 THEN
-    ORS.Mark("VAR parameters not supported for Windows ABI")
+  Trace(TraceAny, "VarParam(x: ");  l.Item(x, Tr);
+  l.s(", ftype: ", Tr);             l.Type(ftype, Tr);
+  l.s(") SPO ", Tr);                l.i(X64.SPO, Tr);  l.n(Tr);
+  IF hosted # ORB.Nohost THEN
+    ORS.Mark("VAR parameters not supported for host platform ABI")
   ELSIF x.mode IN {Reg, Const} THEN
     ORS.Mark("Not compatible with VAR parameter")
   ELSIF (ftype.form = ORB.Array) & (ftype.len < 0) THEN
-    OpenArrayParam(x, stkoff)
+    OpenArrayParam(x, hosted)
   ELSE
     ASSERT(x.mode IN {Stkind, Strucp, Eadr, Global, Import});
     IF ftype.form = ORB.Record THEN PushTypeAdr(x); X64.AdjustStack(1) END;
@@ -1363,14 +1353,13 @@ BEGIN
   FreeRegs(x)
 END VarParam;
 
-PROCEDURE StringParam*(VAR x: Item; stkoff: INTEGER);
+PROCEDURE StringParam*(VAR x: Item;  hosted: BYTE);
 BEGIN
-  Trace(TraceAny, "StringParam["); l.i(stkoff, Tr);
-  l.s("](x: ", Tr);                l.Item(x, Tr);
-  l.s(") SPO ", Tr);               l.i(X64.SPO, Tr);  l.n(Tr);
+  Trace(TraceAny, "StringParam(x: ");  l.Item(x, Tr);
+  l.s(") SPO ", Tr);                   l.i(X64.SPO, Tr);  l.n(Tr);
   ASSERT(x.mode = String);
-  IF stkoff # 0 THEN
-    ORS.Mark("VAR parameters not supported for Windows ABI")
+  IF hosted # ORB.Nohost THEN
+    ORS.Mark("VAR parameters not supported for host platform ABI")
   ELSE
     PushImmediate(x.n);  X64.AdjustStack(1);  (* Pass string length *)
     PushAdr(x);          X64.AdjustStack(1);  (* Pass string address *)
@@ -1389,7 +1378,9 @@ BEGIN
   l.s("), SPO ", Tr);             l.i(X64.SPO, Tr); l.n(Tr);
   saved := AllFree - Free;
   Depar(x);
-  IF x.mode = Eadr THEN EXCL(saved, x.n); IF x.index >= 0 THEN EXCL(saved, x.index) END END;
+  IF x.mode = Eadr THEN EXCL(saved, x.n) END;
+  IF (x.mode IN {Eadr, Global, Import, Impcode}) & (x.index >= 0) THEN EXCL(saved, x.index) END;
+
   IF saved # {} THEN  (* Save partially evaluated expression *)
     FOR i := 0 TO 15 DO IF i IN saved THEN PushReg(i);  X64.AdjustStack(1) END END;
     Disassemble(0, "Save registers");
@@ -1402,30 +1393,25 @@ BEGIN
   END;
   ASSERT(x.mode IN {Eadr, Global, Code, Import, Impcode});
 
-  IF x.type.hosted = ORB.Linux THEN  (* Linux ABI *)
-    stackspace := x.type.len;
-  ELSIF x.type.hosted = ORB.Windows THEN  (* Windows ABI *)
-    stackspace := x.type.len;
-    IF stackspace < 32 THEN stackspace := 32 END
+  IF x.type.hosted = ORB.Windows THEN
+    stackspace := H.Max(32, x.type.len) + 8
+  ELSIF x.type.hosted = ORB.Linux THEN
+    stackspace := H.Max(0, x.type.len - 48)
+  ELSE ASSERT(x.type.hosted = ORB.Nohost);
+    stackspace := x.type.len
   END;
 
-  IF x.mode = Eadr THEN  (* Push proc address to stack *)
+  IF (x.mode = Eadr)
+  OR (x.mode IN {Eadr, Global, Import, Impcode}) & (x.index >= 0) THEN  (* Push proc address to stack *)
     Push(x);  X64.AdjustStack(1);  FreeRegs(x);
     Disassemble(x.mode, "proc address to be called");
     ASSERT(x.type.len MOD 8 = 0);
     x.mode   := Eadr;
-    IF x.type.hosted = ORB.Nohost THEN  (* Normal, simple calling process *)
-      x.n      := RSP;
-      x.offset := -8 * (X64.SPO - (x.type.len DIV 8 + 1))
-    ELSIF x.type.hosted = ORB.Linux THEN (* Linux ABI *)
-      ASSERT(FALSE)
-    ELSE ASSERT(x.type.hosted = ORB.Windows); (* Windows ABI calling process *)
-      x.n      := RBP;
-      x.offset := -8 * (X64.SPO - (stackspace DIV 8 + 2))
-    END
+    IF x.type.hosted = ORB.Windows THEN x.n := RBP ELSE x.n := RSP END;
+    x.offset := -8 * (X64.SPO - (stackspace DIV 8 + 1))
   END;
 
-  IF x.type.hosted = ORB.Linux THEN  (* Prepare stack space for Linux abi *)
+  IF x.type.hosted IN {ORB.Linux, ORB.Syscall} THEN  (* Prepare stack space for Linux abi *)
 
     IF x.type.nofpar > 6 THEN
       AluOpFromImmediate(Minus, Reg, (x.type.nofpar - 6) * 8, 8, RSP, -1, 0, 0);
@@ -1442,10 +1428,10 @@ BEGIN
        BP to place the parameters on the stack, and advance SP 8 bytes extra to
        allow for either alignment *)
     ReserveReg(RBP);  MoveReg(RBP, RSP);
-    AluOpFromImmediate(Minus, Reg, stackspace,         8, RBP, -1, 0, 0);
+    AluOpFromImmediate(Minus, Reg, stackspace - 8,     8, RBP, -1, 0, 0);
     AluOpFromImmediate(And,   Reg, 0FFFFFFFFFFFFFFF0H, 8, RBP, -1, 0, 0);
-    AluOpFromImmediate(Minus, Reg, stackspace + 8,     8, RSP, -1, 0, 0);
-    X64.AdjustStack(stackspace DIV 8 + 1);
+    AluOpFromImmediate(Minus, Reg, stackspace,         8, RSP, -1, 0, 0);
+    X64.AdjustStack(stackspace DIV 8);
     Disassemble(0, "Reserve Windows ABI stack space")
   END
 END PrepCall;
@@ -1461,14 +1447,16 @@ BEGIN
   ASSERT(x.type.form = ORB.Proc);
   ASSERT(x.mode IN {Eadr, Global, Code, Import, Impcode});
 
-  IF x.type.hosted = ORB.Windows THEN  (* Windows X64 ABI: Adjust to 16 byte aligned stack *)
+  IF x.type.hosted = ORB.Windows THEN  (* Windows X64 ABI: Switch to 16 byte aligned stack *)
     OpModRegRm(87H, Reg, RBP, 8, RSP, -1, 0, 0, 0);  (* xchg rsp,rbp *)
     Disassemble(0, "Switch to Windows ABI aligned stack frame")
   END;
 
   (* Call procedure *)
   IF x.type.form = ORB.Proc THEN
-    IF x.mode IN {Eadr, Global, Impcode} THEN
+    IF x.type.hosted = ORB.Syscall THEN
+      LoadImmediate(RAX, x.offset);  X64.Emit(0FH);  X64.Emit(5);
+    ELSIF x.mode IN {Eadr, Global, Impcode} THEN
       OpModRegRm(0FFH, x.mode, 2, 4, x.n, x.index, x.scale, x.offset, 0)  (* call [addr] *)
     ELSE
       X64.Emit(0E8H);
@@ -1493,13 +1481,10 @@ BEGIN
 
     X64.AdjustStack(-(parmsize DIV 8));  (* matches stack adjustment by <ret n> *)
 
-  ELSIF x.type.hosted = ORB.Linux THEN  (* Linux ABI stack handling *)
+  ELSIF x.type.hosted IN {ORB.Linux, ORB.Syscall} THEN  (* Linux ABI stack handling *)
 
     DEC(parmsize, 48);  (* First 6 parms are not passed on the stack *)
     IF parmsize > 0 THEN
-      (*
-      OpModRegRm(8DH, Eadr, RSP, 8, RSP, -1, 0, parmsize, 0);  (* lea rsp, rbp + parmreserved *)
-      *)
       AluOpFromImmediate(Plus, Reg, parmsize, 8, RSP, -1, 0, 0);
       X64.AdjustStack(-(parmsize DIV 8));  (* matches stack adjustment by <ret n> *)
     END
@@ -1548,6 +1533,8 @@ BEGIN
   Disassemble(0, "Skip over nested procedures (if any)");
   Trace(TraceAny, "Enter(parmsize $"); l.h(parmsize, Tr);
   l.s(", locsize $", Tr);             l.h(locsize, Tr);   l.sn(")", Tr);
+
+  ASSERT(hosted # ORB.Syscall);
 
   IF hosted = ORB.Linux THEN  (* Linux X64 ABI *)
 
@@ -1642,6 +1629,8 @@ BEGIN
     Disassemble(x.mode, "Load function result")
   END;
 
+  ASSERT(hosted # ORB.Syscall);
+
   IF hosted = ORB.Nohost THEN  (* Regular Oberon ABI *)
 
     IF locsize > 0 THEN
@@ -1656,9 +1645,9 @@ BEGIN
 
   ELSIF hosted = ORB.Linux THEN  (* Linux ABI *)
 
-    IF locsize > 00 THEN
+    IF locsize + H.Min(48, parmsize) > 0 THEN
       AluOpFromImmediate(Plus, Reg, locsize + H.Min(48, parmsize), 8, RSP, -1, 0, 0);
-      Disassemble(0, "release Linux ABI local & parameter  space")
+      Disassemble(0, "release Linux ABI local & parameter space")
     END;
     PopReg(15);   PopReg(14);
     PopReg(13);   PopReg(12);
