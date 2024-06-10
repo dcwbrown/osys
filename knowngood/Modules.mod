@@ -406,7 +406,7 @@ BEGIN
   Files.Init;
   ActCnt      := 0;
   PreloadNext := H.Preload.MadrPreload;
-  H.SetTrapHandler(HandleTrap);
+  H.SetTrapHandler(HandleTrap)
 END Init;
 
 BEGIN Init;

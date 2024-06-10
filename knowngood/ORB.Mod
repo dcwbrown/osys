@@ -53,6 +53,14 @@ CONST
   Array*   = 17;
   Record*  = 18;
 
+  (* hosted values *)
+  Nohost*  = 0;  (* Normal Oberon behaviour                      *)
+  Nogc*    = 1;  (* Record or pointer with no garbage collection *)
+  Linux*   = 2;  (* Procedure with Linux X64 ABI                 *)
+  Windows* = 3;  (* Procedure with Windows X64 ABI               *)
+  Syscall* = 4;  (* Linux syscall procedure                      *)
+
+
 TYPE
   Object* = POINTER TO ObjDesc;
   Module* = POINTER TO ModDesc;
@@ -113,7 +121,7 @@ TYPE
     typobj*: Object;   (* For Typ:        object representing type         *)
     base*:   Type;     (* For arrays, records, pointers, fn procedures     *)
     size*:   LONGINT;  (* In bytes. For procedures: 8                      *)
-    native*: BYTE      (* 1: no-gc rec, 2: Linux proc, 3: Windows proc     *)
+    hosted*: BYTE      (* 1: no-gc rec, 2: Linux proc, 3: Windows proc     *)
   END;
 
 
@@ -140,7 +148,7 @@ BEGIN x := topScope;
   IF x.next = NIL THEN
     NEW(new); new.name := id; new.class := class; new.next := NIL; new.rdo := FALSE; new.dsc := NIL;
     new.exno  := 0; new.expo := FALSE; new.lev := 0; new.type  := NIL; new.val := 0;
-    x.next := new; obj    := new
+    x.next := new;  obj := new
   ELSE obj := x.next; ORS.Mark("mult def")
   END
 END NewObj;
@@ -266,7 +274,7 @@ BEGIN Read(R, ref);
       IF last = NIL THEN t.dsc := obj ELSE last.next := obj END
     ELSIF form = Proc THEN
       InType(R, thismod, t.base);
-      Files.ReadNum(R, t.len);  Files.ReadByte(R, t.native);
+      Files.ReadNum(R, t.len);  Files.ReadByte(R, t.hosted);
       obj := NIL; np := 0; Read(R, class);
       WHILE class # 0 DO  (*parameters*)
         NEW(par); par.class := class; Read(R, readonly); par.rdo := readonly = 1;
@@ -384,7 +392,7 @@ BEGIN
       END;
       Write(R, 0)
     ELSIF t.form = Proc THEN OutType(R, t.base);
-      Files.WriteNum(R, t.len);  Files.WriteByte(R, t.native);
+      Files.WriteNum(R, t.len);  Files.WriteByte(R, t.hosted);
       OutPar(R, t.dsc, t.nofpar); Write(R, 0)
     END;
     IF (t.mno > 0) & (obj # NIL) THEN  (*re-export, output name*)

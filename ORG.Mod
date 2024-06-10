@@ -201,16 +201,14 @@ BEGIN
   IF X64.SPO # 0              THEN ORS.Mark("SPO error"); X64.ClearStack; wn; H.Trap(0, "X64.SPO # 0")              END
 END CheckRegs;
 
-PROCEDURE UsesReg(x: Item; reg: INTEGER): BOOLEAN;
-VAR result: BOOLEAN;
-BEGIN result := FALSE;
-  IF x.mode IN {Reg, Eadr} THEN
-    result := result OR (x.n = reg)
-  END;
-  IF x.mode IN {Stkind, Strucp, Eadr, String, Global, Import} THEN
-    result := result OR (x.index = reg)
+PROCEDURE Using(x: Item): SET;
+VAR result: SET;
+BEGIN result := {};
+  IF x.mode IN {Reg, Eadr} THEN INCL(result, x.n) END;
+  IF (x.mode IN {Stkind, Strucp, Eadr, String, Global, Import}) & (x.index >= 0) THEN
+    INCL(result, x.index)
   END
-RETURN result END UsesReg;
+RETURN result END Using;
 
 PROCEDURE FreeRegs(VAR x: Item);
 BEGIN
@@ -1378,14 +1376,14 @@ BEGIN
   l.s("), SPO ", Tr);             l.i(X64.SPO, Tr); l.n(Tr);
   saved := AllFree - Free;
   Depar(x);
-  IF x.mode = Eadr THEN EXCL(saved, x.n) END;
-  IF (x.mode IN {Eadr, Global, Import, Impcode}) & (x.index >= 0) THEN EXCL(saved, x.index) END;
+  saved := saved - Using(x);
 
   IF saved # {} THEN  (* Save partially evaluated expression *)
     FOR i := 0 TO 15 DO IF i IN saved THEN PushReg(i);  X64.AdjustStack(1) END END;
     Disassemble(0, "Save registers");
     Free := AllFree
   END;
+
   ASSERT(x.type.form = ORB.Proc);
   IF ~(x.mode IN {Eadr, Global, Code, Import, Impcode}) THEN
     ws("** x.mode ");  wi(x.mode);  wsn(" **");
@@ -1397,12 +1395,12 @@ BEGIN
     stackspace := H.Max(32, x.type.len) + 8
   ELSIF x.type.hosted = ORB.Linux THEN
     stackspace := H.Max(0, x.type.len - 48)
-  ELSE ASSERT(x.type.hosted = ORB.Nohost);
+  ELSE
     stackspace := x.type.len
   END;
 
-  IF (x.mode = Eadr)
-  OR (x.mode IN {Eadr, Global, Import, Impcode}) & (x.index >= 0) THEN  (* Push proc address to stack *)
+  IF Using(x) # {} THEN  (* Push proc address to stack *)
+    ASSERT(x.type.hosted # ORB.Syscall);
     Push(x);  X64.AdjustStack(1);  FreeRegs(x);
     Disassemble(x.mode, "proc address to be called");
     ASSERT(x.type.len MOD 8 = 0);
@@ -2430,7 +2428,7 @@ BEGIN
       IF (x.mode = Reg) & (x.n = RAX) THEN
         (* numerator is already in rax *)
       ELSE
-        IF ~((RAX IN Free) OR UsesReg(x, RAX)) THEN
+        IF ~(RAX IN Free + Using(x)) THEN
           (* Save rax temporarily *)
           saveRAX := TRUE;
           PushReg(RAX);  X64.AdjustStack(1);  Release(RAX);
