@@ -12,23 +12,20 @@ CONST
 
 TYPE
   PreLoadVars* = RECORD-
-    Exeadr*:      INTEGER;  (* Image PE header loaded address      *)
-    ImgHeader*:   INTEGER;  (* Image Oberon section loaded address *)
-    MadrPreload*: INTEGER;  (* Start of preload section            *)
-    CoreSize*:    INTEGER;  (* End of core allocation              *)
+    Exeadr*:      INTEGER;  (* Unused on Linux                         *)
+    dummy2:       INTEGER;
+    CoreAdr*:     INTEGER;  (* Oberon core address, usually 100000000H *)
+    CoreSize*:    INTEGER;  (* End of core allocation                  *)
+    MadrPreload*: INTEGER;  (* Start of preload section                *)
     MadrIcon*:    INTEGER;
     IconSize*:    INTEGER;
-    dummy6:       INTEGER;
     dummy7:       INTEGER;
   END;
 
 VAR
   Preload*: PreLoadVars;
-  crlf*:   ARRAY 3 OF CHAR;
+  crlf*:    ARRAY 3 OF CHAR;
 
-  (*
-  ModuleSpace*: INTEGER;   (* Start of module space *)
-  *)
   AllocPtr*:    INTEGER;   (* Start of remaining free module space *)
   CommitLen*:   INTEGER;   (* Committed module space memory *)
 
@@ -328,17 +325,17 @@ BEGIN
   ws("Time of day: "); wi(Time()); wsn(".");
 
   ws("rsp               "); wh(SYSTEM.REG(4));     wsn("H.");
-  ws("Preload.ImgHeader "); wh(Preload.ImgHeader); wsn("H.");
+  ws("Preload.CoreAdr   "); wh(Preload.CoreAdr);   wsn("H.");
   ws("Preload.CoreSize  "); wh(Preload.CoreSize);  wsn("H.");
 
-  AllocPtr  := Preload.ImgHeader + Preload.CoreSize;
+  AllocPtr  := Preload.CoreAdr + Preload.CoreSize;
   CommitLen := (Preload.CoreSize + 0FFFH) DIV 1000H * 1000H;
 
   ws("AllocPtr   "); wh(AllocPtr);  wsn("H.");
   ws("CommitLen  "); wh(CommitLen); wsn("H.");
 
-  (* Reserve memroy beyond committed up to 2GB *)
-  reserveadr := Preload.ImgHeader + CommitLen;
+  (* Reserve memory beyond committed up to 2GB *)
+  reserveadr := Preload.CoreAdr + CommitLen;
   reservelen := 80000000H - CommitLen;
 
   ws("reserveadr "); wh(reserveadr); wsn("H.");

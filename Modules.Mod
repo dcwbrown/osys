@@ -402,7 +402,7 @@ END HandleTrap;
 
 PROCEDURE Init;
 BEGIN
-  Root := SYSTEM.VAL(Module, H.Preload.ImgHeader);
+  Root := SYSTEM.VAL(Module, H.Preload.CoreAdr);
   Files.Init;
   ActCnt      := 0;
   PreloadNext := H.Preload.MadrPreload;

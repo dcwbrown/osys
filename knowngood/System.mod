@@ -298,7 +298,7 @@ END DeleteFiles;
 
 PROCEDURE Watch*;
 VAR moduleusage: INTEGER;
-BEGIN moduleusage := H.AllocPtr - H.ModuleSpace;
+BEGIN moduleusage := H.AllocPtr - H.Preload.CoreAdr;
   Texts.WriteString(W, "System.Watch"); Texts.WriteLn(W);
   Texts.WriteString(W, "  Modules space (bytes)"); Texts.WriteInt(W, moduleusage, 8);
   Texts.WriteInt(W, moduleusage * 100 DIV 100000000H, 4); Texts.Write(W, "%"); EndLine;

@@ -12,7 +12,7 @@ copy ..\knowngood\Link.Link.exe >NUL 2>NUL
 ::
 ::  goto outercorebuild
 fc ..\Link.Mod ..\knowngood\Link.Mod >NUL && goto noprebuild
-:: goto noprebuild
+::  goto noprebuild
 ::
 ::
 echo.

@@ -683,9 +683,9 @@ BEGIN
 
   H.ZeroFill(preloadvars);
   preloadvars.Exeadr      := ImageBase;
-  preloadvars.ImgHeader   := OberonCoreBase;
-  preloadvars.MadrPreload := MadrPreload;
+  preloadvars.CoreAdr     := OberonCoreBase;
   preloadvars.CoreSize    := CoreSize;
+  preloadvars.MadrPreload := MadrPreload;
   IF IconSize > 0 THEN
     preloadvars.MadrIcon  := ImageBase + RvaIcon + 0B4H;  (* See MakeIconResource for 0B4H *)
     preloadvars.IconSize  := IconSize
@@ -941,9 +941,9 @@ VAR
 BEGIN
   H.ZeroFill(preloadvars);
   preloadvars.Exeadr      := 0;
-  preloadvars.ImgHeader   := OberonCoreBase;
-  preloadvars.MadrPreload := MadrPreload;
+  preloadvars.CoreAdr     := OberonCoreBase;
   preloadvars.CoreSize    := CoreSize;
+  preloadvars.MadrPreload := MadrPreload;
   SYSTEM.COPY(SYSTEM.ADR(preloadvars), SYSTEM.ADR(CoreMem[CoreHostVars]), SYSTEM.SIZE(H.PreLoadVars));
 END PresetLinHost;
 

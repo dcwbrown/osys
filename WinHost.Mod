@@ -69,13 +69,13 @@ TYPE
   END;
 
   PreLoadVars* = RECORD-
-    Exeadr*:      INTEGER;  (* Image PE header loaded address      *)
-    ImgHeader*:   INTEGER;  (* Image Oberon section loaded address *)
-    MadrPreload*: INTEGER;  (* Start of preload section            *)
-    CoreSize*:    INTEGER;  (* End of core allocation              *)
+    Exeadr*:      INTEGER;  (* Image PE header address (Windows only)  *)
+    dummy2:       INTEGER;
+    CoreAdr*:     INTEGER;  (* Oberon core address, usually 100000000H *)
+    CoreSize*:    INTEGER;  (* End of core allocation                  *)
+    MadrPreload*: INTEGER;  (* Start of preload section                *)
     MadrIcon*:    INTEGER;
     IconSize*:    INTEGER;
-    dummy6:       INTEGER;
     dummy7:       INTEGER;
   END;
 
@@ -200,7 +200,6 @@ VAR
   crlf*:   ARRAY 3 OF CHAR;
   HWnd:    INTEGER;        (* Set when a window has been created *)
 
-  ModuleSpace*: INTEGER;   (* Start of module space *)
   AllocPtr*:    INTEGER;   (* Start of remaining free module space *)
   CommitLen*:   INTEGER;   (* Committed module space memory *)
 
@@ -840,20 +839,14 @@ RETURN info.write END FileTime;
 PROCEDURE Allocate*(size: INTEGER; VAR p, alloc: INTEGER);
 VAR adr, newcommitlen: INTEGER;
 BEGIN
-  (*
-  ws("WinHost.Allocate(size "); wh(size);        wsn("H).");
-  ws("  ModuleSpace: ");        wh(ModuleSpace); wsn("H.");
-  ws("  AllocPtr:    ");        wh(AllocPtr);    wsn("H.");
-  ws("  CommitLen:   ");        wh(CommitLen);   wsn("H.");
-  *)
   p     := 0;
   alloc := 0;
   size  := (size + 15) DIV 16 * 16;
-  IF AllocPtr - ModuleSpace + size < 80000000H THEN  (* Hard limit on reserved size 2GB due to relative addressing *)
-    IF AllocPtr + size > ModuleSpace + CommitLen THEN
+  IF AllocPtr - Preload.CoreAdr + size < 80000000H THEN  (* Hard limit on reserved size 2GB due to relative addressing *)
+    IF AllocPtr + size > Preload.CoreAdr + CommitLen THEN
 
       (* Round up to a multiple of 256K *)
-      newcommitlen := (AllocPtr + size + 40000H - 1) DIV 40000H * 40000H - ModuleSpace;
+      newcommitlen := (AllocPtr + size + 40000H - 1) DIV 40000H * 40000H - Preload.CoreAdr;
 
       (*
       ws("* CommitLen increasing from "); wh(CommitLen);
@@ -861,17 +854,17 @@ BEGIN
       *)
 
       (*
-      ws("Calling VirtualAlloc(addr "); wh(ModuleSpace+CommitLen);
+      ws("Calling VirtualAlloc(addr "); wh(Preload.CoreAdr+CommitLen);
       ws("H, size "); wh(newcommitlen-CommitLen);
       wsn("H, MEMCOMMIT, PAGEEXECUTEREADWRITE).");
       *)
 
-      adr := VirtualAlloc(ModuleSpace+CommitLen, newcommitlen-CommitLen, MEMCOMMIT, PAGEEXECUTEREADWRITE);
+      adr := VirtualAlloc(Preload.CoreAdr+CommitLen, newcommitlen-CommitLen, MEMCOMMIT, PAGEEXECUTEREADWRITE);
       IF adr = 0 THEN AssertWinError(GetLastError()) END;
-      ASSERT(adr = ModuleSpace + CommitLen);
+      ASSERT(adr = Preload.CoreAdr + CommitLen);
       CommitLen := newcommitlen
     END;
-    IF AllocPtr + size <= ModuleSpace + CommitLen THEN
+    IF AllocPtr + size <= Preload.CoreAdr + CommitLen THEN
       p     := AllocPtr;
       alloc := size;
       INC(AllocPtr, size);
@@ -977,8 +970,6 @@ BEGIN
   SetConsoleOutputCP(65001);    (* 65001: UTF8            *)
   crlf := $0D 0A 00$;
 
-  ModuleSpace := Preload.ImgHeader;
-
   Handlers[NewProc]                   := NewPointerHandler;
   Handlers[AssertionFailureProc]      := AssertionFailureHandler;
   Handlers[ArraySizeMismatchProc]     := ArraySizeMismatchHandler;
@@ -987,11 +978,11 @@ BEGIN
   Handlers[NilPointerDereferenceProc] := NilPointerDereferenceHandler;
   Handlers[TypeGuardFailureProc]      := TypeGuardFailureHandler;
 
-  AllocPtr  := Preload.ImgHeader + Preload.CoreSize;
+  AllocPtr  := Preload.CoreAdr + Preload.CoreSize;
   CommitLen := (Preload.CoreSize + 0FFFFH) DIV 10000H * 10000H;
 
   (* Reserve memroy beyond committed up to 2GB *)
-  reserveadr := Preload.ImgHeader + CommitLen;
+  reserveadr := Preload.CoreAdr + CommitLen;
   reservelen := 80000000H - CommitLen;
   res := VirtualAlloc(reserveadr, reservelen, MEMRESERVE, PAGEEXECUTEREADWRITE);
   IF res = 0 THEN AssertWinError(GetLastError()) END;
