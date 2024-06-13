@@ -1,9 +1,12 @@
-MODULE Link;  (* Create exe for a given module + optional command *)
+MODULE Link;  (* Create binary for a given module + optional command *)
 (* DCWB 2023-04-14 .. 2024-05-25 *)
 
 IMPORT SYSTEM, H := WinHost, Kernel, Files, Texts, Modules;
 
 CONST
+  Win = H.Win;
+  Lin = H.Lin;
+
   MemoryAlignment = 1000H;   (* Sections are a multiple of this size in memory *)
   FileAlignment   =  200H;   (* Sections are a multiple of this size on file *)
 
@@ -152,8 +155,8 @@ TYPE
 VAR
   W:            Texts.Writer;
   FileName:     ARRAY 512 OF CHAR;
-  ExeFile:      Files.File;
-  Exe:          Files.Rider;
+  BinFile:      Files.File;
+  Binary:       Files.Rider;
 
   Verbose:      BOOLEAN;
 
@@ -185,7 +188,7 @@ VAR
 
 
 (* Convenience functions *)
-PROCEDURE spos(p: INTEGER);  BEGIN Files.Set(Exe, ExeFile, p) END spos;
+PROCEDURE spos(p: INTEGER);  BEGIN Files.Set(Binary, BinFile, p) END spos;
 
 PROCEDURE wn; BEGIN Texts.WriteLn(W); Texts.Append(Texts.Log, W.buf) END wn;
 
@@ -238,7 +241,7 @@ BEGIN
   shdr.SizeOfRawData    := fsize;
   shdr.PointerToRawData := fadr;
   shdr.Characteristics  := flags;
-  Files.WriteRaw(Exe, shdr);
+  Files.WriteRaw(Binary, shdr);
 END WriteSectionHeader;
 
 
@@ -317,7 +320,7 @@ BEGIN
   hdr.importTableSize         := RvaModules - RvaImport;
 
   spos(0);
-  Files.WriteRaw(Exe, hdr);
+  Files.WriteRaw(Binary, hdr);
 
   (* Write section headers *)
   IF FadrIcon > FadrPreload THEN
@@ -352,7 +355,7 @@ BEGIN
                      FadrModules,
                      SReadable + SWriteable + SExecutable + SCode);
 
-  ASSERT(Files.Pos(Exe) <= HeaderSize);
+  ASSERT(Files.Pos(Binary) <= HeaderSize);
 
 END WritePEHeader;
 
@@ -496,9 +499,9 @@ BEGIN
 RETURN mod END LoadModule;
 
 
-PROCEDURE LinkInnerCore;
+PROCEDURE LinkInnerCore(hostname: ARRAY OF CHAR);
 VAR
-  WinHostHdr: Modules.Module;
+  HostHdr:    Modules.Module;
   KernelHdr:  Modules.Module;
   FilesHdr:   Modules.Module;
   ModulesHdr: Modules.Module;
@@ -507,18 +510,18 @@ BEGIN
   CoreSize       := 0;
   CoreEntryPoint := 0;
 
-  WinHostHdr := LoadModule("WinHost.x64");
+  HostHdr    := LoadModule(hostname);
   KernelHdr  := LoadModule("Kernel.x64");
   FilesHdr   := LoadModule("Files.x64");
   ModulesHdr := LoadModule("Modules.x64");
 
-  WinHostHdr.next := SYSTEM.VAL(Modules.Module, OberonCoreBase + ORD(KernelHdr)  - SYSTEM.ADR(CoreMem));
+  HostHdr.next := SYSTEM.VAL(Modules.Module, OberonCoreBase + ORD(KernelHdr)  - SYSTEM.ADR(CoreMem));
   KernelHdr.next  := SYSTEM.VAL(Modules.Module, OberonCoreBase + ORD(FilesHdr)   - SYSTEM.ADR(CoreMem));
   FilesHdr.next   := SYSTEM.VAL(Modules.Module, OberonCoreBase + ORD(ModulesHdr) - SYSTEM.ADR(CoreMem));
   ModulesHdr.next := NIL;
 
   CoreEntryPoint := ORD(ModulesHdr) - SYSTEM.ADR(CoreMem) + ModulesHdr.init;
-  CoreHostVars   := WinHostHdr.vars - OberonCoreBase;
+  CoreHostVars   := HostHdr.vars - OberonCoreBase;
 
 END LinkInnerCore;
 
@@ -674,7 +677,6 @@ END BuildImportTables;
 PROCEDURE PresetWinHost(FadrModules, ImageBase, MadrPreload, IconSize, RvaIcon: INTEGER);
 VAR
   varpos:      INTEGER;
-  commit:      INTEGER;
   preloadvars: H.PreLoadVars;
 BEGIN
   varpos := CoreHostVars;
@@ -727,15 +729,15 @@ END CopyFile;
 (* ---------------- Windows PE resource section construction ---------------- *)
 
 PROCEDURE WriteWord(i: INTEGER);
-BEGIN Files.WriteMem(Exe, SYSTEM.ADR(i), 2) END WriteWord;
+BEGIN Files.WriteMem(Binary, SYSTEM.ADR(i), 2) END WriteWord;
 
 PROCEDURE WriteDWord(i: INTEGER);
-BEGIN Files.WriteMem(Exe, SYSTEM.ADR(i), 4) END WriteDWord;
+BEGIN Files.WriteMem(Binary, SYSTEM.ADR(i), 4) END WriteDWord;
 
 PROCEDURE WriteResourceDirectoryTable(numids: INTEGER);  (* 16 bytes *)
 VAR i: INTEGER;
 BEGIN
-  Files.WriteInt(Exe, 0);  (* characteristics and timestamp *)
+  Files.WriteInt(Binary, 0);  (* characteristics and timestamp *)
   WriteDWord(0);           (* version *)
   WriteWord(0);            (* # name entries *)
   WriteWord(numids);       (* # id entries *)
@@ -751,7 +753,7 @@ PROCEDURE WriteResourceDataEntry(rva, size: INTEGER);  (* 16 bytes *)
 BEGIN
   WriteDWord(rva);
   WriteDWord(size);
-  Files.WriteInt(Exe, 1033);  (* codepage and 0 (reserved) *)
+  Files.WriteInt(Binary, 1033);  (* codepage and 0 (reserved) *)
 END WriteResourceDataEntry;
 
 PROCEDURE WriteICONDIR(count: INTEGER); (* 6 bytes *)
@@ -765,8 +767,8 @@ END WriteICONDIR;
 PROCEDURE WriteIconDirEntry(width, height, size, index: INTEGER); (* 16 bytes *)
 VAR i: INTEGER;
 BEGIN
-  Files.WriteByte(Exe, width  MOD 256);
-  Files.WriteByte(Exe, height MOD 256);
+  Files.WriteByte(Binary, width  MOD 256);
+  Files.WriteByte(Binary, height MOD 256);
   WriteWord(0);  (* no colour palette, reserved *)
   WriteWord(1);  (* colour planes *)
   WriteWord(8);  (* bits per pixel *)
@@ -777,10 +779,10 @@ END WriteIconDirEntry;
 PROCEDURE WriteRESDIR(width, height, size, ordinal: INTEGER); (* 14 bytes *)
 VAR i: INTEGER;
 BEGIN
-  Files.WriteByte(Exe, width  MOD 256);
-  Files.WriteByte(Exe, height MOD 256);
-  Files.WriteByte(Exe, 0);  (* no colour palette *)
-  Files.WriteByte(Exe, 0);  (* reserved *)
+  Files.WriteByte(Binary, width  MOD 256);
+  Files.WriteByte(Binary, height MOD 256);
+  Files.WriteByte(Binary, 0);  (* no colour palette *)
+  Files.WriteByte(Binary, 0);  (* reserved *)
   WriteWord(1);  (* colour planes *)
   WriteWord(8);  (* bits per pixel *)
   WriteDWord(size);
@@ -791,7 +793,7 @@ PROCEDURE MakeIconResource(fadr, rva: INTEGER): INTEGER;
 VAR size: INTEGER;
 BEGIN
   size := Files.Length(IconPng);
-  Files.Set(Exe, ExeFile, fadr);
+  Files.Set(Binary, BinFile, fadr);
   (*00*) WriteResourceDirectoryTable(2);
   (*10*) WriteResourceDirectoryEntry(3,    80000020H); (* -> 2d lev for icons *)
   (*18*) WriteResourceDirectoryEntry(14,   80000038H); (* -> 2d lev for icon group *)
@@ -807,14 +809,15 @@ BEGIN
   (*90*) WriteResourceDataEntry(rva + 0A0H, 20);           (* Icon group at 0A0H *)
   (*A0*) WriteICONDIR(1);  (* 1 icon *)
   (*A6*) WriteRESDIR(256, 256, size, 1);
-  (*B4*) CopyFile(IconPng, Exe, size);
-RETURN Files.Pos(Exe) - fadr END MakeIconResource;
+  (*B4*) CopyFile(IconPng, Binary, size);
+RETURN Files.Pos(Binary) - fadr END MakeIconResource;
 
 
-(* -------------------------- Generate one target --------------------------- *)
+(* ---------------------- Generate EXE for one target ----------------------- *)
 
-PROCEDURE Generate*(PEname: ARRAY OF CHAR);
+PROCEDURE GenerateEXE*(name: ARRAY OF CHAR);
 VAR
+  PEname:      ARRAY 64 OF CHAR;
   emb:         EmbeddedModule;
   prev1:       Files.FileName;
   prev2:       Files.FileName;
@@ -828,10 +831,11 @@ VAR
   ImageBase:   INTEGER;    MadrPreload: INTEGER;
   numsections: INTEGER;
 BEGIN
-  ExeFile := Files.New(PEname);
-  Files.Set(Exe, ExeFile, 0);
+  PEname[0] := 0X;  H.Append(name, PEname);  H.Append(".exe", PEname);
+  BinFile := Files.New(PEname);
+  Files.Set(Binary, BinFile, 0);
 
-  LinkInnerCore;
+  LinkInnerCore("WinHost.x64");
 
   (* Section order:                   *)
   (*   o  Preload binaries (optional) *)
@@ -856,12 +860,12 @@ BEGIN
     spos(FadrPreload);
     WHILE emb # NIL DO
       IF ~IsInnerCore(emb.mod.name) THEN
-        CopyFile(emb.file, Exe, emb.size);
+        CopyFile(emb.file, Binary, emb.size);
         INC(PreloadSize, emb.size)
       END;
       emb := emb.next
     END;
-    Files.WriteInt(Exe, 0);  (* Terminate preload modules with empty name *)
+    Files.WriteInt(Binary, 0);  (* Terminate preload modules with empty name *)
     INC(PreloadSize, 16);
   END;
 
@@ -895,9 +899,9 @@ BEGIN
   PresetWinHost(FadrModules, ImageBase, MadrPreload, IconSize, RvaIcon);
 
   spos(FadrImport);
-  Files.WriteRaw(Exe, Idt);
-  Files.WriteMem(Exe, SYSTEM.ADR(ImportHints), ImportHintSize);
-  ASSERT(ImportSize = Align(Files.Pos(Exe), 16) - FadrImport);
+  Files.WriteRaw(Binary, Idt);
+  Files.WriteMem(Binary, SYSTEM.ADR(ImportHints), ImportHintSize);
+  ASSERT(ImportSize = Align(Files.Pos(Binary), 16) - FadrImport);
 
   WritePEHeader(ImageBase,   HeaderSize,  numsections,
                 FadrPreload, RvaPreload,
@@ -906,27 +910,125 @@ BEGIN
                 FadrModules, RvaModules);
 
   spos(FadrModules);
-  Files.WriteMem(Exe, SYSTEM.ADR(CoreMem), CoreSize);
+  Files.WriteMem(Binary, SYSTEM.ADR(CoreMem), CoreSize);
 
-  IF Files.Pos(Exe) MOD FileAlignment # 0 THEN
-    spos(FileAlign(Files.Pos(Exe))-1);
-    Files.WriteByte(Exe, 0);
+  IF Files.Pos(Binary) MOD FileAlignment # 0 THEN
+    spos(FileAlign(Files.Pos(Binary))-1);
+    Files.WriteByte(Binary, 0);
   END;
 
   (* Shuffle previous versions *)
-  prev1 := ExeFile.name; H.Append(".-1", prev1);
-  prev2 := ExeFile.name; H.Append(".-2", prev2);
-  prev3 := ExeFile.name; H.Append(".-3", prev3);
+  prev1 := BinFile.name; H.Append(".-1", prev1);
+  prev2 := BinFile.name; H.Append(".-2", prev2);
+  prev3 := BinFile.name; H.Append(".-3", prev3);
 
   res   := H.MoveFile(prev2, prev3);
   res   := H.MoveFile(prev1, prev2);
-  res   := H.MoveFile(ExeFile.name, prev1);
+  res   := H.MoveFile(BinFile.name, prev1);
 
-  Files.Register(ExeFile);
+  Files.Register(BinFile);
 
   FirstPreload := NIL;
   LastPreload  := NIL
-END Generate;
+END GenerateEXE;
+
+
+(* ---------------------- Generate ELF for one target ----------------------- *)
+
+PROCEDURE PresetLinHost(MadrPreload: INTEGER);
+VAR
+  preloadvars: H.PreLoadVars;
+BEGIN
+  H.ZeroFill(preloadvars);
+  preloadvars.Exeadr      := 0;
+  preloadvars.ImgHeader   := OberonCoreBase;
+  preloadvars.MadrPreload := MadrPreload;
+  preloadvars.CoreSize    := CoreSize;
+  SYSTEM.COPY(SYSTEM.ADR(preloadvars), SYSTEM.ADR(CoreMem[CoreHostVars]), SYSTEM.SIZE(H.PreLoadVars));
+END PresetLinHost;
+
+
+
+PROCEDURE GenerateELF*(name: ARRAY OF CHAR);
+VAR
+  HostHdr:    Modules.Module;
+  entry:      INTEGER;
+  prev1:      Files.FileName;
+  prev2:      Files.FileName;
+  prev3:      Files.FileName;
+  res:        INTEGER;
+  fadrcore:   INTEGER;
+BEGIN
+  CoreModCount   := 0;
+  CoreSize       := 0;
+  HostHdr        := LoadModule("LinHost.x64");
+  HostHdr.next   := NIL;
+  (*
+  CoreEntryPoint := ORD(HostHdr) - SYSTEM.ADR(CoreMem) + HostHdr.init;
+  *)
+  CoreHostVars   := HostHdr.vars - OberonCoreBase;
+  PresetLinHost(0);
+
+  entry        := OberonCoreBase + HostHdr.init;
+  fadrcore     := 1000H;
+
+  (*
+  LinkInnerCore("LinHost.x64");
+  entry := RvaModules + CoreEntryPoint;
+  *)
+
+  BinFile := Files.New(name);
+  Files.Set(Binary, BinFile, 0);
+  Files.WriteByte(Binary, 7FH);  Files.WriteMem(Binary, SYSTEM.ADR("ELF"), 3);
+  Files.WriteByte(Binary, 2);     (* 64 bit                                 *)
+  Files.WriteByte(Binary, 1);     (* Little endian                          *)
+  Files.WriteByte(Binary, 1);     (* ELF v1                                 *)
+  Files.WriteByte(Binary, 3);     (* Linux                                  *)
+  Files.WriteInt (Binary, 0);     (* e_ident unused by Linux >= 2.6         *)
+  WriteWord(2);                   (* Executable file                        *)
+  WriteWord(3EH);                 (* AMD x86-64                             *)
+  WriteDWord(1);                  (* Original version of ELF                *)
+  Files.WriteInt(Binary, entry);  (* Entry point                            *)
+  Files.WriteInt(Binary, 40H);    (* Address of program header table        *)
+  Files.WriteInt(Binary, 0);      (* Address of section header table        *)
+  WriteDWord(0);                  (* Flags                                  *)
+  WriteWord(40H);                 (* Size of this header                    *)
+  WriteWord(38H);                 (* Program header table entry size        *)
+  WriteWord(1);                   (* Number of program header table entries *)
+  WriteWord(40H);                 (* Section header table entry size        *)
+  WriteWord(0);                   (* Number of section header table entries *)
+  WriteWord(0);                   (* Section index containing names         *)
+  ASSERT(Files.Pos(Binary) = 40H);
+
+  (* Core segment program header *)
+  WriteDWord(1);                     (* Loadable segment                      *)
+  WriteDWord(7);                     (* Readable, writeable, executable       *)
+  Files.WriteInt(Binary, fadrcore);  (* Offset of segment content in ELF file *)
+  Files.WriteInt(Binary, OberonCoreBase);  (* Virtual address of section in memory *)
+  Files.WriteInt(Binary, 0);         (* Physical address (not used)           *)
+  Files.WriteInt(Binary, CoreSize);  (* Size of section in ELF file           *)
+  Files.WriteInt(Binary, CoreSize);  (* Size of section in memory             *)
+  Files.WriteInt(Binary, 1000H);     (* Alignment                             *)
+  ASSERT(Files.Pos(Binary) = 78H);
+
+  (* Core *)
+  spos(fadrcore);
+  Files.WriteMem(Binary, SYSTEM.ADR(CoreMem), CoreSize);
+
+  (* Shuffle previous versions *)
+  prev1 := BinFile.name; H.Append(".-1", prev1);
+  prev2 := BinFile.name; H.Append(".-2", prev2);
+  prev3 := BinFile.name; H.Append(".-3", prev3);
+
+  res   := H.MoveFile(prev2, prev3);
+  res   := H.MoveFile(prev1, prev2);
+  res   := H.MoveFile(BinFile.name, prev1);
+
+  Files.Register(BinFile);
+
+  FirstPreload := NIL;
+  LastPreload  := NIL
+END GenerateELF;
 
 
 (* --------------------------- Preloaded modules ---------------------------- *)
@@ -1093,7 +1195,9 @@ VAR
   target:  ARRAY 64 OF CHAR;
   modname: ARRAY 64 OF CHAR;
   i:       INTEGER;
+  tgthost: INTEGER;
 BEGIN
+  tgthost := Win;
   (* Parse argument modname[.commandname] from parameter as arg *)
   Texts.OpenReader(r, Texts.Par.text, Texts.Par.pos);
   Texts.Read(r, ch);
@@ -1114,13 +1218,21 @@ BEGIN
       END;
       modname[i] := 0X;
       AddPreloadModule(modname, 0);
-      WHILE ch = " " DO Texts.Read(r, ch) END;
+      WHILE ch = " " DO Texts.Read(r, ch) END
     END;
 
-    CheckIcon(target);
+    IF ch = "/" THEN
+      Texts.Read(r, ch);
+      IF ch = "l" THEN tgthost := Lin ELSE tgthost := Win END;
+      REPEAT Texts.Read(r, ch) UNTIL ch > " "
+    END;
 
-    H.Append(".exe", target);
-    Generate(target);
+    IF tgthost = Win THEN
+      CheckIcon(target);
+      GenerateEXE(target)
+    ELSE
+      GenerateELF(target)
+    END;
 
     ParseTarget(r, ch, target, modname)
   END

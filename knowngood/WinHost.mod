@@ -1,6 +1,12 @@
 MODULE WinHost;  IMPORT SYSTEM;
 
 CONST
+  (* Host definition *)
+  Win*  = 1;
+  Lin*  = 2;
+  Host* = Win;
+
+
   (* Platform independent file open kinds *)
   OpenRO* = 0;  (* Open r/o, fail if doesn't exist *)
   OpenRW* = 1;  (* Open r/w, fail if doesn't exist *)
@@ -23,9 +29,8 @@ CONST
   MEMCOMMIT            = 1000H;
   PAGEEXECUTEREADWRITE = 40H;
 
+
 TYPE
-
-
   (* -------------------- Windows exception structures -------------------- *)
 
   Exception = POINTER- TO ExceptionRecord;
@@ -828,6 +833,8 @@ BEGIN
 RETURN info.write END FileTime;
 
 
+(* -------------------------------------------------------------------------- *)
+(* ----------------------- Virtual memory management ------------------------ *)
 (* -------------------------------------------------------------------------- *)
 
 PROCEDURE Allocate*(size: INTEGER; VAR p, alloc: INTEGER);

@@ -98,15 +98,15 @@ BEGIN
   hosted := ORB.Nohost;
   IF ~ORB.SystemImported() THEN allowed := {} END;
   IF sym IN {ORS.rdiv, ORS.bslash, ORS.neq, ORS.minus} THEN
-    IF    sym = ORS.rdiv   THEN hosted := ORB.Linux
+    IF    sym = ORS.rdiv   THEN hosted := ORB.LinABI
     ELSIF sym = ORS.neq    THEN hosted := ORB.Syscall
-    ELSIF sym = ORS.bslash THEN hosted := ORB.Windows
+    ELSIF sym = ORS.bslash THEN hosted := ORB.WinABI
     ELSE                        hosted := ORB.Nogc
     END;
     ORS.Get(sym);
     IF ~(hosted IN allowed) THEN
-      IF    hosted = ORB.Windows THEN ORS.Mark("'\' Windows procedure mark not allowed here")
-      ELSIF hosted = ORB.Linux   THEN ORS.Mark("'/' Linux procedure mark not allowed here")
+      IF    hosted = ORB.WinABI  THEN ORS.Mark("'\' Windows procedure mark not allowed here")
+      ELSIF hosted = ORB.LinABI  THEN ORS.Mark("'/' Linux procedure mark not allowed here")
       ELSIF hosted = ORB.Syscall THEN ORS.Mark("'#' Linux syscall procedure mark not allowed here")
       ELSE                            ORS.Mark("'-' No-garbage-collection mark not allowed here")
       END
@@ -917,7 +917,7 @@ BEGIN type := ORB.intType;  (*sync*)
   ELSIF sym = ORS.procedure THEN
     ORS.Get(sym);  ORB.OpenScope;
     NEW(type);  type.form := ORB.Proc;  type.size := ORG.WordSize;
-    CheckHosted(type.hosted, {ORB.Windows, ORB.Linux});
+    CheckHosted(type.hosted, {ORB.WinABI, ORB.LinABI});
     ProcedureType(type);  type.dsc := ORB.topScope.next;  ORB.CloseScope
   ELSE ORS.Mark("illegal type")
   END
@@ -1017,7 +1017,7 @@ VAR proc:        ORB.Object;
     hosted:      BYTE;
     ann:         ORG.BodyAnnotation;
 BEGIN ORS.Get(sym);
-  CheckHosted(hosted, {ORB.Linux, ORB.Syscall, ORB.Windows});
+  CheckHosted(hosted, {ORB.LinABI, ORB.Syscall, ORB.WinABI});
 
   IF hosted = ORB.Syscall THEN
     IF sym = ORS.int THEN
@@ -1059,9 +1059,9 @@ BEGIN ORS.Get(sym);
 
       IF hosted = ORB.Nohost THEN  (* Oberon ABI *)
         framesize := parmsize + locsize + 8;  (* Frame includes return address *)
-      ELSIF hosted = ORB.Linux THEN  (* Linux ABI *)
+      ELSIF hosted = ORB.LinABI THEN  (* Linux ABI *)
         framesize := parmsize + locsize + 8 + 48;  (* Frame includes return address *)
-      ELSE ASSERT(hosted = ORB.Windows);  (* Windows ABI *)
+      ELSE ASSERT(hosted = ORB.WinABI);  (* Windows ABI *)
         framesize := parmsize + locsize + 8 + 64;  (* Frame includes return address *)
       END;
       proc.val := ORG.Here();
@@ -1102,7 +1102,7 @@ BEGIN ORS.Get(sym);
 
           INC(obj.val, framesize)  (* address relative to run time rsp *)
 
-        ELSIF hosted = ORB.Linux THEN  (* Linux ABI *)
+        ELSIF hosted = ORB.LinABI THEN  (* Linux ABI *)
 
           IF obj.val >= -48 THEN
             obj.val := locsize - 8 - obj.val   (* Params 1 to 6 follow local variables *)
@@ -1110,7 +1110,7 @@ BEGIN ORS.Get(sym);
             obj.val := locsize + 48 - obj.val  (* Params 7+ are above return address *)
           END;
 
-        ELSE ASSERT(hosted = ORB.Windows); (* Windows ABI *)
+        ELSE ASSERT(hosted = ORB.WinABI); (* Windows ABI *)
 
           obj.val := framesize - type.len - obj.val - 8;  (* Note - all hosted parms are 8 bytes *)
 

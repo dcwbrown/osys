@@ -1247,12 +1247,12 @@ BEGIN
 
     Push(x); X64.AdjustStack(1)
 
-  ELSIF hosted IN {ORB.Linux, ORB.Syscall} THEN  (* Linux ABI parameter passing *)
+  ELSIF hosted IN {ORB.LinABI, ORB.Syscall} THEN  (* Linux ABI parameter passing *)
 
     IF    n = 0 THEN reg := RDI
     ELSIF n = 1 THEN reg := RSI
     ELSIF n = 2 THEN reg := RDX
-    ELSIF n = 3 THEN reg := RCX
+    ELSIF n = 3 THEN IF hosted = ORB.Syscall THEN reg := 10 ELSE reg := RCX END
     ELSIF n = 4 THEN reg := 8
     ELSIF n = 5 THEN reg := 9
     ELSE reg := -1
@@ -1267,7 +1267,7 @@ BEGIN
       END
     END
 
-  ELSE ASSERT(hosted = ORB.Windows);  (* Windows ABI parameter passing *)
+  ELSE ASSERT(hosted = ORB.WinABI);  (* Windows ABI parameter passing *)
 
     IF    n = 0 THEN reg := RCX
     ELSIF n = 1 THEN reg := RDX
@@ -1391,9 +1391,9 @@ BEGIN
   END;
   ASSERT(x.mode IN {Eadr, Global, Code, Import, Impcode});
 
-  IF x.type.hosted = ORB.Windows THEN
+  IF x.type.hosted = ORB.WinABI THEN
     stackspace := H.Max(32, x.type.len) + 8
-  ELSIF x.type.hosted = ORB.Linux THEN
+  ELSIF x.type.hosted = ORB.LinABI THEN
     stackspace := H.Max(0, x.type.len - 48)
   ELSE
     stackspace := x.type.len
@@ -1405,11 +1405,11 @@ BEGIN
     Disassemble(x.mode, "proc address to be called");
     ASSERT(x.type.len MOD 8 = 0);
     x.mode   := Eadr;
-    IF x.type.hosted = ORB.Windows THEN x.n := RBP ELSE x.n := RSP END;
+    IF x.type.hosted = ORB.WinABI THEN x.n := RBP ELSE x.n := RSP END;
     x.offset := -8 * (X64.SPO - (stackspace DIV 8 + 1))
   END;
 
-  IF x.type.hosted IN {ORB.Linux, ORB.Syscall} THEN  (* Prepare stack space for Linux abi *)
+  IF x.type.hosted IN {ORB.LinABI, ORB.Syscall} THEN  (* Prepare stack space for Linux abi *)
 
     IF x.type.nofpar > 6 THEN
       AluOpFromImmediate(Minus, Reg, (x.type.nofpar - 6) * 8, 8, RSP, -1, 0, 0);
@@ -1417,7 +1417,7 @@ BEGIN
       Disassemble(0, "Reserve Linux ABI stack space for params 6 and higher")
     END
 
-  ELSIF x.type.hosted = ORB.Windows THEN  (* Prepare stack space for Windows abi *)
+  ELSIF x.type.hosted = ORB.WinABI THEN  (* Prepare stack space for Windows abi *)
 
     (* We need to place parameters aligned so that the first parameter (at the
        lowest address) is 16 byte aligned. This alignemnet will only be known at
@@ -1445,7 +1445,7 @@ BEGIN
   ASSERT(x.type.form = ORB.Proc);
   ASSERT(x.mode IN {Eadr, Global, Code, Import, Impcode});
 
-  IF x.type.hosted = ORB.Windows THEN  (* Windows X64 ABI: Switch to 16 byte aligned stack *)
+  IF x.type.hosted = ORB.WinABI THEN  (* Windows X64 ABI: Switch to 16 byte aligned stack *)
     OpModRegRm(87H, Reg, RBP, 8, RSP, -1, 0, 0, 0);  (* xchg rsp,rbp *)
     Disassemble(0, "Switch to Windows ABI aligned stack frame")
   END;
@@ -1479,7 +1479,7 @@ BEGIN
 
     X64.AdjustStack(-(parmsize DIV 8));  (* matches stack adjustment by <ret n> *)
 
-  ELSIF x.type.hosted IN {ORB.Linux, ORB.Syscall} THEN  (* Linux ABI stack handling *)
+  ELSIF x.type.hosted IN {ORB.LinABI, ORB.Syscall} THEN  (* Linux ABI stack handling *)
 
     DEC(parmsize, 48);  (* First 6 parms are not passed on the stack *)
     IF parmsize > 0 THEN
@@ -1487,7 +1487,7 @@ BEGIN
       X64.AdjustStack(-(parmsize DIV 8));  (* matches stack adjustment by <ret n> *)
     END
 
-  ELSIF x.type.hosted = ORB.Windows THEN  (* Windows ABI stack handling *)
+  ELSIF x.type.hosted = ORB.WinABI THEN  (* Windows ABI stack handling *)
 
     stackspace := parmsize;  IF stackspace < 32 THEN stackspace := 32 END;
     OpModRegRm(8DH, Eadr, RSP, 8, RBP, -1, 0, stackspace + 8, 0);  (* lea rsp, rbp + parmreserved *)
@@ -1534,7 +1534,7 @@ BEGIN
 
   ASSERT(hosted # ORB.Syscall);
 
-  IF hosted = ORB.Linux THEN  (* Linux X64 ABI *)
+  IF hosted = ORB.LinABI THEN  (* Linux X64 ABI *)
 
     (* Save Linux X64 ABI non-volatile registers *)
     PushReg(RBX);  PushReg(RBP);
@@ -1551,7 +1551,7 @@ BEGIN
     IF parmsize >  0 THEN PushReg(RDI) END;
     Disassemble(Eadr, "Save Linux ABI procedure parameters 1-6 to stack.");
 
-  ELSIF hosted = ORB.Windows THEN  (* Windows X64 ABI *)
+  ELSIF hosted = ORB.WinABI THEN  (* Windows X64 ABI *)
 
     (* For hosted procedures, deposit reg params on stack *)
     StoreRegToMem(RCX, Eadr, 8, RSP, -1, 0, 08H);
@@ -1641,7 +1641,7 @@ BEGIN
       X64.Emit(0C2H);  X64.EmitBytes(2, parmsize)  (* retn *)
     END
 
-  ELSIF hosted = ORB.Linux THEN  (* Linux ABI *)
+  ELSIF hosted = ORB.LinABI THEN  (* Linux ABI *)
 
     IF locsize + H.Min(48, parmsize) > 0 THEN
       AluOpFromImmediate(Plus, Reg, locsize + H.Min(48, parmsize), 8, RSP, -1, 0, 0);
@@ -1654,7 +1654,7 @@ BEGIN
 
     X64.Emit(0C3H)  (* ret - caller cleans up stack *)
 
-  ELSIF hosted = ORB.Windows THEN  (* Windows ABI *)
+  ELSIF hosted = ORB.WinABI THEN  (* Windows ABI *)
 
     IF locsize > 0 THEN
       AluOpFromImmediate(Plus, Reg, locsize, 8, RSP, -1, 0, 0);
