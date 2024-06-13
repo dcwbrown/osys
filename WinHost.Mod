@@ -72,7 +72,7 @@ TYPE
     Exeadr*:      INTEGER;  (* Image PE header address (Windows only)  *)
     dummy2:       INTEGER;
     CoreAdr*:     INTEGER;  (* Oberon core address, usually 100000000H *)
-    CoreSize*:    INTEGER;  (* End of core allocation                  *)
+    CoreSize*:    INTEGER;  (* Length of inner core                    *)
     MadrPreload*: INTEGER;  (* Start of preload section                *)
     MadrIcon*:    INTEGER;
     IconSize*:    INTEGER;

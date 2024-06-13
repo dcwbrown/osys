@@ -171,16 +171,18 @@ VAR
   ImportSize:     INTEGER;  (* Directory table + hints rounded up to multiple of 16 *)
 
   (* Section "Oberon" - Inner core *)
-  CoreMem:    ARRAY 10000H OF BYTE;  (* Will be loaded at ImageBase + RvaModules *)
-  CoreModAdr: ARRAY 16 OF RECORD  (* Module name to base address map *)
-    name: Modules.ModuleName;
-    key:  INTEGER;
-    adr:  INTEGER
+  Core: RECORD
+    Mem:    ARRAY 10000H OF BYTE;  (* Will be loaded at OberonCoreBase *)
+    ModAdr: ARRAY 16 OF RECORD     (* Module name to base address map *)
+      name: Modules.ModuleName;
+      key:  INTEGER;
+      adr:  INTEGER
+    END;
+    ModCount:   INTEGER;
+    EntryPoint: INTEGER;  (* Relative to OberonCoreBase *)
+    Size:       INTEGER;
+    HostVars:   INTEGER;  (* Loaded address of vars relative to OberonCoreBase *)
   END;
-  CoreModCount:   INTEGER;
-  CoreEntryPoint: INTEGER;  (* Relative to OberonCoreBase *)
-  CoreSize:       INTEGER;
-  CoreHostVars:   INTEGER;  (* Loaded address of vars relative to OberonCoreBase *)
 
   IconPng: Files.File;
   IconHdr: IHDR;
@@ -188,8 +190,6 @@ VAR
 
 
 (* Convenience functions *)
-PROCEDURE spos(p: INTEGER);  BEGIN Files.Set(Binary, BinFile, p) END spos;
-
 PROCEDURE wn; BEGIN Texts.WriteLn(W); Texts.Append(Texts.Log, W.buf) END wn;
 
 PROCEDURE ws (s: ARRAY OF CHAR); BEGIN Texts.WriteString(W, s)     END ws;
@@ -289,10 +289,10 @@ BEGIN
   hdr.pe32magic               := 20BH;  (* PE32+ *)
   hdr.majorLinkerVersion      := 1;
   hdr.minorLinkerVersion      := 49H;
-  hdr.sizeOfCode              := PageAlign(CoreSize);
+  hdr.sizeOfCode              := PageAlign(Core.Size);
   hdr.sizeOfInitializedData   := RvaModules - RvaPreload;
   hdr.sizeOfUninitializedData := 0;
-  hdr.addressOfEntryPoint     := RvaModules + CoreEntryPoint;
+  hdr.addressOfEntryPoint     := RvaModules + Core.EntryPoint;
   hdr.baseOfCode              := RvaModules;
 
   (* Windows specific PE32+ fields *)
@@ -301,7 +301,7 @@ BEGIN
   hdr.fileAlignment           := FileAlignment;
   hdr.majorOSVersion          := 1;
   hdr.majorSubsystemVersion   := 5;
-  hdr.sizeOfImage             := RvaModules + PageAlign(CoreSize); (* + 1000H;*) (*Align(ModuleSize, MemoryAlignment);*)
+  hdr.sizeOfImage             := RvaModules + PageAlign(Core.Size); (* + 1000H;*) (*Align(ModuleSize, MemoryAlignment);*)
   hdr.sizeOfHeaders           := HeaderSize;
   hdr.subsystem               := 3;      (* Console *)
 (*hdr.subsystem               := 2;*)    (* Windows *)
@@ -319,7 +319,7 @@ BEGIN
   hdr.importTableRVA          := RvaImport;
   hdr.importTableSize         := RvaModules - RvaImport;
 
-  spos(0);
+  Files.Set(Binary, BinFile, 0);
   Files.WriteRaw(Binary, hdr);
 
   (* Write section headers *)
@@ -349,8 +349,8 @@ BEGIN
                      SReadable + SWriteable + SInitialised);
 
   WriteSectionHeader("Core",
-                     PageAlign(CoreSize),      (* Reserved size in memory *)
-                     FileAlign(CoreSize),      (* Size on disk *)
+                     PageAlign(Core.Size),      (* Reserved size in memory *)
+                     FileAlign(Core.Size),      (* Size on disk *)
                      RvaModules,
                      FadrModules,
                      SReadable + SWriteable + SExecutable + SCode);
@@ -365,13 +365,13 @@ END WritePEHeader;
 PROCEDURE ExportedOffset(modhdr: INTEGER; index: INTEGER): INTEGER;
 VAR exportoffset: SYSTEM.CARD32;  mod: Modules.Module;
 BEGIN
-  mod := SYSTEM.VAL(Modules.Module, SYSTEM.ADR(CoreMem[modhdr]));
+  mod := SYSTEM.VAL(Modules.Module, SYSTEM.ADR(Core.Mem[modhdr]));
   SYSTEM.GET(ORD(mod) + mod.exports + index * 4, exportoffset);
 RETURN exportoffset END ExportedOffset;
 
 
 PROCEDURE LinkImport*(
-  modofs:       INTEGER;  (* Module offset of importing module relative to CoreMem/OberonCoreBase *)
+  modofs:       INTEGER;  (* Module offset of importing module relative to Core.Mem/OberonCoreBase *)
   offset:       INTEGER;  (* Offset within importing module of disp/abs value being updated *)
   impno, modno: INTEGER;
   modules:      ARRAY OF INTEGER
@@ -384,8 +384,8 @@ VAR
   handlersoffset: INTEGER;
   winhost:        Modules.Module;
 BEGIN
-  winhost := SYSTEM.VAL(Modules.Module, SYSTEM.ADR(CoreMem));
-  Coremodadr  := SYSTEM.ADR(CoreMem[modofs]);
+  winhost := SYSTEM.VAL(Modules.Module, SYSTEM.ADR(Core.Mem));
+  Coremodadr  := SYSTEM.ADR(Core.Mem[modofs]);
   IF modno = 0 THEN  (* system function *)
     SYSTEM.GET(Coremodadr + offset, disp);
     ASSERT((impno >= 0) & (impno <= H.HandlerCount));
@@ -424,7 +424,7 @@ VAR
   mod:     Modules.Module;
   R:       Files.Rider;
   i, m:    INTEGER;
-  modules: ARRAY 32 OF INTEGER;  (* Offset into CoreMem of start of module *)
+  modules: ARRAY 32 OF INTEGER;  (* Offset into Core.Mem of start of module *)
   impcnt:  SYSTEM.CARD32;
   impname: Modules.ModuleName;
   impkey:  INTEGER;
@@ -440,31 +440,31 @@ BEGIN
   f := Files.Old(fn);
   IF f = NIL THEN ws("Cannot load ");  ws(fn);  wn; ASSERT(FALSE) END;
   Files.Set(R, f, 0);
-  mod := SYSTEM.VAL(Modules.Module, SYSTEM.ADR(CoreMem[CoreSize]));
+  mod := SYSTEM.VAL(Modules.Module, SYSTEM.ADR(Core.Mem[Core.Size]));
   Files.ReadRaw(R, mod^);
-  CoreModAdr[CoreModCount].name := mod.name;
-  CoreModAdr[CoreModCount].key  := mod.key;
-  CoreModAdr[CoreModCount].adr  := CoreSize;  (* Offset into CoreMem = relative to OberonCoreBase *)
-  m := CoreSize + SYSTEM.SIZE(Modules.ModDesc);
+  Core.ModAdr[Core.ModCount].name := mod.name;
+  Core.ModAdr[Core.ModCount].key  := mod.key;
+  Core.ModAdr[Core.ModCount].adr  := Core.Size;  (* Offset into Core.Mem = relative to OberonCoreBase *)
+  m := Core.Size + SYSTEM.SIZE(Modules.ModDesc);
   FOR i := SYSTEM.SIZE(Modules.ModDesc) + 1 TO mod.vars DO
-    Files.ReadByte(R, CoreMem[m]);  INC(m)
+    Files.ReadByte(R, Core.Mem[m]);  INC(m)
   END;
-  FOR i := 1 TO mod.varsize DO CoreMem[m] := 0;  INC(m) END;
+  FOR i := 1 TO mod.varsize DO Core.Mem[m] := 0;  INC(m) END;
 
   (* Extract list of imported modules from loaded code *)
-  m := CoreSize + SYSTEM.SIZE(Modules.ModDesc);
+  m := Core.Size + SYSTEM.SIZE(Modules.ModDesc);
   impcnt := 0;
   REPEAT
     i := 0;
-    REPEAT impname[i] := CHR(CoreMem[m]); INC(i); INC(m) UNTIL impname[i-1] = 0X;
+    REPEAT impname[i] := CHR(Core.Mem[m]); INC(i); INC(m) UNTIL impname[i-1] = 0X;
     IF impname[0] # 0X THEN
-      SYSTEM.GET(SYSTEM.ADR(CoreMem[m]), impkey); INC(m, 8);
+      SYSTEM.GET(SYSTEM.ADR(Core.Mem[m]), impkey); INC(m, 8);
       (* Find loaded module number for this import *)
       modnum := 0;
-      WHILE (modnum < CoreModCount) & (CoreModAdr[modnum].name # impname) DO INC(modnum) END;
-      ASSERT(modnum < CoreModCount);
-      ASSERT(CoreModAdr[modnum].key = impkey);
-      modules[impcnt] := CoreModAdr[modnum].adr
+      WHILE (modnum < Core.ModCount) & (Core.ModAdr[modnum].name # impname) DO INC(modnum) END;
+      ASSERT(modnum < Core.ModCount);
+      ASSERT(Core.ModAdr[modnum].key = impkey);
+      modules[impcnt] := Core.ModAdr[modnum].adr
     END;
     INC(impcnt)
   UNTIL impname[0] = 0X;
@@ -478,24 +478,24 @@ BEGIN
     Files.ReadRaw(R, offset);
     Files.ReadRaw(R, impno);
     Files.ReadRaw(R, modno);
-    LinkImport(CoreSize, offset, impno, modno, modules)
+    LinkImport(Core.Size, offset, impno, modno, modules)
   END;
 
   (* Relocate pointer addresses *)
-  ptradr := ORD(mod) + mod.ptr;  (* Address witihin CoreMem *)
+  ptradr := ORD(mod) + mod.ptr;  (* Address witihin Core.Mem *)
   SYSTEM.GET(ptradr, ptroff);
   WHILE ptroff >= 0 DO
-    SYSTEM.PUT(ptradr, OberonCoreBase + CoreSize + mod.vars + ptroff);
+    SYSTEM.PUT(ptradr, OberonCoreBase + Core.Size + mod.vars + ptroff);
     INC(ptradr, 8);
     SYSTEM.GET(ptradr, ptroff)
   END;
 
   mod.refcnt := 1;
-  INC(mod.cmd, OberonCoreBase + CoreSize);
+  INC(mod.cmd, OberonCoreBase + Core.Size);
   mod.size := (mod.vars + mod.varsize + 15) DIV 16 * 16;
-  INC(mod.vars, OberonCoreBase + CoreSize);
-  INC(CoreSize, mod.size);
-  INC(CoreModCount)
+  INC(mod.vars, OberonCoreBase + Core.Size);
+  INC(Core.Size, mod.size);
+  INC(Core.ModCount)
 RETURN mod END LoadModule;
 
 
@@ -506,22 +506,22 @@ VAR
   FilesHdr:   Modules.Module;
   ModulesHdr: Modules.Module;
 BEGIN
-  CoreModCount   := 0;
-  CoreSize       := 0;
-  CoreEntryPoint := 0;
+  Core.ModCount   := 0;
+  Core.Size       := 0;
+  Core.EntryPoint := 0;
 
   HostHdr    := LoadModule(hostname);
   KernelHdr  := LoadModule("Kernel.x64");
   FilesHdr   := LoadModule("Files.x64");
   ModulesHdr := LoadModule("Modules.x64");
 
-  HostHdr.next := SYSTEM.VAL(Modules.Module, OberonCoreBase + ORD(KernelHdr)  - SYSTEM.ADR(CoreMem));
-  KernelHdr.next  := SYSTEM.VAL(Modules.Module, OberonCoreBase + ORD(FilesHdr)   - SYSTEM.ADR(CoreMem));
-  FilesHdr.next   := SYSTEM.VAL(Modules.Module, OberonCoreBase + ORD(ModulesHdr) - SYSTEM.ADR(CoreMem));
+  HostHdr.next := SYSTEM.VAL(Modules.Module, OberonCoreBase + ORD(KernelHdr)  - SYSTEM.ADR(Core.Mem));
+  KernelHdr.next  := SYSTEM.VAL(Modules.Module, OberonCoreBase + ORD(FilesHdr)   - SYSTEM.ADR(Core.Mem));
+  FilesHdr.next   := SYSTEM.VAL(Modules.Module, OberonCoreBase + ORD(ModulesHdr) - SYSTEM.ADR(Core.Mem));
   ModulesHdr.next := NIL;
 
-  CoreEntryPoint := ORD(ModulesHdr) - SYSTEM.ADR(CoreMem) + ModulesHdr.init;
-  CoreHostVars   := HostHdr.vars - OberonCoreBase;
+  Core.EntryPoint := ORD(ModulesHdr) - SYSTEM.ADR(Core.Mem) + ModulesHdr.init;
+  Core.HostVars   := HostHdr.vars - OberonCoreBase;
 
 END LinkInnerCore;
 
@@ -679,29 +679,29 @@ VAR
   varpos:      INTEGER;
   preloadvars: H.PreLoadVars;
 BEGIN
-  varpos := CoreHostVars;
+  varpos := Core.HostVars;
 
   H.ZeroFill(preloadvars);
   preloadvars.Exeadr      := ImageBase;
   preloadvars.CoreAdr     := OberonCoreBase;
-  preloadvars.CoreSize    := CoreSize;
+  preloadvars.CoreSize    := Core.Size;
   preloadvars.MadrPreload := MadrPreload;
   IF IconSize > 0 THEN
     preloadvars.MadrIcon  := ImageBase + RvaIcon + 0B4H;  (* See MakeIconResource for 0B4H *)
     preloadvars.IconSize  := IconSize
   END;
 
-  SYSTEM.COPY(SYSTEM.ADR(preloadvars), SYSTEM.ADR(CoreMem[varpos]), SYSTEM.SIZE(H.PreLoadVars));
+  SYSTEM.COPY(SYSTEM.ADR(preloadvars), SYSTEM.ADR(Core.Mem[varpos]), SYSTEM.SIZE(H.PreLoadVars));
   INC(varpos, SYSTEM.SIZE(H.PreLoadVars));
-  ASSERT(varpos = CoreHostVars + BootstrapVarBytes);
+  ASSERT(varpos = Core.HostVars + BootstrapVarBytes);
 
-  SYSTEM.COPY(SYSTEM.ADR(Idt.Kernel32Lookups), SYSTEM.ADR(CoreMem[varpos]), Kernel32ImportCount * 8);
+  SYSTEM.COPY(SYSTEM.ADR(Idt.Kernel32Lookups), SYSTEM.ADR(Core.Mem[varpos]), Kernel32ImportCount * 8);
   INC(varpos, Kernel32ImportCount * 8);
 
-  SYSTEM.COPY(SYSTEM.ADR(Idt.User32Lookups), SYSTEM.ADR(CoreMem[varpos]), User32ImportCount * 8);
+  SYSTEM.COPY(SYSTEM.ADR(Idt.User32Lookups), SYSTEM.ADR(Core.Mem[varpos]), User32ImportCount * 8);
   INC(varpos, User32ImportCount * 8);
 
-  SYSTEM.COPY(SYSTEM.ADR(Idt.Gdi32Lookups), SYSTEM.ADR(CoreMem[varpos]), Gdi32ImportCount * 8);
+  SYSTEM.COPY(SYSTEM.ADR(Idt.Gdi32Lookups), SYSTEM.ADR(Core.Mem[varpos]), Gdi32ImportCount * 8);
 END PresetWinHost;
 
 
@@ -857,7 +857,7 @@ BEGIN
   PreloadSize := 0;
   IF FirstPreload # NIL THEN
     emb := FirstPreload;
-    spos(FadrPreload);
+    Files.Set(Binary, BinFile, FadrPreload);
     WHILE emb # NIL DO
       IF ~IsInnerCore(emb.mod.name) THEN
         CopyFile(emb.file, Binary, emb.size);
@@ -888,7 +888,7 @@ BEGIN
   ASSERT(RvaImport  + ImportSize <= RvaModules);  (* If fails increase RvaModules  *)
 
   (* Fill in target addresses *)
-  Idt.Kernel32Target := RvaModules + CoreHostVars + BootstrapVarBytes;
+  Idt.Kernel32Target := RvaModules + Core.HostVars + BootstrapVarBytes;
   Idt.Gdi32Target    := Idt.Kernel32Target + 8 * Kernel32ImportCount;
   Idt.User32Target   := Idt.Gdi32Target    + 8 * Gdi32ImportCount;
 
@@ -898,7 +898,7 @@ BEGIN
   IF PreloadSize > 0 THEN MadrPreload := ImageBase + RvaPreload END;
   PresetWinHost(FadrModules, ImageBase, MadrPreload, IconSize, RvaIcon);
 
-  spos(FadrImport);
+  Files.Set(Binary, BinFile, FadrImport);
   Files.WriteRaw(Binary, Idt);
   Files.WriteMem(Binary, SYSTEM.ADR(ImportHints), ImportHintSize);
   ASSERT(ImportSize = Align(Files.Pos(Binary), 16) - FadrImport);
@@ -909,11 +909,11 @@ BEGIN
                 FadrImport,  RvaImport,
                 FadrModules, RvaModules);
 
-  spos(FadrModules);
-  Files.WriteMem(Binary, SYSTEM.ADR(CoreMem), CoreSize);
+  Files.Set(Binary, BinFile, FadrModules);
+  Files.WriteMem(Binary, SYSTEM.ADR(Core.Mem), Core.Size);
 
   IF Files.Pos(Binary) MOD FileAlignment # 0 THEN
-    spos(FileAlign(Files.Pos(Binary))-1);
+    Files.Set(Binary, BinFile, FileAlign(Files.Pos(Binary))-1);
     Files.WriteByte(Binary, 0);
   END;
 
@@ -942,16 +942,18 @@ BEGIN
   H.ZeroFill(preloadvars);
   preloadvars.Exeadr      := 0;
   preloadvars.CoreAdr     := OberonCoreBase;
-  preloadvars.CoreSize    := CoreSize;
+  preloadvars.CoreSize    := Core.Size;
   preloadvars.MadrPreload := MadrPreload;
-  SYSTEM.COPY(SYSTEM.ADR(preloadvars), SYSTEM.ADR(CoreMem[CoreHostVars]), SYSTEM.SIZE(H.PreLoadVars));
+  SYSTEM.COPY(SYSTEM.ADR(preloadvars), SYSTEM.ADR(Core.Mem[Core.HostVars]), SYSTEM.SIZE(H.PreLoadVars));
 END PresetLinHost;
-
 
 
 PROCEDURE GenerateELF*(name: ARRAY OF CHAR);
 VAR
   HostHdr:    Modules.Module;
+  KernelHdr:  Modules.Module;
+  FilesHdr:   Modules.Module;
+  ModulesHdr: Modules.Module;
   entry:      INTEGER;
   prev1:      Files.FileName;
   prev2:      Files.FileName;
@@ -959,22 +961,23 @@ VAR
   res:        INTEGER;
   fadrcore:   INTEGER;
 BEGIN
-  CoreModCount   := 0;
-  CoreSize       := 0;
+  Core.ModCount   := 0;
+  Core.Size       := 0;
+  Core.EntryPoint := 0;
+
   HostHdr        := LoadModule("LinHost.x64");
   HostHdr.next   := NIL;
-  (*
-  CoreEntryPoint := ORD(HostHdr) - SYSTEM.ADR(CoreMem) + HostHdr.init;
-  *)
-  CoreHostVars   := HostHdr.vars - OberonCoreBase;
+
+  Core.HostVars   := HostHdr.vars - OberonCoreBase;
+  Core.EntryPoint := ORD(HostHdr) - SYSTEM.ADR(Core.Mem) + HostHdr.init;
   PresetLinHost(0);
 
-  entry        := OberonCoreBase + HostHdr.init;
-  fadrcore     := 1000H;
+  entry    := OberonCoreBase + Core.EntryPoint;
+  fadrcore := 1000H;
 
   (*
   LinkInnerCore("LinHost.x64");
-  entry := RvaModules + CoreEntryPoint;
+  entry := RvaModules + Core.EntryPoint;
   *)
 
   BinFile := Files.New(name);
@@ -1006,14 +1009,14 @@ BEGIN
   Files.WriteInt(Binary, fadrcore);  (* Offset of segment content in ELF file *)
   Files.WriteInt(Binary, OberonCoreBase);  (* Virtual address of section in memory *)
   Files.WriteInt(Binary, 0);         (* Physical address (not used)           *)
-  Files.WriteInt(Binary, CoreSize);  (* Size of section in ELF file           *)
-  Files.WriteInt(Binary, CoreSize);  (* Size of section in memory             *)
+  Files.WriteInt(Binary, Core.Size); (* Size of section in ELF file           *)
+  Files.WriteInt(Binary, Core.Size); (* Size of section in memory             *)
   Files.WriteInt(Binary, 1000H);     (* Alignment                             *)
   ASSERT(Files.Pos(Binary) = 78H);
 
   (* Core *)
-  spos(fadrcore);
-  Files.WriteMem(Binary, SYSTEM.ADR(CoreMem), CoreSize);
+  Files.Set(Binary, BinFile, fadrcore);
+  Files.WriteMem(Binary, SYSTEM.ADR(Core.Mem), Core.Size);
 
   (* Shuffle previous versions *)
   prev1 := BinFile.name; H.Append(".-1", prev1);
