@@ -1,6 +1,6 @@
 MODULE FileDir;   (* DCWB 2024-04-01 *)
 
-IMPORT SYSTEM, H := WinHost, Kernel;
+IMPORT SYSTEM, H := Host, Kernel;
 
 CONST
   FnLength* = H.MaxPath;

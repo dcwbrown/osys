@@ -1,6 +1,6 @@
 MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
 
-IMPORT SYSTEM, H := WinHost;
+IMPORT SYSTEM, H := Host;
 
 VAR allocated*: INTEGER;
   (* Every allocated block on the heap starts 64/tag, 64/unset  *)

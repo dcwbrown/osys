@@ -1,6 +1,6 @@
 MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016 / DCWB 06.04.2024*)
 
-IMPORT SYSTEM, H := WinHost, Kernel, FileDir, Files, Modules, WinGui,
+IMPORT SYSTEM, H := Host, Kernel, FileDir, Files, Modules, Gui,
   Input, Display, Viewers, Fonts, Texts, Oberon, MenuViewers, TextFrames, Edit;
 
 CONST
@@ -69,8 +69,8 @@ BEGIN Texts.OpenScanner(S, Oberon.Par.text, Oberon.Par.pos); Texts.Scan(S);
 END Date;
 
 PROCEDURE Collect*;  BEGIN Modules.Collect(0) END Collect;
-PROCEDURE Quit*;     BEGIN WinGui.Quit        END Quit;
-PROCEDURE Minimise*; BEGIN WinGui.Minimise    END Minimise;
+PROCEDURE Quit*;     BEGIN Gui.Quit        END Quit;
+PROCEDURE Minimise*; BEGIN Gui.Minimise    END Minimise;
 
 (* ------------- Toolbox for standard display ---------------*)
 
@@ -383,8 +383,8 @@ BEGIN
         ELSIF M.keys = {1} THEN MenuViewers.Handle(V, M)
         ELSIF M.keys = {2} THEN REPEAT
                                   H.GetCursorPos(SYSTEM.ADR(curpos));
-                                  WinGui.PositionWindow(curpos.x - M.X, curpos.y - (Display.Height - 1 - M.Y));
-                                  WinGui.WaitMsgOrTime(100);  (* Be nice with CPU *)
+                                  Gui.PositionWindow(curpos.x - M.X, curpos.y - (Display.Height - 1 - M.Y));
+                                  Gui.WaitMsgOrTime(100);  (* Be nice with CPU *)
                                   Input.Mouse(keys, x, y)
                                 UNTIL keys = {}
         END

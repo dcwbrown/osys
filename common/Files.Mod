@@ -10,7 +10,7 @@ MODULE Files;  (* DCWB 2024-01-11..2024-05-11 *)
     5 - Contains other than letter, digit or "."
 *)
 
-IMPORT SYSTEM, Kernel, H := WinHost;
+IMPORT SYSTEM, Kernel, H := Host;
 
 CONST MaxPath = H.MaxPath;
 

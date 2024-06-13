@@ -1,4 +1,4 @@
-MODULE WinHost;  IMPORT SYSTEM;
+MODULE Host;  IMPORT SYSTEM;
 
 CONST
   (* Host definition *)
@@ -995,4 +995,4 @@ BEGIN
 END Init;
 
 
-END WinHost.
+END Host.

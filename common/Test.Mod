@@ -1,6 +1,6 @@
 MODULE Test;  (* DCWB 27 Feb 2024 *)
 
-IMPORT SYSTEM, H := WinHost, Texts;
+IMPORT SYSTEM, H := Host, Texts;
 
 TYPE r = RECORD i: INTEGER END;
 

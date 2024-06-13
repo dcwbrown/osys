@@ -1,6 +1,6 @@
 MODULE Modules;  (*Link and load on RISC;  NW 20.10.2013 / 8.1.2019*)
 
-IMPORT SYSTEM, H := WinHost, Files;
+IMPORT SYSTEM, H := Host, Files;
 
 TYPE
   Module*     = POINTER- TO ModDesc;
@@ -151,7 +151,12 @@ BEGIN
   WHILE PreloadNext # 0  DO
     hdr := SYSTEM.VAL(Module, PreloadNext);
     IF hdr.name[0] = 0X THEN PreloadNext := 0  (* End of preload modules reached *)
+    ELSIF hdr.name = "Host" THEN
+      (* TODO REMOVEME *)
+      (* Temporarily skip preloading unnecessarily included preload by old version of Link *)
+      INC(PreloadNext, hdr.size);
     ELSE
+      (*H.ws("Preloading '"); H.ws(hdr.name); H.wsn("'.");*)
       ASSERT(hdr.magic = "Oberon5");
       mod := AllocateModule(hdr^);  ASSERT(mod # NIL);
       p := PreloadNext + SYSTEM.SIZE(ModDesc);
@@ -291,6 +296,8 @@ BEGIN
         SYSTEM.PUT(p, mod.vars + ptroff);  INC(p, 8);  SYSTEM.GET(p, ptroff)
       END;
 
+      H.ws("Load and link '"); H.ws(name); H.wsn("' complete.");
+
       (* Initialize module *)
       IF mod.init # 0 THEN
         body := SYSTEM.VAL(Command, ORD(mod) + mod.init);  body
@@ -412,6 +419,7 @@ END Init;
 BEGIN Init;
   StackOrg := SYSTEM.REG(4);
   Load(H.CmdModule, M);
+
   IF (res = 0) & (H.CmdCommand[0] # 0X) THEN
     P := ThisCommand(M, H.CmdCommand);
     IF res = 0 THEN P END

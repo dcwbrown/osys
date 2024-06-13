@@ -1,6 +1,6 @@
 MODULE Texts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 18.11.2014 / 10.1.2019*)
 
-IMPORT SYSTEM, H := WinHost, Files, Fonts;
+IMPORT SYSTEM, H := Host, Files, Fonts;
 
 CONST (*scanner symbol classes*)
   Inval*  = 0;  (* invalid symbol                     *)

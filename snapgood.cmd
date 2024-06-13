@@ -1,4 +1,4 @@
-:: Copy latest build to knowngood
+:: Copy latest win build to knowngood
 @if exist build\Oberon.exe goto good
 ::
 @echo Cannot snapshot good build: no file build\Oberon.exe.
@@ -20,7 +20,8 @@
 ::
 @echo Copying files from build to knowngood
 @mkdir knowngood
-@copy *.mod knowngood >NUL
+@copy common\*.mod knowngood >NUL
+@copy win\*.mod knowngood >NUL
 @copy build\*.exe knowngood >NUL
 ::
 :end

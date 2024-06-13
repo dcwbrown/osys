@@ -1,5 +1,5 @@
-MODULE WinGui;
-IMPORT SYSTEM, H := WinHost, Texts;
+MODULE Gui;
+IMPORT SYSTEM, H := Host, Texts;
 
 
 CONST
@@ -685,4 +685,4 @@ BEGIN
     00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00
     00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00$);
   CreateWindow(512, 64, Width, Height)
-END WinGui.
+END Gui.

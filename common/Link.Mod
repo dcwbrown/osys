@@ -1,7 +1,7 @@
 MODULE Link;  (* Create binary for a given module + optional command *)
 (* DCWB 2023-04-14 .. 2024-05-25 *)
 
-IMPORT SYSTEM, H := WinHost, Kernel, Files, Texts, Modules;
+IMPORT SYSTEM, H := Host, Kernel, Files, Texts, Modules;
 
 CONST
   Win = H.Win;
@@ -12,7 +12,7 @@ CONST
 
   OberonCoreBase = 100000000H;  (* All linking is arranged to place the Oberon core at 1,0000,0000H *)
 
-  BootstrapVarBytes   = 64;  (* size of WinHost PreLoadVars *)
+  BootstrapVarBytes   = 64;  (* size of PreLoadVars *)
   Kernel32ImportCount = 40;
   Gdi32ImportCount    = 18;
   User32ImportCount   = 35;
@@ -217,8 +217,8 @@ PROCEDURE FileAlign(a: INTEGER): INTEGER;
 RETURN Align(a, FileAlignment) END FileAlign;
 
 PROCEDURE IsInnerCore(name: ARRAY OF CHAR): BOOLEAN;
-RETURN (name = "WinHost") OR (name = "Kernel")
-    OR (name = "Files")   OR (name = "Modules")
+RETURN (name = "Host")  OR (name = "Kernel")
+    OR (name = "Files") OR (name = "Modules")
 END IsInnerCore;
 
 
@@ -499,7 +499,7 @@ BEGIN
 RETURN mod END LoadModule;
 
 
-PROCEDURE LinkInnerCore(hostname: ARRAY OF CHAR);
+PROCEDURE LinkInnerCore;
 VAR
   HostHdr:    Modules.Module;
   KernelHdr:  Modules.Module;
@@ -510,7 +510,7 @@ BEGIN
   Core.Size       := 0;
   Core.EntryPoint := 0;
 
-  HostHdr    := LoadModule(hostname);
+  HostHdr    := LoadModule("Host.x64");
   KernelHdr  := LoadModule("Kernel.x64");
   FilesHdr   := LoadModule("Files.x64");
   ModulesHdr := LoadModule("Modules.x64");
@@ -556,7 +556,7 @@ BEGIN
   H.ZeroFill(Idt);
 
   (* **NOTE** these imports must be in exactly the same order as the *)
-  (* corresponding procedure variable declarations in WinHost.mode   *)
+  (* corresponding procedure variable declarations in Host.Mod.       *)
 
   Idt.Kernel32LookupTable := RvaImport + FieldRVA(Idt.Kernel32Lookups);
   Idt.Kernel32Dllnameadr  := RvaImport + FieldRVA(Idt.Kernel32Dllname);
@@ -835,7 +835,7 @@ BEGIN
   BinFile := Files.New(PEname);
   Files.Set(Binary, BinFile, 0);
 
-  LinkInnerCore("WinHost.x64");
+  LinkInnerCore;
 
   (* Section order:                   *)
   (*   o  Preload binaries (optional) *)
@@ -893,7 +893,7 @@ BEGIN
   Idt.User32Target   := Idt.Gdi32Target    + 8 * Gdi32ImportCount;
 
   (* Initialisation is at Modules body - it takes care *)
-  (* of initialising Files, Kernel and WinHost.        *)
+  (* of initialising Files, Kernel and Host.           *)
   MadrPreload := 0;
   IF PreloadSize > 0 THEN MadrPreload := ImageBase + RvaPreload END;
   PresetWinHost(FadrModules, ImageBase, MadrPreload, IconSize, RvaIcon);

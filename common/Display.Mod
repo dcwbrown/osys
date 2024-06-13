@@ -1,9 +1,9 @@
 MODULE Display;  (*NW 5.11.2013 / 3.7.2016*)
-  IMPORT SYSTEM, WinGui;
+  IMPORT SYSTEM, Gui;
 
   CONST black* = 0; white* = 1;  (*black = background*)
     replace* = 0; paint* = 1; invert* = 2;  (*modes*)
-    Stride = WinGui.Stride;
+    Stride = Gui.Stride;
 
   TYPE Frame* = POINTER TO FrameDesc;
     FrameMsg* = RECORD END ;
@@ -54,7 +54,7 @@ MODULE Display;  (*NW 5.11.2013 / 3.7.2016*)
     ELSE (*mode = replace*)
       IF col # black THEN Put(a, u + s) ELSE Put(a, u - s) END
     END;
-    WinGui.Dirty(x, y, 1, 1)
+    Gui.Dirty(x, y, 1, 1)
   END Dot;
 
   PROCEDURE ReplConst*(col, x, y, w, h, mode: INTEGER);
@@ -90,7 +90,7 @@ MODULE Display;  (*NW 5.11.2013 / 3.7.2016*)
         INC(ar, Stride)
       END
     END;
-    WinGui.Dirty(x, y, w, h)
+    Gui.Dirty(x, y, w, h)
   END ReplConst;
 
   PROCEDURE CopyPattern*(col, patadr, x, y, mode: INTEGER);  (*only for modes = paint, invert*)
@@ -98,7 +98,7 @@ MODULE Display;  (*NW 5.11.2013 / 3.7.2016*)
       w, h, pbt: BYTE; pix, mask: SET;
   BEGIN
     SYSTEM.GET(patadr, w); SYSTEM.GET(patadr+1, h); INC(patadr, 2);
-    WinGui.Dirty(x, y, w, h);
+    Gui.Dirty(x, y, w, h);
     a := Base + (x DIV 32)*4 + y*Stride;  x := x MOD 32;  mask := SYSTEM.VAL(SET, ASR(7FFFFFFFH, 31-x));
     FOR a0 := a TO a + (h-1)*Stride BY Stride DO
       (*build pattern line; w <= 32*)
@@ -175,7 +175,7 @@ MODULE Display;  (*NW 5.11.2013 / 3.7.2016*)
       END ;
       INC(sa0, step)
     END;
-    WinGui.Dirty(dx, dy, w, h)
+    Gui.Dirty(dx, dy, w, h)
   END CopyBlock;
 
   PROCEDURE ReplPattern*(col, patadr, x, y, w, h, mode: INTEGER);
@@ -206,13 +206,13 @@ MODULE Display;  (*NW 5.11.2013 / 3.7.2016*)
         IF pta0 = pta1 THEN pta0 := patadr+4 END
       END
     END;
-    WinGui.Dirty(x, y, w, h)
+    Gui.Dirty(x, y, w, h)
   END ReplPattern;
 
 BEGIN
-  Base   := WinGui.Window.bmp.address;
-  Width  := WinGui.Width;
-  Height := WinGui.Height;
+  Base   := Gui.Window.bmp.address;
+  Width  := Gui.Width;
+  Height := Gui.Height;
   arrow := SYSTEM.ADR($0F0F 0060 0070 0038 001C 000E 0007 8003 C101 E300 7700 3F00 1F00 3F00 7F00 FF00$);
   star := SYSTEM.ADR($0F0F 8000 8220 8410 8808 9004 A002 C001 7F7F C001 A002 9004 8808 8410 8220 8000$);
   hook := SYSTEM.ADR($0C0C 070F 8707 C703 E701 F700 7F00 3F00 1F00 0F00 0700 0300 01$);
