@@ -2395,12 +2395,14 @@ END MulOp;
 
 PROCEDURE DivOp*(op: INTEGER; VAR x, y: Item);   (* x := x op y *)
 VAR
-  exponent: INTEGER;
-  name:     ARRAY 4 OF CHAR;
-  saveRAX:  BOOLEAN;
-  saveRDX:  BOOLEAN;
-  reg:      INTEGER;
-  reg2:     INTEGER;
+  exponent:  INTEGER;
+  name:      ARRAY 4 OF CHAR;
+  saveRAX:   BOOLEAN;
+  saveRDX:   BOOLEAN;
+  reg:       INTEGER;
+  reg2:      INTEGER;
+  dividend:  INTEGER;
+  divisor:   INTEGER;
 BEGIN
   IF op = ORS.div THEN name := "DIV" ELSE name := "MOD" END;
   Trace(TraceAny, "DivOp("); l.s(name, Tr);
@@ -2425,87 +2427,77 @@ BEGIN
 
     ELSE (* DIV or MOD non-power of 2 *)
 
-      IF (x.mode = Reg) & (x.n = RAX) THEN
-        (* numerator is already in rax *)
-      ELSE
-        IF ~(RAX IN Free + Using(x)) THEN
-          (* Save rax temporarily *)
-          saveRAX := TRUE;
-          PushReg(RAX);  X64.AdjustStack(1);  Release(RAX);
-          Disassemble(0, "DivOp save rax")
-        END;
-        LoadReg(RAX, x);  ReserveReg(RAX);
-        Disassemble(0, "DivOp load numerator to rax")
+      IF x.mode = Reg THEN dividend := x.n
+      ELSE dividend := Reserve(-1, {RDX, RAX});  LoadReg(dividend, x)
       END;
+      IF y.mode = Reg THEN divisor := y.n
+      ELSE divisor := Reserve(-1, {RDX, RAX});  LoadReg(divisor, y)
+      END;
+      Disassemble(0, "Divop Load x and y to registers");
 
-      IF (y.mode IN {Reg, Eadr}) & (y.n = RDX) THEN
-        reg2 := Reserve(-1, {});
-        IF y.mode = Reg THEN
-          MoveReg(reg2, RDX)
-        ELSE
-          LoadReg(reg2, y)
-        END;
-        y.n := reg2;
-        Release(RDX)
-      ELSIF ~(RDX IN Free) THEN
-        Depar(y);
-        saveRDX := TRUE;
-        PushReg(RDX);  X64.AdjustStack(1);
-        Release(RDX)
+      IF dividend IN {RAX,RDX} THEN
+        reg := Reserve(-1, {RDX, RAX});  MoveReg(reg, dividend);  dividend := reg
       END;
-      (*LoadImmediate(RDX, 0);*)
+      IF divisor IN {RAX,RDX} THEN
+        reg := Reserve(-1, {RDX, RAX});  MoveReg(reg, divisor);  divisor := reg
+      END;
+      Disassemble(0, "Divop Move params out of rax/rdx");
+
+      FreeRegs(x);  FreeRegs(y);
+
+      (* If rax/rdx still in use, save them *)
+
+      saveRAX := ~(RAX IN Free);
+      IF saveRAX THEN PushReg(RAX);  X64.AdjustStack(1);  Release(RAX) END;
+      saveRDX := ~(RDX IN Free);
+      IF saveRDX THEN PushReg(RDX);  X64.AdjustStack(1);  Release(RDX) END;
+      Disassemble(0, "Divop free up rax.rdx for X86 DIV instruction");
+
+      IF (x.mode # Reg) OR (x.n # RAX) THEN MoveReg(RAX, dividend) END;
+      Disassemble(0, "Divop Load dividend to RAX");
+
+      (* Divide rax by divisor in register *)
       X64.Emit(48H); X64.Emit(99H);  (* cqo - sign extend rax into rdx *)
-      ReserveReg(RDX);
-      Disassemble(0, "DivOp prepare rdx");
+      OpModRegRm(0F7H, Reg, 7, 8, divisor, -1, 0, 0, 0);   (* idiv rdx:rax by divisor *)
+      Disassemble(0, "Divop idiv x86-64 truncated integer divide");
+      (* Quotient in rax, remainder in rdx *)
 
-      IF y.mode = Const THEN
-        reg := Reserve(-1, {});  LoadImmediate(reg, y.n);
-        OpModRegRm(0F7H, Reg, 7, 8, reg, -1, 0, 0, 0);   (* idiv reg *)
-        Release(reg)
-      ELSE
-        Depar(y);
-        IF y.type.size # 8 THEN Load(y) END;
-        OpItem(0F7H, 7, 8, 0, y);                        (* idiv y *)
-      END;
-      Disassemble(y.mode, "DivOp divide");
+      (* Adjust result from truncated division to floored division *)
+      AluOpToReg(Xor,   Reg, dividend, FALSE, 8, divisor,  -1, 0, 0);     (* bit 63 0 no sign difference, 1s otherwise *)
+      OpModRegRm(0C1H,  Reg, 7,               8, dividend, -1, 0, 0, 0);  (* sar 63 - extend sign diff flag to all bits *)
+      X64.Emit(63);
+      AluOpToReg(And,   Reg, dividend, FALSE, 8, RDX,      -1, 0, 0);     (* NZ if ajustment required *)
+      OpModRegRm(0F95H, Reg, 0,               4, dividend, -1, 0, 0, 0);  (* setnz dividend *)
+      OpModRegRm(0FB6H, Reg, dividend,        8, dividend, -1, 0, 0, 0);  (* Zero extend byte to qword *)
+      Disassemble(0, "Divop Determine whether floored division will require fixup");
 
-      IF op = ORS.div THEN  (* DIV Result in RAX *)
-
-        IF saveRDX THEN
-          PopReg(RDX);  X64.AdjustStack(-1);  ReserveReg(RDX);
-          Disassemble(0, "Divop DIV restore rdx")
-        END;
-
-        IF saveRAX THEN
-          reg := Reserve(-1, {});  MoveReg(reg, RAX);
-          Disassemble(0, "Move result out of rax");
-          PopReg(RAX);  X64.AdjustStack(-1);  ReserveReg(RAX);
-          Disassemble(0, "Divop DIV restore rax")
-        ELSE
-          reg := RAX
-        END;
-
-      ELSE (* MOD result in RDX *)
-
-        IF saveRDX THEN
-          reg := Reserve(-1, {});  MoveReg(reg, RDX);
-          Disassemble(0, "Move result out of rdx");
-          PopReg(RDX);  X64.AdjustStack(-1);
-          Disassemble(0, "Divop MOD restore rdx")
-        ELSE
-          reg := RDX
-        END;
-
-        IF saveRAX THEN
-          PopReg(RAX);  X64.AdjustStack(-1);
-          Disassemble(0, "Divop MOD restore rax")
-        END
-
+      IF op = ORS.div THEN
+        AluOpToReg(Minus, Reg, RAX, FALSE, 8, dividend, -1, 0, 0);        (* Dec(quotient) if adjustment required *)
+        Disassemble(0, "Divop Fix DIV operation for floored behaviour if required")
+      ELSE  (* op = MOD *)
+        OpModRegRm(0F7H, Reg, 3, 8, dividend, -1, 0, 0, 0);               (* convert 0/1 flag to 0/-1 *)
+        AluOpToReg(And,  Reg, divisor, FALSE, 8, dividend, -1, 0, 0);     (* divisor if adjustement required, 0 otherwise *)
+        AluOpToReg(Plus, Reg, RDX,     FALSE, 8, divisor,  -1, 0, 0);     (* Adjust remainder *)
+        Disassemble(0, "Divop Fix MOD operation for floored behaviour if required")
       END;
 
-      IF ~saveRAX THEN Release(RAX) END;
-      IF ~saveRDX THEN Release(RDX) END
+      (* Results in AX or DX, unless AX or DX were in use. *)
+      IF op = ORS.div THEN
+        IF saveRAX THEN MoveReg(dividend, RAX); reg := dividend ELSE reg := RAX END;
+      ELSE  (* op = MOD *)
+        IF saveRDX THEN MoveReg(dividend, RDX); reg := dividend ELSE reg := RDX END;
+      END;
+      Disassemble(0, "Divop Move result out of the way of rax/rdx that were previously in use");
 
+      IF saveRDX THEN
+        PopReg(RDX);  X64.AdjustStack(-1);  Disassemble(0, "Divop DIV restore rdx")
+      END;
+      IF saveRAX THEN
+        PopReg(RAX);  X64.AdjustStack(-1);  Disassemble(0, "Divop DIV restore rax")
+      END;
+      Disassemble(0, "Divop Restore rdx/rax where previously in use");
+
+      Release(dividend);  Release(divisor)
     END;
 
     FreeRegs(x);  FreeRegs(y);
