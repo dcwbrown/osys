@@ -39,7 +39,6 @@ copy /Y ..\win\*.mod >NUL
 ORP.Compile Host.Mod/s Kernel.Mod/s Files.Mod/s Modules.Mod/s ~     || goto end
 ORP.Compile Fonts.Mod/s Texts.Mod/s Link.Mod/s ORS.Mod/s ~          || goto end
 ORP.Compile ORB.Mod/s X64.Mod/s Listing.Mod/s ORG.Mod/s ORP.Mod/s ~ || goto end
-copy Host.x64 WinHost.x64
 Link.Link ORP.Compile Link.Link                                     || goto end
 ::
 ::

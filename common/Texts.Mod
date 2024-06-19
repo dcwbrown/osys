@@ -470,7 +470,7 @@ BEGIN
   ELSE i := 0;
     IF x < 0 THEN DEC(n); x0 := -x ELSE x0 := x END;
     REPEAT
-      a[i] := CHR(x0 MOD 10 + 30H); x0 := x0 DIV 10; INC(i)
+      a[i] := CHR(x0 MOD 10 + 30H);  x0 := x0 DIV 10;  INC(i)
     UNTIL x0 = 0;
     WHILE n > i DO Write(W, " "); DEC(n) END;
     IF x < 0 THEN Write(W, "-") END;
@@ -570,7 +570,7 @@ BEGIN
   OpenReader(r, Log, beg);
   WHILE ~r.eot & (beg < end) DO
     Read(r, ch);
-    IF ch = 0DX THEN H.Log(H.crlf) ELSE H.Log(ch) END;  INC(beg)
+    IF ch = 0DX THEN H.Log(H.Newline) ELSE H.Log(ch) END;  INC(beg)
   END;
 END LogNotify;
 

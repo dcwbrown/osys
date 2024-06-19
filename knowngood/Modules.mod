@@ -1,6 +1,6 @@
 MODULE Modules;  (*Link and load on RISC;  NW 20.10.2013 / 8.1.2019*)
 
-IMPORT SYSTEM, H := WinHost, Files;
+IMPORT SYSTEM, H := Host, Files;
 
 TYPE
   Module*     = POINTER- TO ModDesc;
@@ -412,6 +412,7 @@ END Init;
 BEGIN Init;
   StackOrg := SYSTEM.REG(4);
   Load(H.CmdModule, M);
+
   IF (res = 0) & (H.CmdCommand[0] # 0X) THEN
     P := ThisCommand(M, H.CmdCommand);
     IF res = 0 THEN P END

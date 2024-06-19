@@ -1,7 +1,7 @@
 MODULE Input; (*NW 5.10.86 / 15.11.90 Ceres-2; PDR 21.4.12 / NW 15.5.2013 Ceres-4*)
 (*DCWB 2024-03-19 hosting on MS Win *)
 
-IMPORT SYSTEM, H := WinHost, WinGui;
+IMPORT SYSTEM, H := Host, Gui;
 
 VAR
   kbdCode: BYTE;     (*last keyboard code read*)
@@ -17,8 +17,8 @@ VAR
 
 PROCEDURE Peek();
 BEGIN
-  IF WinGui.KeyReady() (*SYSTEM.BIT(msAdr, 28)*) THEN
-    WinGui.GetKey(kbdCode); (*SYSTEM.GET(kbdAdr, kbdCode)*)
+  IF Gui.KeyReady() (*SYSTEM.BIT(msAdr, 28)*) THEN
+    Gui.GetKey(kbdCode); (*SYSTEM.GET(kbdAdr, kbdCode)*)
     IF    kbdCode = 0F0H THEN Up  := TRUE
     ELSIF kbdCode = 0E0H THEN Ext := TRUE
     ELSE
@@ -49,7 +49,7 @@ END Read;
 PROCEDURE Mouse*(VAR keys: SET; VAR x, y: INTEGER);
 VAR w: INTEGER;
 BEGIN
-  w := WinGui.Mouse(); (*SYSTEM.GET(msAdr, w)*)
+  w := Gui.Mouse(); (*SYSTEM.GET(msAdr, w)*)
   keys := SYSTEM.VAL(SET, w DIV 1000000H MOD 8);
   x := w MOD 1000H;
   y := w DIV 1000H MOD 1000H;
@@ -59,7 +59,7 @@ END Mouse;
 
 PROCEDURE MouseInWindow*(): BOOLEAN;
 VAR w: INTEGER;
-BEGIN w := WinGui.Mouse();
+BEGIN w := Gui.Mouse();
   RETURN (w DIV 8000000H) MOD 2 = 1
 END MouseInWindow;
 

@@ -1,6 +1,6 @@
 MODULE X64;  (* DCWB August 2023; X64 constants *)
 
-IMPORT SYSTEM, H := WinHost, ORS, ORB;
+IMPORT SYSTEM, H := Host, ORS, ORB;
 
 CONST
   MaxPC* = 20000H;  (* Text generation buffer size (128KB) *)

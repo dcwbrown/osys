@@ -1,6 +1,6 @@
 MODULE ORS; (* NW 19.9.93 / 15.3.2017  Scanner in Oberon-07*)
 
-IMPORT SYSTEM, H := WinHost, Files, Texts;
+IMPORT SYSTEM, H := Host, Files, Texts;
 
 (* Oberon Scanner does lexical analysis. Input is Oberon-Text, output is
   sequence of symbols, i.e identifiers, numbers, strings, and special symbols.

@@ -199,17 +199,11 @@ END SetClock;
 
 PROCEDURE Init*;  (* Called from Files.Init *)
 CONST
-  MEMRESERVE = 2000H;  MEMCOMMIT = 1000H;  PAGEREADWRITE = 4;
   reserve = 80000000H;  (* Reserve 2GB contiguous *)
   commit  = 2000000H;   (* Initially commit 32MB  *)
 BEGIN
   H.Init;
-
-  (* Initialize heap *)
-  heapOrg := H.VirtualAlloc(200000000H, reserve, MEMRESERVE, PAGEREADWRITE);
-  ASSERT(heapOrg # 0);
-  heapOrg := H.VirtualAlloc(heapOrg, commit, MEMCOMMIT, PAGEREADWRITE);
-  ASSERT(heapOrg # 0);
+  heapOrg := H.HeapInit(reserve, commit);
 
   heapLim := heapOrg + commit;
   list1 := 0;  list2 := 0;  list3 := 0;  list0 := heapOrg;

@@ -1,5 +1,5 @@
 MODULE Listing;
-IMPORT SYSTEM, H := WinHost, Files, Texts, ORS, ORB, X64;
+IMPORT SYSTEM, H := Host, Files, Texts, ORS, ORB, X64;
 
 CONST
   RCX = X64.RCX;

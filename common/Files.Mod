@@ -146,12 +146,12 @@ BEGIN
   IF (f # NIL) & (f.name[0] # 0X) & ~f.registered THEN
     disposition := 0;  (* Remove delete on close flag *)
     ASSERT(H.SetFileInformationByHandle(f.handle, 4, SYSTEM.ADR(disposition), 8) # 0);
-    CloseHostHandle(f);
+    (*CloseHostHandle(f);*)
     UnregisterByName(f.name);
     IF H.MoveFile(f.tempname, f.name) # 0 THEN
       H.Trap(MaxPath*2 + 24, "Cannot register file because access denied to requested name")
     END;
-    ASSERT(H.FileOpen(f.name, H.OpenRW, f.handle) = 0);
+    (*ASSERT(H.FileOpen(f.name, H.OpenRW, f.handle) = 0);*)
     f.registered := TRUE;
   END
 END Register;

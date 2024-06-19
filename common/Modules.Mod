@@ -151,12 +151,7 @@ BEGIN
   WHILE PreloadNext # 0  DO
     hdr := SYSTEM.VAL(Module, PreloadNext);
     IF hdr.name[0] = 0X THEN PreloadNext := 0  (* End of preload modules reached *)
-    ELSIF hdr.name = "Host" THEN
-      (* TODO REMOVEME *)
-      (* Temporarily skip preloading unnecessarily included preload by old version of Link *)
-      INC(PreloadNext, hdr.size);
     ELSE
-      (*H.ws("Preloading '"); H.ws(hdr.name); H.wsn("'.");*)
       ASSERT(hdr.magic = "Oberon5");
       mod := AllocateModule(hdr^);  ASSERT(mod # NIL);
       p := PreloadNext + SYSTEM.SIZE(ModDesc);
@@ -295,8 +290,6 @@ BEGIN
       WHILE ptroff >= 0 DO
         SYSTEM.PUT(p, mod.vars + ptroff);  INC(p, 8);  SYSTEM.GET(p, ptroff)
       END;
-
-      H.ws("Load and link '"); H.ws(name); H.wsn("' complete.");
 
       (* Initialize module *)
       IF mod.init # 0 THEN

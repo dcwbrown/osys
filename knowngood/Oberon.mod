@@ -1,6 +1,6 @@
 MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
 
-IMPORT SYSTEM, H := WinHost, WinGui, Kernel, Files, Modules,
+IMPORT SYSTEM, H := Host, Gui, Kernel, Files, Modules,
        Input, Display, Viewers, Fonts, Texts;
 
 CONST (*message ids*)
@@ -433,11 +433,11 @@ BEGIN
         IF t >= CurTask.nextTime THEN
           CurTask.nextTime := t + CurTask.period; CurTask.state := active; CurTask.handle; CurTask.state := idle
         ELSE
-          WinGui.WaitMsgOrTime(CurTask.nextTime - t)
+          Gui.WaitMsgOrTime(CurTask.nextTime - t)
         END
       END
     END
-  UNTIL WinGui.WmQuit;
+  UNTIL Gui.WmQuit;
   H.Exit
 END Loop;
 

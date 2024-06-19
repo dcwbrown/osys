@@ -1,4 +1,6 @@
-MODULE Host;  IMPORT SYSTEM;
+MODULE Host;  (* DCWB 2024-01 Windows host interface *)
+
+IMPORT SYSTEM;
 
 CONST
   (* Host definition *)
@@ -6,12 +8,11 @@ CONST
   Lin*  = 2;
   Host* = Win;
 
-
   (* Platform independent file open kinds *)
   OpenRO* = 0;  (* Open r/o, fail if doesn't exist *)
   OpenRW* = 1;  (* Open r/w, fail if doesn't exist *)
 
-  (* System library procedure indices *)
+  (* Oberon system library procedure indices *)
   NewProc*                   = 0;
   (* error traps *)
   AssertionFailureProc*      = 1;
@@ -195,10 +196,10 @@ VAR
   (* Linker expects handlers to follow immediately after pre-loaded vars *)
   Handlers*: ARRAY HandlerCount OF PROCEDURE;
 
-  Stdin:   INTEGER;
-  Stdout:  INTEGER;
-  crlf*:   ARRAY 3 OF CHAR;
-  HWnd:    INTEGER;        (* Set when a window has been created *)
+  Stdin:    INTEGER;
+  Stdout:   INTEGER;
+  Newline*: ARRAY 3 OF CHAR;
+  HWnd:     INTEGER;        (* Set when a window has been created *)
 
   AllocPtr*:    INTEGER;   (* Start of remaining free module space *)
   CommitLen*:   INTEGER;   (* Committed module space memory *)
@@ -284,26 +285,30 @@ END Log;
 
 PROCEDURE wc*(c: CHAR); BEGIN Log(c) END wc;
 
-PROCEDURE wn*; BEGIN Log(crlf) END wn;
+PROCEDURE wn*; BEGIN Log(Newline) END wn;
 
 PROCEDURE ws*(s: ARRAY OF CHAR); BEGIN Log(s) END ws;
 
-PROCEDURE wsz*(s: ARRAY OF CHAR; w: INTEGER);  (* Right justified with leading zeroes *)
-BEGIN DEC(w, Length(s));  WHILE w > 0 DO wc("0"); DEC(w) END; Log(s) END wsz;
+PROCEDURE wsr*(s: ARRAY OF CHAR; w: INTEGER; c: CHAR);  (* Right justified with leading c *)
+BEGIN DEC(w, Length(s));  WHILE w > 0 DO wc(c); DEC(w) END; Log(s) END wsr;
 
-PROCEDURE wsn*(s: ARRAY OF CHAR); BEGIN Log(s); Log(crlf) END wsn;
+PROCEDURE wsn*(s: ARRAY OF CHAR); BEGIN Log(s); Log(Newline) END wsn;
 
 PROCEDURE wh*(n: INTEGER);
 VAR hex: ARRAY 32 OF CHAR;
 BEGIN IntToHex(n, hex); Log(hex) END wh;
 
-PROCEDURE whz*(n, w: INTEGER);  (* Right justified with leading zeroes *)
+PROCEDURE whr*(n, w: INTEGER; c: CHAR);  (* Right justified with leading zeroes *)
 VAR hex: ARRAY 32 OF CHAR;
-BEGIN IntToHex(n, hex); wsz(hex, w) END whz;
+BEGIN IntToHex(n, hex); wsr(hex, w, c) END whr;
 
 PROCEDURE wi*(n: INTEGER);
 VAR dec: ARRAY 32 OF CHAR;
 BEGIN IntToDecimal(n, dec); Log(dec) END wi;
+
+PROCEDURE wir*(n, w: INTEGER; c: CHAR);
+VAR dec: ARRAY 32 OF CHAR;
+BEGIN IntToDecimal(n, dec); wsr(dec, w, c) END wir;
 
 PROCEDURE wb*(n: INTEGER);
 BEGIN WHILE n > 0 DO wc(" "); DEC(n) END END wb;
@@ -313,11 +318,59 @@ BEGIN WHILE n > 0 DO wc(" "); DEC(n) END END wb;
 (* ----------------------------- Time functions ----------------------------- *)
 (* -------------------------------------------------------------------------- *)
 
-PROCEDURE Time*(): INTEGER;  (* In 100 nanosecond ticks since 1601 UTC *)
+PROCEDURE Time*(): INTEGER;  (* In 100 nanosecond ticks since 2000-01-01 UTC *)
 VAR tick: INTEGER;
 BEGIN GetSystemTimePreciseAsFileTime(SYSTEM.ADR(tick));
-RETURN tick END Time;
+RETURN tick - 10000000 * 24 * 60 * 60 * (399 * 365 + 96)  (* Bias to 2000-01-01 UTC *)
+END Time;
 
+
+PROCEDURE TimeAsClock*(time: INTEGER): INTEGER;
+(* Returns UTC time in PO2013 format:               *)
+(* 23/0,15/year-2000,4/month,5/day,5/hour,6/min,6/sec *)
+CONST
+  DaysperYear     = 365;
+  Daysper4years   = DaysperYear     * 4  + 1;
+  Daysper100years = Daysper4years   * 25 - 1;
+  Daysper400years = Daysper100years * 4  + 1;
+VAR
+  days,     secs,    years:    INTEGER;
+  remdays,  remsecs, remyears: INTEGER;
+  qccycles, ccycles, qcycles:  INTEGER;
+  months,   mlen,    result:   INTEGER;
+  monthlengths: ARRAY 13 OF CHAR; (* March .. January, / = 29, 0 = 30, 1 = 31 *)
+BEGIN
+  time     := time DIV 10000000;       (* Drop 100s of nanoseconds *)
+  secs     := time - 86400 * (31+29);  (* time relative to 1st March 2000 (leap century) *)
+  days     := secs DIV 86400;
+  remsecs  := secs MOD 86400;            ASSERT(remsecs >= 0);
+  qccycles := days DIV Daysper400years;
+  remdays  := days MOD Daysper400years;  ASSERT(remdays >= 0);
+  ccycles  := remdays DIV Daysper100years; IF ccycles =  4 THEN DEC(ccycles)  END;
+  DEC(remdays, ccycles * Daysper100years);
+  qcycles  := remdays DIV Daysper4years;   IF qcycles = 25 THEN DEC(qcycles)  END;
+  DEC(remdays, qcycles * Daysper4years);
+  remyears := remdays DIV DaysperYear;     IF remyears = 4 THEN DEC(remyears) END;
+  DEC(remdays, remyears * DaysperYear);
+  years := remyears + 4 * qcycles + 100 * ccycles + 400 * qccycles;
+  ASSERT(remdays < 366);
+  months := 0;  monthlengths := "10101101011/";  mlen := 31;  (* March *)
+  WHILE mlen <= remdays DO
+    DEC(remdays, mlen);  INC(months);  ASSERT(months < 12);
+    mlen := 30 + ORD(monthlengths[months]) - ORD("0");
+  END;
+  IF months >= 10 THEN DEC(months, 12);  INC(years) END;
+
+  result := (((((  years + 2000)          * 10H
+                 + months  + 3)           * 20H
+                 + remdays + 1)           * 20H
+                 + remsecs DIV 3600)      * 40H
+                 + remsecs DIV 60 MOD 60) * 40H
+                 + remsecs MOD 60;
+
+RETURN result END TimeAsClock;
+
+(*
 PROCEDURE TimeAsClock*(filetime: INTEGER): INTEGER;
 (* Returns local time in PO2013 format:               *)
 (* 23/0,15/year-2000,4/month,5/day,5/hour,6/min,6/sec *)
@@ -347,76 +400,33 @@ BEGIN
                  + st.second;
   END
 RETURN clock END TimeAsClock;
+*)
 
-PROCEDURE TimeAsExtClock*(filetime: INTEGER): INTEGER;
-(* Returns local time as:                                             *)
-(* 13/0,15/year,4/month,5/day,5/hour,6/minute,6/second,10/millisecond *)
-VAR
-  local, res: INTEGER;
-  st: RECORD  (* Windows system time format *)
-    year:         SYSTEM.CARD16;
-    month:        SYSTEM.CARD16;
-    dayofweek:    SYSTEM.CARD16;
-    day:          SYSTEM.CARD16;
-    hour:         SYSTEM.CARD16;
-    minute:       SYSTEM.CARD16;
-    second:       SYSTEM.CARD16;
-    milliseconds: SYSTEM.CARD16;
-  END;
-  clock: INTEGER;
-BEGIN
-  res := FileTimeToLocalFileTime(SYSTEM.ADR(filetime), SYSTEM.ADR(local));
-  clock := 0;
-  IF FileTimeToSystemTime(SYSTEM.ADR(local), SYSTEM.ADR(st)) # 0 THEN
-    clock := (((((  st.year    * 10H
-                  + st.month ) * 20H
-                  + st.day   ) * 20H
-                  + st.hour  ) * 40H
-                  + st.minute) * 40H
-                  + st.second) * 400H
-                  + st.milliseconds;
-  END
-RETURN clock END TimeAsExtClock;
 
 PROCEDURE Clock*(): INTEGER;
-(* Returns local time as                                              *)
-(* 30/0,8/year-2000,4/month,5/day,5/hour,6/min,6/sec                  *)
+(* Returns local time as                             *)
+(* 38/year-2000,4/month,5/day,5/hour,6/min,6/sec *)
 BEGIN RETURN TimeAsClock(Time()) END Clock;
 
-PROCEDURE ExtClock*(): INTEGER;
-(* Returns local time as                                              *)
-(* 13/0,15/year,4/month,5/day,5/hour,6/minute,6/second,10/millisecond *)
-BEGIN RETURN TimeAsExtClock(Time()) END ExtClock;
+PROCEDURE WriteDate(clock: INTEGER);
+VAR year: INTEGER;
+BEGIN year := clock DIV 4000000H;
+  IF year < 0 THEN wir(-year, 2, "0"); ws("BC-") ELSE wir(year, 4, "0"); wc("-") END;
+  wir(clock DIV 400000H MOD 10H, 2, "0");  (*month*)    wc("-");
+  wir(clock DIV 20000H  MOD 20H, 2, "0");  (*day*)
+END WriteDate;
 
-
-(*
-PROCEDURE WriteClock*;
-VAR clock: INTEGER;
+PROCEDURE WriteTime(clock: INTEGER);
 BEGIN
-  clock := LongClock();
-  wiz(clock DIV 1000000000H MOD 8000H, 4);  (*year*)     wc("-");
-  wiz(clock DIV 100000000H MOD 10H,    2);  (*month*)    wc("-");
-  wiz(clock DIV 8000000H MOD 20H,      2);  (*day*)      wc(" ");
-  wiz(clock DIV 400000H MOD 20H,       2);  (*hour*)     wc(":");
-  wiz(clock DIV 10000H MOD 40H,        2);  (*min*)      wc(":");
-  wiz(clock DIV 400H MOD 40H,          2);  (*sec*)
-END WriteClock;
-*)
-
-(*
-PROCEDURE WriteTime*(time: INTEGER);
-VAR clock: INTEGER;
-BEGIN
-  clock := TimeAsClock(time);
-  wiz(clock DIV 1000000000H MOD 8000H, 4);  (*year*)     wc("-");
-  wiz(clock DIV 100000000H MOD 10H,    2);  (*month*)    wc("-");
-  wiz(clock DIV 8000000H MOD 20H,      2);  (*day*)      wc(" ");
-  wiz(clock DIV 400000H MOD 20H,       2);  (*hour*)     wc(":");
-  wiz(clock DIV 10000H MOD 40H,        2);  (*min*)      wc(":");
-  wiz(clock DIV 400H MOD 40H,          2);  (*sec*)      wc(".");
-  wiz(clock MOD 400H,                  3)
+  wir(clock DIV 1000H MOD 20H, 2, "0");  (*hour*)     wc(":");
+  wir(clock DIV 40H MOD 40H,   2, "0");  (*min*)      wc(":");
+  wir(clock MOD 40H,           2, "0");  (*sec*)
 END WriteTime;
-*)
+
+PROCEDURE WriteClock(clock: INTEGER);
+BEGIN WriteDate(clock); wc(" "); WriteTime(clock)
+END WriteClock;
+
 
 
 (* -------------------------------------------------------------------------- *)
@@ -444,7 +454,7 @@ BEGIN
   rowstart  := ( start             DIV 16) * 16;
   dumplimit := ((start + len + 15) DIV 16) * 16;
   WHILE rowstart < dumplimit DO
-    wb(indent); whz(rowstart, 12); ws("  ");
+    wb(indent); whr(rowstart, 12, "0"); ws("  ");
     i := 0;
     WHILE i < 16 DO  (* Load a row of bytes *)
       IF (rowstart+i >= start) & (rowstart+i < start+len) THEN
@@ -457,7 +467,7 @@ BEGIN
     i := 0;
     WHILE i < 16 DO  (* One row of hex Dump *)
       IF i MOD 8 = 0 THEN wc(" ") END;
-      IF bytes[i] >= 0 THEN whz(bytes[i], 2);  wc(" ") ELSE ws("   ") END;
+      IF bytes[i] >= 0 THEN whr(bytes[i], 2, "0");  wc(" ") ELSE ws("   ") END;
       INC(i)
     END;
     ws("  ");
@@ -537,14 +547,14 @@ BEGIN
     END;
     IF p # NIL THEN
       wsn("Dump:");
-      ws("  rax "); whz(p.context.rax, 16);  ws("  rbx "); whz(p.context.rbx, 16);
-      ws("  rcx "); whz(p.context.rcx, 16);  ws("  rdx "); whz(p.context.rdx, 16);  wn;
-      ws("  rsp "); whz(p.context.rsp, 16);  ws("  rbp "); whz(p.context.rbp, 16);
-      ws("  rsi "); whz(p.context.rsi, 16);  ws("  rdi "); whz(p.context.rdi, 16);  wn;
-      ws("  r8  "); whz(p.context.r8,  16);  ws("  r9  "); whz(p.context.r9,  16);
-      ws("  r10 "); whz(p.context.r10, 16);  ws("  r11 "); whz(p.context.r11, 16);  wn;
-      ws("  r12 "); whz(p.context.r12, 16);  ws("  r13 "); whz(p.context.r13, 16);
-      ws("  r14 "); whz(p.context.r14, 16);  ws("  r15 "); whz(p.context.r15, 16);  wn;
+      ws("  rax "); whr(p.context.rax, 16, "0");  ws("  rbx "); whr(p.context.rbx, 16, "0");
+      ws("  rcx "); whr(p.context.rcx, 16, "0");  ws("  rdx "); whr(p.context.rdx, 16, "0");  wn;
+      ws("  rsp "); whr(p.context.rsp, 16, "0");  ws("  rbp "); whr(p.context.rbp, 16, "0");
+      ws("  rsi "); whr(p.context.rsi, 16, "0");  ws("  rdi "); whr(p.context.rdi, 16, "0");  wn;
+      ws("  r8  "); whr(p.context.r8,  16, "0");  ws("  r9  "); whr(p.context.r9,  16, "0");
+      ws("  r10 "); whr(p.context.r10, 16, "0");  ws("  r11 "); whr(p.context.r11, 16, "0");  wn;
+      ws("  r12 "); whr(p.context.r12, 16, "0");  ws("  r13 "); whr(p.context.r13, 16, "0");
+      ws("  r14 "); whr(p.context.r14, 16, "0");  ws("  r15 "); whr(p.context.r15, 16, "0");  wn;
       wsn("  Top of stack:");
       DumpMem(2, p.context.rsp, p.context.rsp, 128)
     END
@@ -733,7 +743,7 @@ BEGIN
     res := FormatMessageW(1000H, 0, err, 0, SYSTEM.ADR(msgW), 1024, 0); (* 1000H: FORMAT_MESSAGE_FROM_SYSTEM *)
     res := Utf16ToUtf8(msgW, msg);
     i := Length(msg) - 1;
-    WHILE (i >= 0) & (msg[i] <= " ") DO DEC(i) END;  (* Drop trailing space/newline(s) *)
+    WHILE (i >= 0) & (msg[i] <= " ") DO DEC(i) END;  (* Drop trailing space/Newline(s) *)
     WHILE (i >= 0) & (msg[i] =  ".") DO DEC(i) END;  (* Drop trailing periods *)
     msg[i + 1] := 0X;
     Trap(LEN(msgW)*2 + LEN(msg) + 16, msg);
@@ -820,21 +830,26 @@ VAR
   info: infodesc;
 BEGIN
   res := GetFileInformationByHandleEx(hfile, 0, SYSTEM.ADR(info), SYSTEM.SIZE(infodesc));
-  (*
-  wsn("* GetFileInformationByHandleEx ->");
-  ws("  creation "); WriteTime(info.creation); wsn(".");
-  ws("  access   "); WriteTime(info.access);   wsn(".");
-  ws("  write    "); WriteTime(info.write);    wsn(".");
-  ws("  change   "); WriteTime(info.change);   wsn(".");
-  ws("  attribs  "); whz(info.attribs, 4);     wsn("H.");
-  *)
   IF res = 0 THEN AssertWinError(GetLastError()) END;
-RETURN info.write END FileTime;
+RETURN info.write - 10000000 * 24 * 60 * 60 * (399 * 365 + 96)  (* Bias to 2000-01-01 UTC *)
+END FileTime;
 
 
 (* -------------------------------------------------------------------------- *)
 (* ----------------------- Virtual memory management ------------------------ *)
 (* -------------------------------------------------------------------------- *)
+
+PROCEDURE HeapInit*(reserve, commit: INTEGER): INTEGER;
+CONST MEMRESERVE = 2000H;  MEMCOMMIT = 1000H;  PAGEREADWRITE = 4;
+VAR heapOrg: INTEGER;
+BEGIN
+  (* Initialize heap *)
+  heapOrg := VirtualAlloc(200000000H, reserve, MEMRESERVE, PAGEREADWRITE);
+  ASSERT(heapOrg # 0);
+  heapOrg := VirtualAlloc(heapOrg, commit, MEMCOMMIT, PAGEREADWRITE);
+  ASSERT(heapOrg # 0)
+RETURN heapOrg END HeapInit;
+
 
 PROCEDURE Allocate*(size: INTEGER; VAR p, alloc: INTEGER);
 VAR adr, newcommitlen: INTEGER;
@@ -968,7 +983,11 @@ BEGIN
   Stdin  := GetStdHandle(-10);  (* -10:   StdInputHandle *)
   Stdout := GetStdHandle(-11);  (* -11:   StdOutputHandle *)
   SetConsoleOutputCP(65001);    (* 65001: UTF8            *)
-  crlf := $0D 0A 00$;
+  Newline := $0D 0A 00$;
+
+  ws("Oberon Host.Mod starting at "); WriteClock(TimeAsClock(Time())); wsn(".");
+  ws("Time(): "); wi(Time()); wsn(".");
+  ws("Time 0: "); WriteClock(TimeAsClock(0)); wsn(".");
 
   Handlers[NewProc]                   := NewPointerHandler;
   Handlers[AssertionFailureProc]      := AssertionFailureHandler;
