@@ -74,6 +74,8 @@ VAR
   TrapDepth:   INTEGER;
   TrapHandler: PROCEDURE(adr: INTEGER; desc: ARRAY OF CHAR);
 
+  MonthLen:    ARRAY 11 OF INTEGER;
+
 
 (* ----------------------- Linux syscall system APIs ------------------------ *)
 
@@ -339,54 +341,62 @@ END Time;
 
 PROCEDURE TimeAsClock*(time: INTEGER): INTEGER;
 (* Returns UTC time in PO2013 format:               *)
-(* 23/0,15/year-2000,4/month,5/day,5/hour,6/min,6/sec *)
+(* 38/year-2000,4/month,5/day,5/hour,6/min,6/sec *)
 CONST
   DaysperYear     = 365;
   Daysper4years   = DaysperYear     * 4  + 1;
   Daysper100years = Daysper4years   * 25 - 1;
   Daysper400years = Daysper100years * 4  + 1;
-VAR
-  days,     secs,    years:    INTEGER;
-  remdays,  remsecs, remyears: INTEGER;
-  qccycles, ccycles, qcycles:  INTEGER;
-  months,   mlen,    result:   INTEGER;
-  monthlengths: ARRAY 13 OF CHAR; (* March .. January, / = 29, 0 = 30, 1 = 31 *)
+VAR year, month, day, sec, qccycles, ccycles, qcycles: INTEGER;
 BEGIN
-  time     := time DIV 10000000;  (* Drop 100s of nanoseconds *)
-  secs     := time - 86400 * (31+29);  (* time relative to 1st March 2000 (leap century) *)
-  days     := secs DIV 86400;
-  remsecs  := secs MOD 86400;            ASSERT(remsecs >= 0);
-  qccycles := days DIV Daysper400years;
-  remdays  := days MOD Daysper400years;  ASSERT(remdays >= 0);
-  ccycles  := remdays DIV Daysper100years; IF ccycles =  4 THEN DEC(ccycles)  END;
-  DEC(remdays, ccycles * Daysper100years);
-  qcycles  := remdays DIV Daysper4years;   IF qcycles = 25 THEN DEC(qcycles)  END;
-  DEC(remdays, qcycles * Daysper4years);
-  remyears := remdays DIV DaysperYear;     IF remyears = 4 THEN DEC(remyears) END;
-  DEC(remdays, remyears * DaysperYear);
-  years := remyears + 4 * qcycles + 100 * ccycles + 400 * qccycles;
-  ASSERT(remdays < 366);
-  months := 0;  monthlengths := "10101101011/";  mlen := 31;  (* March *)
-  WHILE mlen <= remdays DO
-    DEC(remdays, mlen);  INC(months);  ASSERT(months < 12);
-    mlen := 30 + ORD(monthlengths[months]) - ORD("0");
+  sec      := time DIV 10000000 - 86400 * (31+29);  (* seconds relative to 1st March 2000 (leap century) *)
+  day      := sec DIV 86400;            sec  := sec MOD 86400;
+  qccycles := day DIV Daysper400years;  day  := day MOD Daysper400years;
+  ccycles  := day DIV Daysper100years;  IF ccycles =  4 THEN DEC(ccycles)  END;
+  DEC(day, ccycles * Daysper100years);
+  qcycles  := day DIV Daysper4years;    IF qcycles = 25 THEN DEC(qcycles)  END;
+  DEC(day, qcycles * Daysper4years);
+  year := day DIV DaysperYear;          IF year = 4 THEN DEC(year) END;
+  DEC(day, year * DaysperYear);
+  year := year + 4 * qcycles + 100 * ccycles + 400 * qccycles;
+  month := 0;
+  WHILE (month < 11) & (day >= MonthLen[month]) DO
+    DEC(day, MonthLen[month]);  INC(month)
   END;
-  IF months >= 10 THEN DEC(months, 12);  INC(years) END;
-
-  result := (((((  years + 2000)          * 10H
-                 + months  + 3)           * 20H
-                 + remdays + 1)           * 20H
-                 + remsecs DIV 3600)      * 40H
-                 + remsecs DIV 60 MOD 60) * 40H
-                 + remsecs MOD 60;
-
-RETURN result END TimeAsClock;
+  IF month >= 10 THEN DEC(month, 12);  INC(year) END;
+  RETURN (((((  year  + 2000)      * 10H
+              + month + 3)         * 20H
+              + day   + 1)         * 20H
+              + sec DIV 3600)      * 40H
+              + sec DIV 60 MOD 60) * 40H
+              + sec MOD 60
+END TimeAsClock;
 
 
 PROCEDURE Clock*(): INTEGER;
 (* Returns local time as                             *)
 (* 38/year-2000,4/month,5/day,5/hour,6/min,6/sec *)
 BEGIN RETURN TimeAsClock(Time()) END Clock;
+
+
+PROCEDURE WriteDate*(clock: INTEGER);
+VAR year: INTEGER;
+BEGIN year := clock DIV 4000000H;
+  IF year < 0 THEN wir(-year, 2, "0"); ws("BC-") ELSE wir(year, 4, "0"); wc("-") END;
+  wir(clock DIV 400000H MOD 10H, 2, "0");  (*month*)    wc("-");
+  wir(clock DIV 20000H  MOD 20H, 2, "0");  (*day*)
+END WriteDate;
+
+PROCEDURE WriteTime*(clock: INTEGER);
+BEGIN
+  wir(clock DIV 1000H MOD 20H, 2, "0");  (*hour*)     wc(":");
+  wir(clock DIV 40H MOD 40H,   2, "0");  (*min*)      wc(":");
+  wir(clock MOD 40H,           2, "0");  (*sec*)
+END WriteTime;
+
+PROCEDURE WriteClock*(clock: INTEGER);
+BEGIN WriteDate(clock); wc(" "); WriteTime(clock)
+END WriteClock;
 
 
 (* -------------------------------------------------------------------------- *)
@@ -514,6 +524,19 @@ BEGIN
   Newline := $0A 00$;
   wsn("Host starting.");
 
+  (* End of each month based on year starting 1st March *)
+  MonthLen[ 0] := 31;  (* March     *)
+  MonthLen[ 1] := 30;  (* April     *)
+  MonthLen[ 2] := 31;  (* May       *)
+  MonthLen[ 3] := 30;  (* June      *)
+  MonthLen[ 4] := 31;  (* July      *)
+  MonthLen[ 5] := 31;  (* August    *)
+  MonthLen[ 6] := 30;  (* September *)
+  MonthLen[ 7] := 31;  (* October   *)
+  MonthLen[ 8] := 30;  (* November  *)
+  MonthLen[ 9] := 31;  (* December  *)
+  MonthLen[10] := 31;  (* January   *)
+
   Handlers[NewProc]                   := NewPointerHandler;
   Handlers[AssertionFailureProc]      := AssertionFailureHandler;
   Handlers[ArraySizeMismatchProc]     := ArraySizeMismatchHandler;
@@ -531,27 +554,8 @@ BEGIN
 END Init;
 
 
-PROCEDURE WriteDate(clock: INTEGER);
-VAR year: INTEGER;
-BEGIN year := clock DIV 4000000H;
-  IF year < 0 THEN wir(-year, 2, "0"); ws("BC-") ELSE wir(year, 4, "0"); wc("-") END;
-  wir(clock DIV 400000H MOD 10H, 2, "0");  (*month*)    wc("-");
-  wir(clock DIV 20000H  MOD 20H, 2, "0");  (*day*)
-END WriteDate;
-
-PROCEDURE WriteTime(clock: INTEGER);
-BEGIN
-  wir(clock DIV 1000H MOD 20H, 2, "0");  (*hour*)     wc(":");
-  wir(clock DIV 40H MOD 40H,   2, "0");  (*min*)      wc(":");
-  wir(clock MOD 40H,           2, "0");  (*sec*)
-END WriteTime;
-
-PROCEDURE WriteClock(clock: INTEGER);
-BEGIN WriteDate(clock); wc(" "); WriteTime(clock)
-END WriteClock;
-
 PROCEDURE TestClock(time: INTEGER);
-CONST day = 24 * 60 * 60 * 100000000;
+CONST day = 24 * 60 * 60 * 10000000;
 VAR i, clock, year: INTEGER;
 BEGIN
   clock := TimeAsClock(time);  i := 0;
@@ -570,7 +574,7 @@ PROCEDURE #229 sysclockgetres(id, adr: INTEGER): INTEGER;
 
 PROCEDURE TimeTest;
 CONST
-  day      = 24 * 60 * 60 * 100000000;
+  day      = 24 * 60 * 60 * 10000000;
   year     = 365 * day;
   leapyear = 366 * day;
 VAR

@@ -215,6 +215,8 @@ VAR
   TrapDepth:   INTEGER;
   TrapHandler: PROCEDURE(adr: INTEGER; desc: ARRAY OF CHAR);
 
+  MonthLen:    ARRAY 11 OF INTEGER;
+
 
 PROCEDURE Min*(a, b: INTEGER): INTEGER;
 BEGIN IF a < b THEN b := a END;  RETURN b END Min;
@@ -327,48 +329,36 @@ END Time;
 
 PROCEDURE TimeAsClock*(time: INTEGER): INTEGER;
 (* Returns UTC time in PO2013 format:               *)
-(* 23/0,15/year-2000,4/month,5/day,5/hour,6/min,6/sec *)
+(* 38/year-2000,4/month,5/day,5/hour,6/min,6/sec *)
 CONST
   DaysperYear     = 365;
   Daysper4years   = DaysperYear     * 4  + 1;
   Daysper100years = Daysper4years   * 25 - 1;
   Daysper400years = Daysper100years * 4  + 1;
-VAR
-  days,     secs,    years:    INTEGER;
-  remdays,  remsecs, remyears: INTEGER;
-  qccycles, ccycles, qcycles:  INTEGER;
-  months,   mlen,    result:   INTEGER;
-  monthlengths: ARRAY 13 OF CHAR; (* March .. January, / = 29, 0 = 30, 1 = 31 *)
+VAR year, month, day, sec, qccycles, ccycles, qcycles: INTEGER;
 BEGIN
-  time     := time DIV 10000000;       (* Drop 100s of nanoseconds *)
-  secs     := time - 86400 * (31+29);  (* time relative to 1st March 2000 (leap century) *)
-  days     := secs DIV 86400;
-  remsecs  := secs MOD 86400;            ASSERT(remsecs >= 0);
-  qccycles := days DIV Daysper400years;
-  remdays  := days MOD Daysper400years;  ASSERT(remdays >= 0);
-  ccycles  := remdays DIV Daysper100years; IF ccycles =  4 THEN DEC(ccycles)  END;
-  DEC(remdays, ccycles * Daysper100years);
-  qcycles  := remdays DIV Daysper4years;   IF qcycles = 25 THEN DEC(qcycles)  END;
-  DEC(remdays, qcycles * Daysper4years);
-  remyears := remdays DIV DaysperYear;     IF remyears = 4 THEN DEC(remyears) END;
-  DEC(remdays, remyears * DaysperYear);
-  years := remyears + 4 * qcycles + 100 * ccycles + 400 * qccycles;
-  ASSERT(remdays < 366);
-  months := 0;  monthlengths := "10101101011/";  mlen := 31;  (* March *)
-  WHILE mlen <= remdays DO
-    DEC(remdays, mlen);  INC(months);  ASSERT(months < 12);
-    mlen := 30 + ORD(monthlengths[months]) - ORD("0");
+  sec      := time DIV 10000000 - 86400 * (31+29);  (* seconds relative to 1st March 2000 (leap century) *)
+  day      := sec DIV 86400;            sec  := sec MOD 86400;
+  qccycles := day DIV Daysper400years;  day  := day MOD Daysper400years;
+  ccycles  := day DIV Daysper100years;  IF ccycles =  4 THEN DEC(ccycles)  END;
+  DEC(day, ccycles * Daysper100years);
+  qcycles  := day DIV Daysper4years;    IF qcycles = 25 THEN DEC(qcycles)  END;
+  DEC(day, qcycles * Daysper4years);
+  year := day DIV DaysperYear;          IF year = 4 THEN DEC(year) END;
+  DEC(day, year * DaysperYear);
+  year := year + 4 * qcycles + 100 * ccycles + 400 * qccycles;
+  month := 0;
+  WHILE (month < 11) & (day >= MonthLen[month]) DO
+    DEC(day, MonthLen[month]);  INC(month)
   END;
-  IF months >= 10 THEN DEC(months, 12);  INC(years) END;
-
-  result := (((((  years + 2000)          * 10H
-                 + months  + 3)           * 20H
-                 + remdays + 1)           * 20H
-                 + remsecs DIV 3600)      * 40H
-                 + remsecs DIV 60 MOD 60) * 40H
-                 + remsecs MOD 60;
-
-RETURN result END TimeAsClock;
+  IF month >= 10 THEN DEC(month, 12);  INC(year) END;
+  RETURN (((((  year  + 2000)      * 10H
+              + month + 3)         * 20H
+              + day   + 1)         * 20H
+              + sec DIV 3600)      * 40H
+              + sec DIV 60 MOD 60) * 40H
+              + sec MOD 60
+END TimeAsClock;
 
 (*
 PROCEDURE TimeAsClock*(filetime: INTEGER): INTEGER;
@@ -985,8 +975,20 @@ BEGIN
   SetConsoleOutputCP(65001);    (* 65001: UTF8            *)
   Newline := $0D 0A 00$;
 
-  ws("Oberon Host.Mod starting at "); WriteClock(TimeAsClock(Time())); wsn(".");
-  ws("Time(): "); wi(Time()); wsn(".");
+  (* End of each month based on year starting 1st March *)
+  MonthLen[ 0] := 31;  (* March     *)
+  MonthLen[ 1] := 30;  (* April     *)
+  MonthLen[ 2] := 31;  (* May       *)
+  MonthLen[ 3] := 30;  (* June      *)
+  MonthLen[ 4] := 31;  (* July      *)
+  MonthLen[ 5] := 31;  (* August    *)
+  MonthLen[ 6] := 30;  (* September *)
+  MonthLen[ 7] := 31;  (* October   *)
+  MonthLen[ 8] := 30;  (* November  *)
+  MonthLen[ 9] := 31;  (* December  *)
+  MonthLen[10] := 31;  (* January   *)
+
+  ws("Oberon Host.Mod starting at "); WriteClock(TimeAsClock(Time())); wsn(" UTC.");
   ws("Time 0: "); WriteClock(TimeAsClock(0)); wsn(".");
 
   Handlers[NewProc]                   := NewPointerHandler;
