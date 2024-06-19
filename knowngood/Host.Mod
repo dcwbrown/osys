@@ -789,24 +789,40 @@ BEGIN
 END MakeTempFile;
 
 
-PROCEDURE FileNew*(VAR tempname: ARRAY OF CHAR): INTEGER;
-VAR
-  handle:      INTEGER;
-  disposition: INTEGER;
+PROCEDURE FileSetDisposition(handle, disposition: INTEGER);
+BEGIN ASSERT(SetFileInformationByHandle(handle, 4, SYSTEM.ADR(disposition), 8) # 0);
+END FileSetDisposition;
+
+
+PROCEDURE FileNew*(): INTEGER;
+VAR tempname: ARRAY MaxPath OF CHAR;  handle: INTEGER;
 BEGIN
-  MakeTempFile(tempname);  handle := FileOld(tempname);  ASSERT(handle >= 0);
-  disposition := 1;  (* 1 = DeleteFile on close *)
-  ASSERT(SetFileInformationByHandle(handle, 4, SYSTEM.ADR(disposition), 8) # 0);
+  MakeTempFile(tempname);
+  handle := FileOld(tempname);  ASSERT(handle >= 0);
+  FileSetDisposition(handle, 1);  (* 1 = DeleteFile on close *)
 RETURN handle END FileNew;
 
 
-PROCEDURE FileFlush*(h: INTEGER);
+PROCEDURE FileFlush*(handle: INTEGER);
 VAR rv: INTEGER;
-BEGIN rv := FlushFileBuffers(h) END FileFlush;
+BEGIN rv := FlushFileBuffers(handle) END FileFlush;
 
 
-PROCEDURE FileClose*(VAR h: INTEGER);
-BEGIN ASSERT(CloseHandle(h) # 0);  h := -1 END FileClose;
+PROCEDURE FileClose*(VAR handle: INTEGER);
+BEGIN ASSERT(CloseHandle(handle) # 0);  handle := -1 END FileClose;
+
+
+PROCEDURE FileLength*(handle: INTEGER): INTEGER;
+VAR res, size: INTEGER;
+BEGIN ASSERT(GetFileSizeEx(handle, SYSTEM.ADR(size)) # 0)
+RETURN size END FileLength;
+
+PROCEDURE FileSetPos*(handle, pos: INTEGER);
+BEGIN
+  IF SetFilePointerEx(handle, pos, 0, 0) = 0 THEN
+    Trap(0, "Host.FileSetPos: SetFilePointerEx failed")
+  END;
+END FileSetPos;
 
 
 PROCEDURE MoveFile*(source, dest: ARRAY OF CHAR): INTEGER;
@@ -822,31 +838,47 @@ BEGIN
 RETURN res END MoveFile;
 
 
+(*
 PROCEDURE FileGetName(handle: INTEGER; VAR name: ARRAY OF CHAR);  (* Get name opened by *)
-VAR namew: ARRAY MaxPath OF SYSTEM.CARD16;
+VAR namew: ARRAY MaxPath OF SYSTEM.CARD16;  rv: INTEGER;
 BEGIN
-
+  rv := GetFinalPathNameByHandleW(handle, SYSTEM.ADR(namew), MaxPath, 8);
+  ASSERT(rv <= MaxPath);
+  rv := Utf16ToUtf8(namew, name);
 END FileGetName;
+*)
 
 
-PROCEDURE FileRegister*(handle: INTEGER; tempname, name: ARRAY OF CHAR);
-VAR disposition: INTEGER;
-BEGIN
-  disposition := 0;  (* Remove delete on close flag *)
-  ASSERT(SetFileInformationByHandle(handle, 4, SYSTEM.ADR(disposition), 8) # 0);
-  IF MoveFile(tempname, name) # 0 THEN
-    Trap(MaxPath*2 + 8, "Cannot register file because access denied to requested name")
+PROCEDURE FileSetName(handle: INTEGER;  name: ARRAY OF CHAR);
+TYPE renamedesc = RECORD-
+    ReplaceIfExists: BYTE;
+    dummyhandle:     INTEGER;
+    length:          SYSTEM.CARD32;
+    namew:           ARRAY MaxPath OF SYSTEM.CARD16;
   END;
+VAR rename: renamedesc;  rv: INTEGER;
+BEGIN
+  ZeroFill(rename);
+  rename.ReplaceIfExists := 1;
+  rename.length := Utf8ToUtf16(name, rename.namew) - 1;
+  ASSERT(SetFileInformationByHandle(
+    handle, 3, SYSTEM.ADR(rename), SYSTEM.SIZE(renamedesc)) # 0);
+END FileSetName;
+
+
+PROCEDURE FileRegister*(handle: INTEGER; name: ARRAY OF CHAR);
+BEGIN
+  FileSetDisposition(handle, 0);  (* Remove delete on close flag *)
+  FileSetName(handle, name)
 END FileRegister;
 
 
-PROCEDURE FileUnregister*(handle: INTEGER; VAR tempname, name: ARRAY OF CHAR);
-VAR rv, disposition: INTEGER;
+PROCEDURE FileUnregister*(handle: INTEGER);
+VAR tempname: ARRAY MaxPath OF CHAR;
 BEGIN
   MakeTempFile(tempname);
-  rv := MoveFile(name, tempname);  ASSERT((rv = 0) OR (rv = 2));
-  disposition := 1;  (* 1 = DeleteFile on close *)
-  rv := SetFileInformationByHandle(handle, 4, SYSTEM.ADR(disposition), 8);
+  FileSetName(handle, tempname);
+  FileSetDisposition(handle, 1);  (* 1 = DeleteFile on close *)
 END FileUnregister;
 
 

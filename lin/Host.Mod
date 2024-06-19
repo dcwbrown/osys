@@ -416,7 +416,7 @@ RETURN handle END FileOld;
 PROCEDURE FileNew(): INTEGER;  (* Create an anonymous file *)
 VAR dir: ARRAY 2 OF CHAR;
 BEGIN dir := ".";
-RETURN sysopen(SYSTEM.ADR(dir), OTMPFILE + ORDWR, 1A0H);  (* 0640: WR- *)
+RETURN sysopen(SYSTEM.ADR(dir), OTMPFILE + ORDWR, 1A0H)  (* 0640: WR- *)
 END FileNew;
 
 
@@ -436,7 +436,7 @@ END FileUnregister;
 
 PROCEDURE FileMove*(source, dest: ARRAY OF CHAR): INTEGER;
 BEGIN RETURN sysrename(SYSTEM.ADR(source), SYSTEM.ADR(dest))
-END MoveFile;
+END FileMove;
 
 
 PROCEDURE FileTime*(hfile: INTEGER): INTEGER;

@@ -23,7 +23,6 @@ TYPE
     name*:      FileName;
     registered: BOOLEAN;
     pos:        INTEGER;
-    tempname:   FileName;
     handle:     INTEGER
   END;
 
@@ -41,7 +40,7 @@ VAR
 (* --------------------------------- Files ---------------------------------- *)
 
 PROCEDURE Old*(name: ARRAY OF CHAR): File;
-VAR res, hnd: INTEGER;  f: File;
+VAR handle: INTEGER;  f: File;
 BEGIN
   IF name[0] = 0X THEN
     f := NIL  (* E.g. commonly when Texts.Open passed "" as filename *)
@@ -49,30 +48,18 @@ BEGIN
     f := first;
     WHILE (f # NIL) & ~(f.registered & (f.name = name)) DO f := f.next END;
     IF f = NIL THEN
-      hnd := H.FileOld(name);
-      IF hnd >= 0 THEN
-        NEW(f);
-        H.ZeroFill(f^);
+      handle := H.FileOld(name);
+      IF handle >= 0 THEN
+        NEW(f);  H.ZeroFill(f^);
         f.next       := first;
         f.registered := TRUE;
         f.name       := name;
-        f.tempname   := "";
-        f.handle     := hnd;
+        f.handle     := handle;
         first        := f;
       END
     END
   END
 RETURN f END Old;
-
-
-PROCEDURE MakeTempFile(VAR name: ARRAY OF CHAR);
-VAR temppath: FileName;  res: INTEGER;
-BEGIN
-  res := H.GetTempPathA(LEN(temppath), SYSTEM.ADR(temppath));
-  ASSERT((res > 0) & (res <= LEN(temppath)));
-  res := H.GetTempFileNameA(SYSTEM.ADR(temppath), SYSTEM.ADR("OSY"), 0, SYSTEM.ADR(name));
-  ASSERT(res # 0)
-END MakeTempFile;
 
 
 PROCEDURE New*(name: ARRAY OF CHAR): File;
@@ -81,49 +68,18 @@ BEGIN
   NEW(f);  H.ZeroFill(f^);
   f.registered := FALSE;
   f.name       := name;
-  f.handle     := H.FileNew(f.tempname);
+  f.handle     := H.FileNew();
   f.next       := first;  first := f;
 RETURN f END New;
 
 
 PROCEDURE Close*(f: File);
-VAR res: INTEGER;
 BEGIN IF f # NIL THEN H.FileFlush(f.handle) END
 END Close;
 
 
-(*
-PROCEDURE CloseHostHandle*(f: File);  (* Do not use the file after calling this *)
-BEGIN H.FileClose(f.handle) END CloseHostHandle;
-*)
-
-(*
 PROCEDURE Unregister(f: File);
-VAR disposition, res: INTEGER;
-BEGIN
-  CloseHostHandle(f);
-  MakeTempFile(f.tempname);
-  res := H.MoveFile(f.name, f.tempname);
-(* ----
-  IF (res # 0) & (res # 2) THEN  (* any failure other than 'not found' *)
-    H.ws("** Unregister: Could not move '"); H.ws(f.name); H.ws("' to '");
-    H.ws(f.tempname); H.ws("':"); H.AssertWinError(res);
-  END;
----- *)
-  ASSERT((res = 0) OR (res = 2));
-  f.handle := H.FileOld(f.tempname);
-  ASSERT(f.handle >= 0);
-  disposition := 1;  (* 1 = DeleteFile on close *)
-  res := H.SetFileInformationByHandle(f.handle, 4, SYSTEM.ADR(disposition), 8);
-  f.registered := FALSE
-END Unregister;
-*)
-
-PROCEDURE Unregister(f: File);
-VAR disposition, res: INTEGER;
-BEGIN
-  H.FileUnregister(f.handle, f.tempname, f.name);
-  f.registered := FALSE
+BEGIN H.FileUnregister(f.handle);  f.registered := FALSE
 END Unregister;
 
 
@@ -138,15 +94,10 @@ END UnregisterByName;
 
 
 PROCEDURE Register*(f: File);
-VAR
-  nameW:       ARRAY MaxPath OF SYSTEM.CARD16;
-  res:         INTEGER;
-  err:         INTEGER;
-  disposition: INTEGER;
 BEGIN
   IF (f # NIL) & (f.name[0] # 0X) & ~f.registered THEN
     UnregisterByName(f.name);
-    H.FileRegister(f.handle, f.tempname, f.name);
+    H.FileRegister(f.handle, f.name);
     f.registered := TRUE;
   END
 END Register;
@@ -169,12 +120,10 @@ END Rename;
 
 
 PROCEDURE Length*(f: File): INTEGER;
-VAR res, size: INTEGER;
-BEGIN ASSERT(H.GetFileSizeEx(f.handle, SYSTEM.ADR(size)) # 0)
-RETURN size END Length;
+RETURN H.FileLength(f.handle) END Length;
 
 
-PROCEDURE Date*(f: File): INTEGER;  (* In 100 nanosecond ticks since 1601 UTC *)
+PROCEDURE Date*(f: File): INTEGER;  (* In 100 nanosecond ticks since 2000-01-01 UTC *)
 RETURN H.FileTime(f.handle) END Date;
 
 
@@ -197,13 +146,7 @@ BEGIN RETURN r.file END Base;
 
 PROCEDURE SetFilePos(f: File; pos: INTEGER);
 VAR res: INTEGER;
-BEGIN
-  IF pos # f.pos THEN
-    IF H.SetFilePointerEx(f.handle, pos, 0, 0) = 0 THEN
-      H.Trap(8, "Files.SetFilePos: SetFilePointerEx failed")
-    END;
-    f.pos := pos
-  END
+BEGIN IF pos # f.pos THEN H.FileSetPos(f.handle, pos);  f.pos := pos END
 END SetFilePos;
 
 (* ---------------------------------- Read ---------------------------------- *)
