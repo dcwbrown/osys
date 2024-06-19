@@ -80,6 +80,8 @@ TYPE
     dummy7:       INTEGER;
   END;
 
+  FileName = ARRAY MaxPath OF CHAR;
+
 
 (* Start of pre-loaded variables (preset by Link.mod/Windows loader) *)
 
@@ -106,6 +108,7 @@ VAR
   GetCurrentDirectoryW*:           PROCEDURE\(nsize, pbuffer: INTEGER): INTEGER;
   GetCurrentProcessId*:            PROCEDURE\(): INTEGER;
   GetEnvironmentVariableW*:        PROCEDURE\(lpName, lpBuffer, nSize: INTEGER): INTEGER;
+  GetFinalPathNameByHandleW*:      PROCEDURE\(hfile, name, len, flags: INTEGER): INTEGER;
   GetFileAttributesExW*:           PROCEDURE\(lpName, fInfoLevelId, lpFileInformation: INTEGER): INTEGER;  (* fInfoLevelId Must be 0 (GetFileExInfoStandard) *)
   GetFileAttributesW*:             PROCEDURE\(lpFileName: INTEGER): INTEGER;
   GetFileInformationByHandleEx:    PROCEDURE\(hfile, infoclass, infoptr, bufsize: INTEGER): INTEGER;
@@ -394,7 +397,7 @@ RETURN clock END TimeAsClock;
 
 
 PROCEDURE Clock*(): INTEGER;
-(* Returns local time as                             *)
+(* Returns local time as                         *)
 (* 38/year-2000,4/month,5/day,5/hour,6/min,6/sec *)
 BEGIN RETURN TimeAsClock(Time()) END Clock;
 
@@ -761,37 +764,49 @@ END MessageBox;
 (* ------------- Platform independent low level file operations ------------- *)
 (* -------------------------------------------------------------------------- *)
 
-PROCEDURE FileOpen*(name: ARRAY OF CHAR; openkind: INTEGER; VAR handle: INTEGER): INTEGER;
-VAR
-  name16:      ARRAY 261 OF SYSTEM.CARD16;
-  disposition: INTEGER;
-  flags:       INTEGER;
-  access:      INTEGER;
-  mode:        INTEGER;
-  res:         INTEGER;
+PROCEDURE FileOld*(name: ARRAY OF CHAR): INTEGER;
+VAR name16: ARRAY 261 OF SYSTEM.CARD16;  handle: INTEGER;
 BEGIN
-  disposition := 3;        (* Open existing *)
-  flags       := 0;
-  IF openkind = OpenRO THEN
-    access := 080000000H;  (* GenericRead *)
-    mode   := 1;           (* FileShareRead *)
-  ELSE
-    access := 010000000H;  (* GenericAll (includes delete access) *)
-    mode   := 7;           (* FileShareRead, FileShareWrite, FileShareDelete *)
+  handle := Utf8ToUtf16(name, name16);
+  handle := CreateFileW(SYSTEM.ADR(name16), 010000000H (* access: GenericAll *),
+            7 (* mode: FileShareRead, FileShareWrite, FileShareDelete *), 0,
+            3 (* disposition: open exisiting *), 0 (* flags: none *), 0);
+  IF handle < 0 THEN  (* Try again read only *)
+    handle := CreateFileW(SYSTEM.ADR(name16), 080000000H (* access: GenericRead *),
+                          1 (* mode: FileShareRead *), 0,
+                          3 (* disposition: open exisiting *), 0 (* flags: none *), 0);
   END;
-  res := Utf8ToUtf16(name, name16);
-  res := CreateFileW(SYSTEM.ADR(name16), access, mode, 0, disposition, flags, 0);
-  IF (res < 0) & (openkind # OpenRO) THEN  (* Try again readonly *)
-    access := 080000000H;  (* GenericRead *)
-    mode   := 1;           (* FileShareRead *)
-    res    := CreateFileW(SYSTEM.ADR(name16), access, mode, 0, disposition, flags, 0);
-  END;
-  IF res < 0 THEN
-    handle := 0;  res := GetLastError()
-  ELSE
-    handle := res;  res := 0
-  END
-RETURN res END FileOpen;
+RETURN handle END FileOld;
+
+
+PROCEDURE MakeTempFile(VAR name: ARRAY OF CHAR);
+VAR temppath: FileName;  res: INTEGER;
+BEGIN
+  res := GetTempPathA(LEN(temppath), SYSTEM.ADR(temppath));
+  ASSERT((res > 0) & (res <= LEN(temppath)));
+  res := GetTempFileNameA(SYSTEM.ADR(temppath), SYSTEM.ADR("OSY"), 0, SYSTEM.ADR(name));
+  ASSERT(res # 0)
+END MakeTempFile;
+
+
+PROCEDURE FileNew*(VAR tempname: ARRAY OF CHAR): INTEGER;
+VAR
+  handle:      INTEGER;
+  disposition: INTEGER;
+BEGIN
+  MakeTempFile(tempname);  handle := FileOld(tempname);  ASSERT(handle >= 0);
+  disposition := 1;  (* 1 = DeleteFile on close *)
+  ASSERT(SetFileInformationByHandle(handle, 4, SYSTEM.ADR(disposition), 8) # 0);
+RETURN handle END FileNew;
+
+
+PROCEDURE FileFlush*(h: INTEGER);
+VAR rv: INTEGER;
+BEGIN rv := FlushFileBuffers(h) END FileFlush;
+
+
+PROCEDURE FileClose*(VAR h: INTEGER);
+BEGIN ASSERT(CloseHandle(h) # 0);  h := -1 END FileClose;
 
 
 PROCEDURE MoveFile*(source, dest: ARRAY OF CHAR): INTEGER;
@@ -805,6 +820,38 @@ BEGIN
   res := MoveFileExW(SYSTEM.ADR(sourcew), SYSTEM.ADR(destw), 3);  (* 1 => replace existing, 2 => copy allowed *)
   IF res = 0 THEN res := GetLastError() ELSE res := 0 END
 RETURN res END MoveFile;
+
+
+PROCEDURE FileGetName(handle: INTEGER; VAR name: ARRAY OF CHAR);  (* Get name opened by *)
+VAR namew: ARRAY MaxPath OF SYSTEM.CARD16;  rv: INTEGER;
+BEGIN
+  rv := GetFinalPathNameByHandleW(handle, SYSTEM.ADR(namew), MaxPath, 8);
+  ASSERT(rv <= MaxPath);
+  rv := Utf16ToUtf8(namew, name);
+END FileGetName;
+
+
+PROCEDURE FileRegister*(handle: INTEGER; tempname, name: ARRAY OF CHAR);
+VAR disposition: INTEGER;  curname: ARRAY MaxPath OF CHAR;
+BEGIN
+  disposition := 0;  (* Remove delete on close flag *)
+  ASSERT(SetFileInformationByHandle(handle, 4, SYSTEM.ADR(disposition), 8) # 0);
+  FileGetName(handle, curname);
+  IF MoveFile(curname, name) # 0 THEN
+    Trap(MaxPath*2 + 8, "Cannot register file because access denied to requested name")
+  END;
+END FileRegister;
+
+
+PROCEDURE FileUnregister*(handle: INTEGER; VAR tempname, name: ARRAY OF CHAR);
+VAR rv, disposition: INTEGER;  curname: ARRAY MaxPath OF CHAR;
+BEGIN
+  MakeTempFile(tempname);
+  FileGetName(handle, curname);
+  rv := MoveFile(curname, tempname);  ASSERT((rv = 0) OR (rv = 2));
+  disposition := 1;  (* 1 = DeleteFile on close *)
+  rv := SetFileInformationByHandle(handle, 4, SYSTEM.ADR(disposition), 8);
+END FileUnregister;
 
 
 PROCEDURE FileTime*(hfile: INTEGER): INTEGER;

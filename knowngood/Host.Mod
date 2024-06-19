@@ -80,6 +80,8 @@ TYPE
     dummy7:       INTEGER;
   END;
 
+  FileName = ARRAY MaxPath OF CHAR;
+
 
 (* Start of pre-loaded variables (preset by Link.mod/Windows loader) *)
 
@@ -106,6 +108,7 @@ VAR
   GetCurrentDirectoryW*:           PROCEDURE\(nsize, pbuffer: INTEGER): INTEGER;
   GetCurrentProcessId*:            PROCEDURE\(): INTEGER;
   GetEnvironmentVariableW*:        PROCEDURE\(lpName, lpBuffer, nSize: INTEGER): INTEGER;
+  GetFinalPathNameByHandleW*:      PROCEDURE\(hfile, name, len, flags: INTEGER): INTEGER;
   GetFileAttributesExW*:           PROCEDURE\(lpName, fInfoLevelId, lpFileInformation: INTEGER): INTEGER;  (* fInfoLevelId Must be 0 (GetFileExInfoStandard) *)
   GetFileAttributesW*:             PROCEDURE\(lpFileName: INTEGER): INTEGER;
   GetFileInformationByHandleEx:    PROCEDURE\(hfile, infoclass, infoptr, bufsize: INTEGER): INTEGER;
@@ -214,6 +217,8 @@ VAR
   ExitCode:    INTEGER;
   TrapDepth:   INTEGER;
   TrapHandler: PROCEDURE(adr: INTEGER; desc: ARRAY OF CHAR);
+
+  MonthLen:    ARRAY 11 OF INTEGER;
 
 
 PROCEDURE Min*(a, b: INTEGER): INTEGER;
@@ -327,48 +332,36 @@ END Time;
 
 PROCEDURE TimeAsClock*(time: INTEGER): INTEGER;
 (* Returns UTC time in PO2013 format:               *)
-(* 23/0,15/year-2000,4/month,5/day,5/hour,6/min,6/sec *)
+(* 38/year-2000,4/month,5/day,5/hour,6/min,6/sec *)
 CONST
   DaysperYear     = 365;
   Daysper4years   = DaysperYear     * 4  + 1;
   Daysper100years = Daysper4years   * 25 - 1;
   Daysper400years = Daysper100years * 4  + 1;
-VAR
-  days,     secs,    years:    INTEGER;
-  remdays,  remsecs, remyears: INTEGER;
-  qccycles, ccycles, qcycles:  INTEGER;
-  months,   mlen,    result:   INTEGER;
-  monthlengths: ARRAY 13 OF CHAR; (* March .. January, / = 29, 0 = 30, 1 = 31 *)
+VAR year, month, day, sec, qccycles, ccycles, qcycles: INTEGER;
 BEGIN
-  time     := time DIV 10000000;       (* Drop 100s of nanoseconds *)
-  secs     := time - 86400 * (31+29);  (* time relative to 1st March 2000 (leap century) *)
-  days     := secs DIV 86400;
-  remsecs  := secs MOD 86400;            ASSERT(remsecs >= 0);
-  qccycles := days DIV Daysper400years;
-  remdays  := days MOD Daysper400years;  ASSERT(remdays >= 0);
-  ccycles  := remdays DIV Daysper100years; IF ccycles =  4 THEN DEC(ccycles)  END;
-  DEC(remdays, ccycles * Daysper100years);
-  qcycles  := remdays DIV Daysper4years;   IF qcycles = 25 THEN DEC(qcycles)  END;
-  DEC(remdays, qcycles * Daysper4years);
-  remyears := remdays DIV DaysperYear;     IF remyears = 4 THEN DEC(remyears) END;
-  DEC(remdays, remyears * DaysperYear);
-  years := remyears + 4 * qcycles + 100 * ccycles + 400 * qccycles;
-  ASSERT(remdays < 366);
-  months := 0;  monthlengths := "10101101011/";  mlen := 31;  (* March *)
-  WHILE mlen <= remdays DO
-    DEC(remdays, mlen);  INC(months);  ASSERT(months < 12);
-    mlen := 30 + ORD(monthlengths[months]) - ORD("0");
+  sec      := time DIV 10000000 - 86400 * (31+29);  (* seconds relative to 1st March 2000 (leap century) *)
+  day      := sec DIV 86400;            sec  := sec MOD 86400;
+  qccycles := day DIV Daysper400years;  day  := day MOD Daysper400years;
+  ccycles  := day DIV Daysper100years;  IF ccycles =  4 THEN DEC(ccycles)  END;
+  DEC(day, ccycles * Daysper100years);
+  qcycles  := day DIV Daysper4years;    IF qcycles = 25 THEN DEC(qcycles)  END;
+  DEC(day, qcycles * Daysper4years);
+  year := day DIV DaysperYear;          IF year = 4 THEN DEC(year) END;
+  DEC(day, year * DaysperYear);
+  year := year + 4 * qcycles + 100 * ccycles + 400 * qccycles;
+  month := 0;
+  WHILE (month < 11) & (day >= MonthLen[month]) DO
+    DEC(day, MonthLen[month]);  INC(month)
   END;
-  IF months >= 10 THEN DEC(months, 12);  INC(years) END;
-
-  result := (((((  years + 2000)          * 10H
-                 + months  + 3)           * 20H
-                 + remdays + 1)           * 20H
-                 + remsecs DIV 3600)      * 40H
-                 + remsecs DIV 60 MOD 60) * 40H
-                 + remsecs MOD 60;
-
-RETURN result END TimeAsClock;
+  IF month >= 10 THEN DEC(month, 12);  INC(year) END;
+  RETURN (((((  year  + 2000)      * 10H
+              + month + 3)         * 20H
+              + day   + 1)         * 20H
+              + sec DIV 3600)      * 40H
+              + sec DIV 60 MOD 60) * 40H
+              + sec MOD 60
+END TimeAsClock;
 
 (*
 PROCEDURE TimeAsClock*(filetime: INTEGER): INTEGER;
@@ -404,7 +397,7 @@ RETURN clock END TimeAsClock;
 
 
 PROCEDURE Clock*(): INTEGER;
-(* Returns local time as                             *)
+(* Returns local time as                         *)
 (* 38/year-2000,4/month,5/day,5/hour,6/min,6/sec *)
 BEGIN RETURN TimeAsClock(Time()) END Clock;
 
@@ -771,37 +764,49 @@ END MessageBox;
 (* ------------- Platform independent low level file operations ------------- *)
 (* -------------------------------------------------------------------------- *)
 
-PROCEDURE FileOpen*(name: ARRAY OF CHAR; openkind: INTEGER; VAR handle: INTEGER): INTEGER;
-VAR
-  name16:      ARRAY 261 OF SYSTEM.CARD16;
-  disposition: INTEGER;
-  flags:       INTEGER;
-  access:      INTEGER;
-  mode:        INTEGER;
-  res:         INTEGER;
+PROCEDURE FileOld*(name: ARRAY OF CHAR): INTEGER;
+VAR name16: ARRAY 261 OF SYSTEM.CARD16;  handle: INTEGER;
 BEGIN
-  disposition := 3;        (* Open existing *)
-  flags       := 0;
-  IF openkind = OpenRO THEN
-    access := 080000000H;  (* GenericRead *)
-    mode   := 1;           (* FileShareRead *)
-  ELSE
-    access := 010000000H;  (* GenericAll (includes delete access) *)
-    mode   := 7;           (* FileShareRead, FileShareWrite, FileShareDelete *)
+  handle := Utf8ToUtf16(name, name16);
+  handle := CreateFileW(SYSTEM.ADR(name16), 010000000H (* access: GenericAll *),
+            7 (* mode: FileShareRead, FileShareWrite, FileShareDelete *), 0,
+            3 (* disposition: open exisiting *), 0 (* flags: none *), 0);
+  IF handle < 0 THEN  (* Try again read only *)
+    handle := CreateFileW(SYSTEM.ADR(name16), 080000000H (* access: GenericRead *),
+                          1 (* mode: FileShareRead *), 0,
+                          3 (* disposition: open exisiting *), 0 (* flags: none *), 0);
   END;
-  res := Utf8ToUtf16(name, name16);
-  res := CreateFileW(SYSTEM.ADR(name16), access, mode, 0, disposition, flags, 0);
-  IF (res < 0) & (openkind # OpenRO) THEN  (* Try again readonly *)
-    access := 080000000H;  (* GenericRead *)
-    mode   := 1;           (* FileShareRead *)
-    res    := CreateFileW(SYSTEM.ADR(name16), access, mode, 0, disposition, flags, 0);
-  END;
-  IF res < 0 THEN
-    handle := 0;  res := GetLastError()
-  ELSE
-    handle := res;  res := 0
-  END
-RETURN res END FileOpen;
+RETURN handle END FileOld;
+
+
+PROCEDURE MakeTempFile(VAR name: ARRAY OF CHAR);
+VAR temppath: FileName;  res: INTEGER;
+BEGIN
+  res := GetTempPathA(LEN(temppath), SYSTEM.ADR(temppath));
+  ASSERT((res > 0) & (res <= LEN(temppath)));
+  res := GetTempFileNameA(SYSTEM.ADR(temppath), SYSTEM.ADR("OSY"), 0, SYSTEM.ADR(name));
+  ASSERT(res # 0)
+END MakeTempFile;
+
+
+PROCEDURE FileNew*(VAR tempname: ARRAY OF CHAR): INTEGER;
+VAR
+  handle:      INTEGER;
+  disposition: INTEGER;
+BEGIN
+  MakeTempFile(tempname);  handle := FileOld(tempname);  ASSERT(handle >= 0);
+  disposition := 1;  (* 1 = DeleteFile on close *)
+  ASSERT(SetFileInformationByHandle(handle, 4, SYSTEM.ADR(disposition), 8) # 0);
+RETURN handle END FileNew;
+
+
+PROCEDURE FileFlush*(h: INTEGER);
+VAR rv: INTEGER;
+BEGIN rv := FlushFileBuffers(h) END FileFlush;
+
+
+PROCEDURE FileClose*(VAR h: INTEGER);
+BEGIN ASSERT(CloseHandle(h) # 0);  h := -1 END FileClose;
 
 
 PROCEDURE MoveFile*(source, dest: ARRAY OF CHAR): INTEGER;
@@ -815,6 +820,34 @@ BEGIN
   res := MoveFileExW(SYSTEM.ADR(sourcew), SYSTEM.ADR(destw), 3);  (* 1 => replace existing, 2 => copy allowed *)
   IF res = 0 THEN res := GetLastError() ELSE res := 0 END
 RETURN res END MoveFile;
+
+
+PROCEDURE FileGetName(handle: INTEGER; VAR name: ARRAY OF CHAR);  (* Get name opened by *)
+VAR namew: ARRAY MaxPath OF SYSTEM.CARD16;
+BEGIN
+
+END FileGetName;
+
+
+PROCEDURE FileRegister*(handle: INTEGER; tempname, name: ARRAY OF CHAR);
+VAR disposition: INTEGER;
+BEGIN
+  disposition := 0;  (* Remove delete on close flag *)
+  ASSERT(SetFileInformationByHandle(handle, 4, SYSTEM.ADR(disposition), 8) # 0);
+  IF MoveFile(tempname, name) # 0 THEN
+    Trap(MaxPath*2 + 8, "Cannot register file because access denied to requested name")
+  END;
+END FileRegister;
+
+
+PROCEDURE FileUnregister*(handle: INTEGER; VAR tempname, name: ARRAY OF CHAR);
+VAR rv, disposition: INTEGER;
+BEGIN
+  MakeTempFile(tempname);
+  rv := MoveFile(name, tempname);  ASSERT((rv = 0) OR (rv = 2));
+  disposition := 1;  (* 1 = DeleteFile on close *)
+  rv := SetFileInformationByHandle(handle, 4, SYSTEM.ADR(disposition), 8);
+END FileUnregister;
 
 
 PROCEDURE FileTime*(hfile: INTEGER): INTEGER;
@@ -985,8 +1018,20 @@ BEGIN
   SetConsoleOutputCP(65001);    (* 65001: UTF8            *)
   Newline := $0D 0A 00$;
 
-  ws("Oberon Host.Mod starting at "); WriteClock(TimeAsClock(Time())); wsn(".");
-  ws("Time(): "); wi(Time()); wsn(".");
+  (* End of each month based on year starting 1st March *)
+  MonthLen[ 0] := 31;  (* March     *)
+  MonthLen[ 1] := 30;  (* April     *)
+  MonthLen[ 2] := 31;  (* May       *)
+  MonthLen[ 3] := 30;  (* June      *)
+  MonthLen[ 4] := 31;  (* July      *)
+  MonthLen[ 5] := 31;  (* August    *)
+  MonthLen[ 6] := 30;  (* September *)
+  MonthLen[ 7] := 31;  (* October   *)
+  MonthLen[ 8] := 30;  (* November  *)
+  MonthLen[ 9] := 31;  (* December  *)
+  MonthLen[10] := 31;  (* January   *)
+
+  ws("Oberon Host.Mod starting at "); WriteClock(TimeAsClock(Time())); wsn(" UTC.");
   ws("Time 0: "); WriteClock(TimeAsClock(0)); wsn(".");
 
   Handlers[NewProc]                   := NewPointerHandler;

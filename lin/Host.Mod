@@ -374,10 +374,9 @@ END TimeAsClock;
 
 
 PROCEDURE Clock*(): INTEGER;
-(* Returns local time as                             *)
+(* Returns local time as                         *)
 (* 38/year-2000,4/month,5/day,5/hour,6/min,6/sec *)
 BEGIN RETURN TimeAsClock(Time()) END Clock;
-
 
 PROCEDURE WriteDate*(clock: INTEGER);
 VAR year: INTEGER;
@@ -403,28 +402,30 @@ END WriteClock;
 (* ------------- Platform independent low level file operations ------------- *)
 (* -------------------------------------------------------------------------- *)
 
-PROCEDURE FileOpen*(name: ARRAY OF CHAR; VAR handle: INTEGER): INTEGER;
-VAR res: INTEGER;
-BEGIN handle := 0;
-  res := sysopen(SYSTEM.ADR(name), ORDWR + OCREAT, 1A0H);  (* 0640: WR- *)
-  IF res < 0 THEN  (* Try again readonly *)
-    res := sysopen(SYSTEM.ADR(name), ORDONLY, 0)
+PROCEDURE FileOld*(name: ARRAY OF CHAR): INTEGER;
+VAR handle: INTEGER;
+BEGIN
+  handle := sysopen(SYSTEM.ADR(name), ORDWR, 0);
+  IF handle < 0 THEN  (* Try again readonly *)
+    handle := sysopen(SYSTEM.ADR(name), ORDONLY, 0)
   END;
-  IF res >= 0 THEN handle := res;  res := 0 END
-RETURN res END FileOpen;
+  (* Consider mapping Linux error code to dtandard error code *)
+RETURN handle END FileOld;
 
 
-PROCEDURE FileCreate(VAR handle: INTEGER): INTEGER;  (* Create an anonymous file *)
-VAR res: INTEGER;  dir: ARRAY 2 OF CHAR;
-BEGIN handle := 0;  dir := ".";
-  res := sysopen(SYSTEM.ADR(dir), OTMPFILE + ORDWR, 1A0H);  (* 0640: WR- *)
-  IF res >= 0 THEN handle := res;  res := 0 END
-RETURN res END FileCreate;
+PROCEDURE FileNew(): INTEGER;  (* Create an anonymous file *)
+VAR dir: ARRAY 2 OF CHAR;
+BEGIN dir := ".";
+RETURN sysopen(SYSTEM.ADR(dir), OTMPFILE + ORDWR, 1A0H);  (* 0640: WR- *)
+END FileNew;
 
 
-PROCEDURE FileRegister(handle: INTEGER; name: ARRAY OF CHAR): INTEGER;
+PROCEDURE FileRegister(handle: INTEGER; name: ARRAY OF CHAR);
 CONST dir = "";
-BEGIN RETURN syslinkat(handle, SYSTEM.ADR(dir), ATFDCWD, SYSTEM.ADR(name), ATEMPTYPATH)
+VAR rv: INTEGER;
+BEGIN
+  rv := sysunlink(SYSTEM.ADR(name));  (* Overwrite existing file if any *)
+  ASSERT(syslinkat(handle, SYSTEM.ADR(dir), ATFDCWD, SYSTEM.ADR(name), ATEMPTYPATH) = 0)
 END FileRegister;
 
 
@@ -433,7 +434,7 @@ BEGIN RETURN sysunlink(SYSTEM.ADR(name))
 END FileUnregister;
 
 
-PROCEDURE MoveFile*(source, dest: ARRAY OF CHAR): INTEGER;
+PROCEDURE FileMove*(source, dest: ARRAY OF CHAR): INTEGER;
 BEGIN RETURN sysrename(SYSTEM.ADR(source), SYSTEM.ADR(dest))
 END MoveFile;
 

@@ -49,7 +49,8 @@ BEGIN
     f := first;
     WHILE (f # NIL) & ~(f.registered & (f.name = name)) DO f := f.next END;
     IF f = NIL THEN
-      IF H.FileOpen(name, H.OpenRW, hnd) = 0 THEN
+      hnd := H.FileOld(name);
+      IF hnd >= 0 THEN
         NEW(f);
         H.ZeroFill(f^);
         f.next       := first;
@@ -75,53 +76,53 @@ END MakeTempFile;
 
 
 PROCEDURE New*(name: ARRAY OF CHAR): File;
-VAR
-  h:           INTEGER;
-  f:           File;
-  tempname:    FileName;
-  disposition: INTEGER;
+VAR f: File;
 BEGIN
-  MakeTempFile(tempname);
-  ASSERT(H.FileOpen(tempname, H.OpenRW, h) = 0);
-  disposition := 1;  (* 1 = DeleteFile on close *)
-  ASSERT(H.SetFileInformationByHandle(h, 4, SYSTEM.ADR(disposition), 8) # 0);
-  NEW(f);
-  H.ZeroFill(f^);
-  f.tempname   := tempname;
+  NEW(f);  H.ZeroFill(f^);
   f.registered := FALSE;
   f.name       := name;
-  f.handle     := h;
+  f.handle     := H.FileNew(f.tempname);
   f.next       := first;  first := f;
 RETURN f END New;
 
 
 PROCEDURE Close*(f: File);
 VAR res: INTEGER;
-BEGIN IF f # NIL THEN res := H.FlushFileBuffers(f.handle) END
+BEGIN IF f # NIL THEN H.FileFlush(f.handle) END
 END Close;
 
 
+(*
 PROCEDURE CloseHostHandle*(f: File);  (* Do not use the file after calling this *)
-BEGIN ASSERT(H.CloseHandle(f.handle) # 0); f.handle := -1;
-END CloseHostHandle;
+BEGIN H.FileClose(f.handle) END CloseHostHandle;
+*)
 
-
+(*
 PROCEDURE Unregister(f: File);
 VAR disposition, res: INTEGER;
 BEGIN
   CloseHostHandle(f);
   MakeTempFile(f.tempname);
   res := H.MoveFile(f.name, f.tempname);
-  (*
+(* ----
   IF (res # 0) & (res # 2) THEN  (* any failure other than 'not found' *)
     H.ws("** Unregister: Could not move '"); H.ws(f.name); H.ws("' to '");
     H.ws(f.tempname); H.ws("':"); H.AssertWinError(res);
   END;
-  *)
+---- *)
   ASSERT((res = 0) OR (res = 2));
-  ASSERT(H.FileOpen(f.tempname, H.OpenRW, f.handle) = 0);
+  f.handle := H.FileOld(f.tempname);
+  ASSERT(f.handle >= 0);
   disposition := 1;  (* 1 = DeleteFile on close *)
   res := H.SetFileInformationByHandle(f.handle, 4, SYSTEM.ADR(disposition), 8);
+  f.registered := FALSE
+END Unregister;
+*)
+
+PROCEDURE Unregister(f: File);
+VAR disposition, res: INTEGER;
+BEGIN
+  H.FileUnregister(f.handle, f.tempname, f.name);
   f.registered := FALSE
 END Unregister;
 
@@ -144,14 +145,8 @@ VAR
   disposition: INTEGER;
 BEGIN
   IF (f # NIL) & (f.name[0] # 0X) & ~f.registered THEN
-    disposition := 0;  (* Remove delete on close flag *)
-    ASSERT(H.SetFileInformationByHandle(f.handle, 4, SYSTEM.ADR(disposition), 8) # 0);
-    (*CloseHostHandle(f);*)
     UnregisterByName(f.name);
-    IF H.MoveFile(f.tempname, f.name) # 0 THEN
-      H.Trap(MaxPath*2 + 24, "Cannot register file because access denied to requested name")
-    END;
-    (*ASSERT(H.FileOpen(f.name, H.OpenRW, f.handle) = 0);*)
+    H.FileRegister(f.handle, f.tempname, f.name);
     f.registered := TRUE;
   END
 END Register;
@@ -346,7 +341,7 @@ VAR f, g: File;
   RETURN mark END getmark;
 
   PROCEDURE finalise(f: File);
-  BEGIN IF f.registered THEN CloseHostHandle(f) END
+  BEGIN IF f.registered THEN H.FileClose(f.handle) END
   END finalise;
 
 BEGIN

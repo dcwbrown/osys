@@ -12,7 +12,7 @@ CONST
 
   OberonCoreBase = 100000000H;  (* All linking is arranged to place the Oberon core at 1,0000,0000H *)
 
-  Kernel32ImportCount = 40;
+  Kernel32ImportCount = 41;
   Gdi32ImportCount    = 18;
   User32ImportCount   = 35;
 
@@ -578,6 +578,7 @@ BEGIN
   AddImport(Idt.Kernel32Lookups, s, "GetCurrentDirectoryW");
   AddImport(Idt.Kernel32Lookups, s, "GetCurrentProcessId");
   AddImport(Idt.Kernel32Lookups, s, "GetEnvironmentVariableW");
+  AddImport(Idt.Kernel32Lookups, s, "GetFinalPathNameByHandleW");
   AddImport(Idt.Kernel32Lookups, s, "GetFileAttributesExW");
   AddImport(Idt.Kernel32Lookups, s, "GetFileAttributesW");
   AddImport(Idt.Kernel32Lookups, s, "GetFileInformationByHandleEx");
