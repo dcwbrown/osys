@@ -79,7 +79,7 @@ END Close;
 
 
 PROCEDURE Unregister(f: File);
-BEGIN H.FileUnregister(f.handle);  f.registered := FALSE
+BEGIN H.FileUnregister(f.handle, f.name);  f.registered := FALSE
 END Unregister;
 
 
@@ -111,7 +111,7 @@ PROCEDURE Rename*(old, new: ARRAY OF CHAR; VAR res: INTEGER);
 VAR f: File;
 BEGIN
   UnregisterByName(new);
-  res := H.MoveFile(old, new);
+  res := H.FileMove(old, new);
   IF res # 0 THEN
     f := first;  WHILE (f # NIL) & (f.name # old) DO f := f.next END;
     IF (f # NIL) & f.registered THEN f.name := new END
@@ -160,23 +160,20 @@ END ZeroMem;
 
 
 PROCEDURE ReadMem*(VAR r: Rider; adr, len: INTEGER);
-VAR f: File; res, bytesread: INTEGER;
+VAR f: File; bytesread: INTEGER;
 BEGIN
-  f := r.file;
-  SetFilePos(f, r.pos);
   IF len > 0 THEN
-    res := H.ReadFile(f.handle, adr, len, SYSTEM.ADR(bytesread), 0);
-    INC(f.pos, bytesread);  INC(r.pos, bytesread)
-  ELSE
-    bytesread := 0;
-  END;
-  IF bytesread < len THEN
-    r.eof := TRUE;  r.res := len - bytesread;
-    ZeroMem(adr + bytesread, r.res)
-  ELSE
-    ASSERT(bytesread = len)
-  END;
+    f := r.file;  SetFilePos(f, r.pos);
+    bytesread := H.FileRead(f.handle, adr, len);
+    ASSERT(bytesread >= 0);
+    INC(f.pos, bytesread);  INC(r.pos, bytesread);
+    IF bytesread < len THEN
+      r.eof := TRUE;  r.res := len - bytesread;
+      ZeroMem(adr + bytesread, r.res)
+    END
+  END
 END ReadMem;
+
 
 PROCEDURE ReadRaw*(VAR r: Rider;  VAR var: ARRAY OF BYTE);
 BEGIN ReadMem(r, SYSTEM.ADR(var), LEN(var)) END ReadRaw;
@@ -230,8 +227,7 @@ PROCEDURE WriteMem*(VAR r: Rider; adr, len: INTEGER);
 VAR res, byteswritten: INTEGER;  f: File;
 BEGIN
   f := r.file;  SetFilePos(f, r.pos);
-  res := H.WriteFile(f.handle, adr, len, SYSTEM.ADR(byteswritten), 0);
-  ASSERT(byteswritten = len);
+  H.FileWrite(f.handle, adr, len);
   INC(r.pos, len);  f.pos := r.pos
 END WriteMem;
 

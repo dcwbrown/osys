@@ -122,7 +122,7 @@ VAR
   GetTempPathA*:                   PROCEDURE\(buflen, bufadr: INTEGER): INTEGER;
   LoadLibraryA*:                   PROCEDURE\(libname: INTEGER): INTEGER;
   MoveFileExW*:                    PROCEDURE\(lpExistingFileName, lpNewFileName, dwFlags: INTEGER): INTEGER;
-  ReadFile*:                       PROCEDURE\(hFile, lpBuffer, nNumberOfBytesToRead, lpNumberOfBytesRead, lpOverlapped: INTEGER): INTEGER;
+  ReadFile:                        PROCEDURE\(hFile, lpBuffer, nNumberOfBytesToRead, lpNumberOfBytesRead, lpOverlapped: INTEGER): INTEGER;
   SetConsoleOutputCP*:             PROCEDURE\(codepage: INTEGER) (* : INTEGER *);
   SetEndOfFile*:                   PROCEDURE\(hFile: INTEGER): INTEGER;
   SetFileInformationByHandle*:     PROCEDURE\(hFile, infoClass, info, bufsize: INTEGER): INTEGER;
@@ -131,7 +131,7 @@ VAR
   UnmapViewOfFile:                 PROCEDURE\(adr: INTEGER): INTEGER;
   VirtualAlloc*:                   PROCEDURE\(address, size, type, protection: INTEGER): INTEGER;
   VirtualQuery*:                   PROCEDURE\(address, buffer, length: INTEGER): INTEGER;
-  WriteFile*:                      PROCEDURE\(hFile, lpBuffer, nNumberOfBytesToWrite, lpNumberOfBytesWritten, lpOverlapped: INTEGER): INTEGER;
+  WriteFile:                       PROCEDURE\(hFile, lpBuffer, nNumberOfBytesToWrite, lpNumberOfBytesWritten, lpOverlapped: INTEGER): INTEGER;
 
   (* Pre-loaded Gdi32 imports *)
   BitBlt*:                         PROCEDURE\(dc, x, y, cx, cy, sc, x1, y1, op: INTEGER): INTEGER;
@@ -825,7 +825,7 @@ BEGIN
 END FileSetPos;
 
 
-PROCEDURE MoveFile*(source, dest: ARRAY OF CHAR): INTEGER;
+PROCEDURE FileMove*(source, dest: ARRAY OF CHAR): INTEGER;
 VAR
   sourcew: ARRAY MaxPath OF SYSTEM.CARD16;
   destw:   ARRAY MaxPath OF SYSTEM.CARD16;
@@ -835,7 +835,7 @@ BEGIN
   res := Utf8ToUtf16(dest,   destw);    ASSERT(res > 0);
   res := MoveFileExW(SYSTEM.ADR(sourcew), SYSTEM.ADR(destw), 3);  (* 1 => replace existing, 2 => copy allowed *)
   IF res = 0 THEN res := GetLastError() ELSE res := 0 END
-RETURN res END MoveFile;
+RETURN res END FileMove;
 
 
 (*
@@ -873,7 +873,7 @@ BEGIN
 END FileRegister;
 
 
-PROCEDURE FileUnregister*(handle: INTEGER);
+PROCEDURE FileUnregister*(handle: INTEGER; name: ARRAY OF CHAR);
 VAR tempname: ARRAY MaxPath OF CHAR;
 BEGIN
   MakeTempFile(tempname);
@@ -898,6 +898,25 @@ BEGIN
   IF res = 0 THEN AssertWinError(GetLastError()) END;
 RETURN info.write - 10000000 * 24 * 60 * 60 * (399 * 365 + 96)  (* Bias to 2000-01-01 UTC *)
 END FileTime;
+
+
+PROCEDURE FileRead*(h, adr, len: INTEGER): INTEGER;
+VAR bytesread: INTEGER;
+BEGIN ASSERT(len > 0);
+  IF ReadFile(h, adr, len, SYSTEM.ADR(bytesread), 0) = 0 THEN  (* read failed *)
+    bytesread := -1
+  END;
+RETURN bytesread END FileRead;
+
+
+PROCEDURE FileWrite*(h, adr, len: INTEGER);
+VAR byteswritten: INTEGER;
+BEGIN
+  IF len > 0 THEN
+    ASSERT(WriteFile(h, adr, len, SYSTEM.ADR(byteswritten), 0) # 0);
+    ASSERT(byteswritten = len)
+  END
+END FileWrite;
 
 
 (* -------------------------------------------------------------------------- *)

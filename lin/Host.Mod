@@ -50,6 +50,25 @@ TYPE
     dummy7:       INTEGER;
   END;
 
+  StatDesc = RECORD-
+    dev:      INTEGER;       (* ID of device containing file     *)
+    ino:      INTEGER;       (* Inode number                     *)
+    mode:     SYSTEM.CARD32; (* File type and mode               *)
+    nlink:    SYSTEM.CARD32; (* Number of hard links             *)
+    uid:      SYSTEM.CARD32; (* User ID of owner                 *)
+    gid:      SYSTEM.CARD32; (* Group ID of owner                *)
+    rdev:     INTEGER;       (* Device ID (if special file)      *)
+    size:     INTEGER;       (* Total size, in bytes             *)
+    blksize:  INTEGER;       (* Block size for filesystem I/O    *)
+    blocks:   INTEGER;       (* Number of 512 B blocks allocated *)
+    atimsec:  INTEGER;       (* Time of last access              *)
+    atimnsec: INTEGER;       (* Time of last access              *)
+    mtimsec:  INTEGER;       (* Time of last modification        *)
+    mtimnsec: INTEGER;       (* Time of last modification        *)
+    ctimsec:  INTEGER;       (* Time of last status change       *)
+    ctimnsec: INTEGER;       (* Time of last status change       *)
+  END;
+
 VAR
   Preload*: PreLoadVars;
 
@@ -79,22 +98,22 @@ VAR
 
 (* ----------------------- Linux syscall system APIs ------------------------ *)
 
-PROCEDURE #0   sysread(file, adr, len: INTEGER): INTEGER;
-PROCEDURE #1   syswrite(handle, address, length: INTEGER): INTEGER;
+PROCEDURE #0   sysread(handle, adr, len: INTEGER): INTEGER;
+PROCEDURE #1   syswrite(handle, adr, len: INTEGER): INTEGER;
 PROCEDURE #2   sysopen(name, flags, mode: INTEGER): INTEGER;
 PROCEDURE #3   sysclose(handle: INTEGER): INTEGER;
 PROCEDURE #4   sysstat(name, adr: INTEGER): INTEGER;
 PROCEDURE #5   sysfstat(handle, adr: INTEGER): INTEGER;
+PROCEDURE #8   syslseek(handle, offset, whence: INTEGER): INTEGER;
 PROCEDURE #9   sysmmap(adr, len, prot, flags, file, offset: INTEGER): INTEGER;
 PROCEDURE #10  sysmprotect(adr, len, prot: INTEGER): INTEGER;
 PROCEDURE #39  sysgetpid(): INTEGER;
 PROCEDURE #60  sysexit(i: INTEGER);
+PROCEDURE #74  sysfsync(handle: INTEGER): INTEGER;
 PROCEDURE #82  sysrename(old, new: INTEGER): INTEGER;
 PROCEDURE #87  sysunlink(name: INTEGER): INTEGER;
 PROCEDURE #228 sysclockgettime(id, adr: INTEGER): INTEGER;
 PROCEDURE #265 syslinkat(olddirfd, oldpath, newdirfd, newpath, flags: INTEGER): INTEGER;
-
-
 
 PROCEDURE Min*(a, b: INTEGER): INTEGER;
 BEGIN IF a < b THEN b := a END;  RETURN b END Min;
@@ -413,14 +432,39 @@ BEGIN
 RETURN handle END FileOld;
 
 
-PROCEDURE FileNew(): INTEGER;  (* Create an anonymous file *)
+PROCEDURE FileNew*(): INTEGER;  (* Create an anonymous file *)
 VAR dir: ARRAY 2 OF CHAR;
 BEGIN dir := ".";
 RETURN sysopen(SYSTEM.ADR(dir), OTMPFILE + ORDWR, 1A0H)  (* 0640: WR- *)
 END FileNew;
 
 
-PROCEDURE FileRegister(handle: INTEGER; name: ARRAY OF CHAR);
+PROCEDURE FileFlush*(handle: INTEGER);
+VAR rv: INTEGER;
+BEGIN rv := sysfsync(handle) END FileFlush;
+
+
+PROCEDURE FileClose*(VAR handle: INTEGER);
+BEGIN ASSERT(sysclose(handle) # 0);  handle := -1 END FileClose;
+
+
+PROCEDURE FileLength*(handle: INTEGER): INTEGER;
+VAR stat: StatDesc;
+BEGIN IF sysfstat(handle, SYSTEM.ADR(stat)) < 0 THEN stat.size := 0 END;
+RETURN stat.size END FileLength;
+
+
+PROCEDURE FileSetPos*(handle, pos: INTEGER);
+BEGIN ASSERT(syslseek(handle, pos, 0) = pos)
+END FileSetPos;
+
+
+PROCEDURE FileMove*(source, dest: ARRAY OF CHAR): INTEGER;
+BEGIN RETURN sysrename(SYSTEM.ADR(source), SYSTEM.ADR(dest))
+END FileMove;
+
+
+PROCEDURE FileRegister*(handle: INTEGER; name: ARRAY OF CHAR);
 CONST dir = "";
 VAR rv: INTEGER;
 BEGIN
@@ -429,36 +473,14 @@ BEGIN
 END FileRegister;
 
 
-PROCEDURE FileUnregister(name: ARRAY OF CHAR): INTEGER;
-BEGIN RETURN sysunlink(SYSTEM.ADR(name))
+PROCEDURE FileUnregister*(handle: INTEGER; name: ARRAY OF CHAR);
+BEGIN ASSERT(sysunlink(SYSTEM.ADR(name)) = 0)
 END FileUnregister;
-
-
-PROCEDURE FileMove*(source, dest: ARRAY OF CHAR): INTEGER;
-BEGIN RETURN sysrename(SYSTEM.ADR(source), SYSTEM.ADR(dest))
-END FileMove;
 
 
 PROCEDURE FileTime*(hfile: INTEGER): INTEGER;
 (* Returns Universal time in 100ns ticks since 1970/01/01 00:00:00 *)
-VAR stat: RECORD-
-    dev:      INTEGER;       (* ID of device containing file     *)
-    ino:      INTEGER;       (* Inode number                     *)
-    mode:     SYSTEM.CARD32; (* File type and mode               *)
-    nlink:    SYSTEM.CARD32; (* Number of hard links             *)
-    uid:      SYSTEM.CARD32; (* User ID of owner                 *)
-    gid:      SYSTEM.CARD32; (* Group ID of owner                *)
-    rdev:     INTEGER;       (* Device ID (if special file)      *)
-    size:     INTEGER;       (* Total size, in bytes             *)
-    blksize:  INTEGER;       (* Block size for filesystem I/O    *)
-    blocks:   INTEGER;       (* Number of 512 B blocks allocated *)
-    atimsec:  INTEGER;       (* Time of last access              *)
-    atimnsec: INTEGER;       (* Time of last access              *)
-    mtimsec:  INTEGER;       (* Time of last modification        *)
-    mtimnsec: INTEGER;       (* Time of last modification        *)
-    ctimsec:  INTEGER;       (* Time of last status change       *)
-    ctimnsec: INTEGER;       (* Time of last status change       *)
-  END;
+VAR stat: StatDesc;
 BEGIN
   IF sysfstat(hfile, SYSTEM.ADR(stat)) < 0 THEN
     stat.mtimsec := 0;  stat.mtimnsec := 0;
@@ -466,6 +488,16 @@ BEGIN
 RETURN stat.mtimsec * 10000000 + stat.mtimnsec DIV 100  (* Scale to 100ns ticks   *)
      - 10000000 * 24 * 60 * 60 * (30 * 365 + 7)         (* Bias to 2000-01-01 UTC *)
 END FileTime;
+
+
+PROCEDURE FileRead*(h, adr, len: INTEGER): INTEGER;
+BEGIN ASSERT(len > 0);
+RETURN sysread(h, adr, len) END FileRead;
+
+
+PROCEDURE FileWrite*(h, adr, len: INTEGER);
+BEGIN IF len > 0 THEN ASSERT(syswrite(h, adr, len) = len) END
+END FileWrite;
 
 
 (* -------------------------------------------------------------------------- *)

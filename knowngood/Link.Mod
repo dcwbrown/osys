@@ -924,9 +924,9 @@ BEGIN
   prev2 := BinFile.name; H.Append(".-2", prev2);
   prev3 := BinFile.name; H.Append(".-3", prev3);
 
-  res   := H.MoveFile(prev2, prev3);
-  res   := H.MoveFile(prev1, prev2);
-  res   := H.MoveFile(BinFile.name, prev1);
+  res   := H.FileMove(prev2, prev3);
+  res   := H.FileMove(prev1, prev2);
+  res   := H.FileMove(BinFile.name, prev1);
 
   Files.Register(BinFile);
 
@@ -1026,9 +1026,9 @@ BEGIN
   prev2 := BinFile.name; H.Append(".-2", prev2);
   prev3 := BinFile.name; H.Append(".-3", prev3);
 
-  res   := H.MoveFile(prev2, prev3);
-  res   := H.MoveFile(prev1, prev2);
-  res   := H.MoveFile(BinFile.name, prev1);
+  res   := H.FileMove(prev2, prev3);
+  res   := H.FileMove(prev1, prev2);
+  res   := H.FileMove(BinFile.name, prev1);
 
   Files.Register(BinFile);
 
