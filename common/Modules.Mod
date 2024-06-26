@@ -152,6 +152,7 @@ BEGIN
     hdr := SYSTEM.VAL(Module, PreloadNext);
     IF hdr.name[0] = 0X THEN PreloadNext := 0  (* End of preload modules reached *)
     ELSE
+      (*H.ws("Modules.Preload "); H.ws(hdr.name); H.wsn(".");*)
       ASSERT(hdr.magic = "Oberon5");
       mod := AllocateModule(hdr^);  ASSERT(mod # NIL);
       p := PreloadNext + SYSTEM.SIZE(ModDesc);
@@ -227,6 +228,7 @@ VAR
   i:         INTEGER;
   body:      Command;
 BEGIN
+  (*H.ws("Modules.Load('"); H.ws(name); H.wsn("')");*)
   res       := 0;
   Importing := name;
   newmod    := FindModule(name);
@@ -400,21 +402,26 @@ END HandleTrap;
 
 (* ----------------------------- Initialisation ----------------------------- *)
 
-PROCEDURE Init;
 BEGIN
-  Root := SYSTEM.VAL(Module, H.Preload.CoreAdr);
-  Files.Init;
+  StackOrg := SYSTEM.REG(4);
+  Root     := SYSTEM.VAL(Module, H.Preload.CoreAdr);
+
+  Files.Init(StackOrg);
+
   ActCnt      := 0;
   PreloadNext := H.Preload.MadrPreload;
-  H.SetTrapHandler(HandleTrap)
-END Init;
 
-BEGIN Init;
-  StackOrg := SYSTEM.REG(4);
+  H.SetTrapHandler(HandleTrap);
+
   Load(H.CmdModule, M);
 
   IF (res = 0) & (H.CmdCommand[0] # 0X) THEN
     P := ThisCommand(M, H.CmdCommand);
+    (*
+    H.ws("Executing command from "); H.ws(M.name);
+    H.ws(", module address "); H.wh(ORD(M));
+    H.ws("H, command at address "); H.wh(ORD(P));  H.wsn("H.");
+    *)
     IF res = 0 THEN P END
   END;
 

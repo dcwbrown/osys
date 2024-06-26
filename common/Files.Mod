@@ -52,8 +52,9 @@ BEGIN
       IF handle >= 0 THEN
         NEW(f);  H.ZeroFill(f^);
         f.next       := first;
-        f.registered := TRUE;
         f.name       := name;
+        f.registered := TRUE;
+        f.pos        := 0;
         f.handle     := handle;
         first        := f;
       END
@@ -66,10 +67,12 @@ PROCEDURE New*(name: ARRAY OF CHAR): File;
 VAR f: File;
 BEGIN
   NEW(f);  H.ZeroFill(f^);
-  f.registered := FALSE;
+  f.next       := first;
   f.name       := name;
+  f.registered := FALSE;
+  f.pos        := 0;
   f.handle     := H.FileNew();
-  f.next       := first;  first := f;
+  first := f;
 RETURN f END New;
 
 
@@ -298,8 +301,7 @@ END CloseCollectableFiles;
 
 
 (* Files.Mod is initialised by Modules.Init *)
-PROCEDURE Init*;
-BEGIN first := NIL;  Kernel.Init;
-END Init;
+PROCEDURE Init*(stackorg: INTEGER);
+BEGIN first := NIL;  Kernel.Init(stackorg); END Init;
 
 END Files.

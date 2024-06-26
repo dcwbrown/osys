@@ -23,6 +23,41 @@ CONST
   Stdout* = 1;
   Stderr* = 2;
 
+  (* Signals for x86-64 *)
+  SIGHUP    = 1;
+  SIGINT    = 2;
+  SIGQUIT   = 3;
+  SIGILL    = 4;
+  SIGTRAP   = 5;
+  SIGABRT   = 6;
+  SIGBUS    = 7;
+  SIGFPE    = 8;
+  SIGKILL   = 9;
+  SIGUSR1   = 10;
+  SIGSEGV   = 11;
+  SIGUSR2   = 12;
+  SIGPIPE   = 13;
+  SIGALRM   = 14;
+  SIGTERM   = 15;
+  SIGSTKFLT = 16;
+  SIGCHLD   = 17;
+  SIGCONT   = 18;
+  SIGSTOP   = 19;
+  SIGTSTP   = 20;
+  SIGTTIN   = 21;
+  SIGTTOU   = 22;
+  SIGURG    = 23;
+  SIGXCPU   = 24;
+  SIGXFSZ   = 25;
+  SIGVTALRM = 26;
+  SIGPROF   = 27;
+  SIGWINCH  = 28;
+  SIGIO     = 29;
+  SIGPOLL   = 29;
+  SIGPWR    = 30;
+  SIGSYS    = 31;
+  NSIG      = 65;
+
   MaxPath* = 780;  (* Enough UTF-8 bytes for for 260 wide chars *)
 
   (* Linux system call function constants *)
@@ -35,6 +70,16 @@ CONST
   ORDWR       = 2;
   OCREAT      = 64;
   OTMPFILE    = 20200000H;
+  SIRUSR      = 100H;
+  SIWUSR      = 80H;
+  SIXUSR      = 40H;
+  SIRGRP      = 20H;
+  SIWGRP      = 10H;
+  SIXGRP      = 8;
+  SIROTH      = 4;
+  SIWOTH      = 2;
+  SIXOTH      = 1;
+
   ATFDCWD     = -100;
   ATEMPTYPATH = 1000H;
 
@@ -53,10 +98,11 @@ TYPE
   StatDesc = RECORD-
     dev:      INTEGER;       (* ID of device containing file     *)
     ino:      INTEGER;       (* Inode number                     *)
-    mode:     SYSTEM.CARD32; (* File type and mode               *)
     nlink:    SYSTEM.CARD32; (* Number of hard links             *)
+    mode:     SYSTEM.CARD32; (* File type and mode               *)
     uid:      SYSTEM.CARD32; (* User ID of owner                 *)
     gid:      SYSTEM.CARD32; (* Group ID of owner                *)
+    pad0:     SYSTEM.CARD32;
     rdev:     INTEGER;       (* Device ID (if special file)      *)
     size:     INTEGER;       (* Total size, in bytes             *)
     blksize:  INTEGER;       (* Block size for filesystem I/O    *)
@@ -67,6 +113,81 @@ TYPE
     mtimnsec: INTEGER;       (* Time of last modification        *)
     ctimsec:  INTEGER;       (* Time of last status change       *)
     ctimnsec: INTEGER;       (* Time of last status change       *)
+    unused:   ARRAY 3 OF INTEGER;
+  END;
+(*
+struct stat {
+  dev_t st_dev;
+  ino_t st_ino;
+  nlink_t st_nlink;
+
+  mode_t st_mode;
+  uid_t st_uid;
+  gid_t st_gid;
+  unsigned int    __pad0;
+  dev_t st_rdev;
+  off_t st_size;
+  blksize_t st_blksize;
+  blkcnt_t st_blocks;
+
+  struct timespec st_atim;
+  struct timespec st_mtim;
+  struct timespec st_ctim;
+  long __unused[3];
+};
+*)
+
+  SignalAction = RECORD-  (* Corresponds to MUSL's struct k_sigaction *)
+    action:   PROCEDURE/(signal, info, context: INTEGER);
+    flags:    INTEGER;
+    restorer: INTEGER;
+    mask:     INTEGER;
+  END;
+
+  FpStackEnt = RECORD-
+    significand: ARRAY 4 OF SYSTEM.CARD16;
+    exponent:    SYSTEM.CARD16;
+    padding:     ARRAY 3 OF SYSTEM.CARD16;
+  END;
+
+  XmmReg = RECORD-
+    element: ARRAY 4 OF SYSTEM.CARD32;
+  END;
+
+  FpRegset = RECORD-  (* MUSL fpregset_t *)
+    cwd, swd, ftw, fop: SYSTEM.CARD16;
+    rip, rdp:           INTEGER;
+    mxcsr, mxcsrmask:   SYSTEM.CARD32;
+    st:                 ARRAY 8 OF FpStackEnt;
+    xmm:                ARRAY 16 OF XmmReg;
+    padding:            ARRAY 24 OF SYSTEM.CARD32;
+  END;
+
+  MachineContext = RECORD-  (* MUSL mcontext_t *)
+    gpregs: ARRAY 23 OF INTEGER;
+    fpregs: FpRegset;
+  END;
+
+  AltStack = RECORD-  (* MUSL stack_t *)
+    sp:    INTEGER;
+    flags: SYSTEM.CARD32;
+    size:  INTEGER;
+  END;
+
+  UserContext = RECORD-  (* MUSL ucontext_t *)
+    flags:   INTEGER;
+    link:    POINTER- TO UserContext;
+    altst:   AltStack;
+    machine: MachineContext;
+    sigmask: ARRAY 2 OF INTEGER;
+    fpregs:  ARRAY 64 OF INTEGER;
+  END;
+
+  SignalInfo = RECORD-  (* MUSL siginfo_t selected for SIGILL/FPE/SEGV/BUS/TRAP *)
+    signo:  SYSTEM.INT32;
+    errno:  SYSTEM.INT32;
+    code:   SYSTEM.INT32;
+    adr:    INTEGER;    (* Only for SIGILL/FPE/SEGV/BUS/TRAP *)
   END;
 
 VAR
@@ -81,19 +202,18 @@ VAR
   CommitLen*:   INTEGER;   (* Committed module space memory *)
 
 
-  (*
   (* Partially parsed command line *)
   CommandLine*: ARRAY 1024 OF CHAR;
   CmdModule*:   ARRAY 32 OF CHAR;
   CmdCommand*:  ARRAY 32 OF CHAR;
   ArgStart*:    INTEGER;
-  *)
 
   ExitCode:    INTEGER;
   TrapDepth:   INTEGER;
   TrapHandler: PROCEDURE(adr: INTEGER; desc: ARRAY OF CHAR);
 
   MonthLen:    ARRAY 11 OF INTEGER;
+  Anonfnum:    INTEGER;
 
 
 (* ----------------------- Linux syscall system APIs ------------------------ *)
@@ -107,6 +227,7 @@ PROCEDURE #5   sysfstat(handle, adr: INTEGER): INTEGER;
 PROCEDURE #8   syslseek(handle, offset, whence: INTEGER): INTEGER;
 PROCEDURE #9   sysmmap(adr, len, prot, flags, file, offset: INTEGER): INTEGER;
 PROCEDURE #10  sysmprotect(adr, len, prot: INTEGER): INTEGER;
+PROCEDURE #13  sysrtsigaction(signum, act, oldact, nsig: INTEGER): INTEGER;
 PROCEDURE #39  sysgetpid(): INTEGER;
 PROCEDURE #60  sysexit(i: INTEGER);
 PROCEDURE #74  sysfsync(handle: INTEGER): INTEGER;
@@ -178,8 +299,7 @@ BEGIN FOR i := 0 TO LEN(buf)-1 DO buf[i] := 0 END END ZeroFill;
 
 PROCEDURE Log*(s: ARRAY OF BYTE);
 VAR res: INTEGER;
-BEGIN
-  res := syswrite(Stdout, SYSTEM.ADR(s), Length(s));
+BEGIN res := syswrite(Stdout, SYSTEM.ADR(s), Length(s));
 END Log;
 
 PROCEDURE wc*(c: CHAR); BEGIN Log(c) END wc;
@@ -287,6 +407,118 @@ BEGIN ExitCode := code END SetExitCode;
 PROCEDURE Exit*;
 BEGIN sysexit(ExitCode) END Exit;
 
+
+(* ---------------------------- Signal handling ----------------------------- *)
+
+PROCEDURE/ SignalHandler(signal, infoadr, contextadr: INTEGER);
+CONST
+  REGR8      = 0;
+  REGR9      = 1;
+  REGR10     = 2;
+  REGR11     = 3;
+  REGR12     = 4;
+  REGR13     = 5;
+  REGR14     = 6;
+  REGR15     = 7;
+  REGRDI     = 8;
+  REGRSI     = 9;
+  REGRBP     = 10;
+  REGRBX     = 11;
+  REGRDX     = 12;
+  REGRAX     = 13;
+  REGRCX     = 14;
+  REGRSP     = 15;
+  REGRIP     = 16;
+  REGEFL     = 17;
+  REGCSGSFS  = 18;
+  REGERR     = 19;
+  REGTRAPNO  = 20;
+  REGOLDMASK = 21;
+  REGCR2     = 22;
+
+  (* REGERR bit numbers from linux/arch/x86/include/asm/trap_pf.h *)
+  PFPROT  = 0;   (* 0: no page found  1: protection fault      *)
+  PFWRITE = 1;   (* 0: read access    1: write access          *)
+  PFUSER  = 2;   (* 0: kernel-mode access  1: user-mode access *)
+  PFRSVD  = 3;   (* 1: use of reserved bit detected            *)
+  PFINSTR = 4;   (* 1: fault was an instruction fetch          *)
+  PFPK    = 5;   (* 1: protection keys block access            *)
+  PFSHSTK = 6;   (* 1: shadow stack access fault               *)
+  PFSGX   = 15;  (* 1: SGX MMU page-fault                      *)
+  PFRMP   = 31;  (* 1: fault was due to RMP violation          *)
+
+VAR
+  context: POINTER- TO UserContext;
+  info:    POINTER- TO SignalInfo;
+  err: SET;
+BEGIN
+  IF signal    = SIGILL  THEN ws("Illegal instruction")
+  ELSIF signal = SIGBUS  THEN ws("Bus fault")
+  ELSIF signal = SIGSEGV THEN ws("Segmentation fault")
+  ELSIF signal = SIGFPE  THEN ws("Floating point error")
+  ELSE  wh(signal); wc("H")
+  END;
+  wsn(", context:");
+  wsn("Signal info:");
+  SYSTEM.PUT(SYSTEM.ADR(info), infoadr);
+  DumpMem(0, infoadr, 0, 128);
+  ws("  signo "); wh(info.signo); wsn("H.");
+  ws("  errno "); wh(info.errno); wsn("H.");
+  ws("  code  "); wh(info.code);  wsn("H.");
+  ws("  adr   "); wh(info.adr);   wsn("H.");
+
+  wsn("User context:");
+  SYSTEM.PUT(SYSTEM.ADR(context), contextadr);
+  (*DumpMem(0, contextadr, 0, SYSTEM.SIZE(UserContext));*)
+  ws("  flags:                 "); wh(context.flags); wsn("H.");
+  ws("  link:                  "); wh(SYSTEM.VAL(INTEGER, context.link)); wsn("H.");
+  ws("  altst.sp               "); wh(context.altst.sp); wsn("H.");
+  ws("  altst.flags            "); wh(context.altst.flags); wsn("H.");
+  ws("  altst.size             "); wh(context.altst.size); wsn("H.");
+  ws("  machine.gpregs[REGRIP] "); wh(context.machine.gpregs[REGRIP]); wsn("H.");
+  ws("  machine.gpregs[REGRSP] "); wh(context.machine.gpregs[REGRSP]); wsn("H.");
+  ws("  machine.gpregs[REGRAX] "); wh(context.machine.gpregs[REGRAX]); wsn("H.");
+  ws("  machine.gpregs[REGRCX] "); wh(context.machine.gpregs[REGRCX]); wsn("H.");
+  ws("  machine.gpregs[REGRDX] "); wh(context.machine.gpregs[REGRDX]); wsn("H.");
+  ws("  machine.gpregs[REGRBX] "); wh(context.machine.gpregs[REGRBX]); wsn("H.");
+  ws("  machine.gpregs[REGERR] "); wh(context.machine.gpregs[REGERR]); wsn("H.");
+  (*DumpMem(0, SYSTEM.ADR(context.machine.gpregs), 0, 23*8);*)
+  err := SYSTEM.VAL(SET, context.machine.gpregs[REGERR]);
+  (* Decode REGERR using logic from linux/tree/arch/x86/mm/fault.c[544] in show_fault_oops() *)
+  IF    PFINSTR IN err THEN wsn("Instruction fetch")
+  ELSIF PFWRITE IN err THEN wsn("Write access")
+  ELSE                      wsn("Read access")
+  END;
+  IF  ~(PFPROT IN err) THEN wsn("not-present page")
+  ELSIF PFRSVD IN err  THEN wsn("reserved bit violation")
+  ELSIF PFPK   IN err  THEN wsn("protection keys violation")
+  ELSIF PFRMP  IN err  THEN wsn("RMP violation")
+  ELSE                      wsn("permissions violation")
+  END;
+  sysexit(99)
+END SignalHandler;
+
+
+PROCEDURE SetSignalHandlers;
+CONST
+  SASIGINFO  = 4;
+  SANODEFER  = 40000000H;
+  SARESTORER = 4000000H;
+VAR
+  rv:  INTEGER;
+  act: SignalAction;
+  ap:  POINTER- TO SignalAction;
+BEGIN
+  act.action   := SignalHandler;
+  act.mask     := 0;
+  act.flags    := SASIGINFO + SANODEFER + SARESTORER;  (* MUSL always sets SA_RESTORER *)
+  act.restorer := 0;  (* We never return to signal cause so don't need a restorer *)
+  ASSERT(sysrtsigaction(SIGILL,  SYSTEM.ADR(act), 0, NSIG DIV 8) = 0);
+  ASSERT(sysrtsigaction(SIGBUS,  SYSTEM.ADR(act), 0, NSIG DIV 8) = 0);
+  ASSERT(sysrtsigaction(SIGSEGV, SYSTEM.ADR(act), 0, NSIG DIV 8) = 0);
+  ASSERT(sysrtsigaction(SIGFPE,  SYSTEM.ADR(act), 0, NSIG DIV 8) = 0);
+  (*rv := 0;  rv := rv DIV 0;*)
+END SetSignalHandlers;
 
 (* ----------------------------- Trap handlers ------------------------------ *)
 
@@ -428,15 +660,24 @@ BEGIN
   IF handle < 0 THEN  (* Try again readonly *)
     handle := sysopen(SYSTEM.ADR(name), ORDONLY, 0)
   END;
-  (* Consider mapping Linux error code to dtandard error code *)
+  (* ws("Host.FileOld("); ws(name); ws(") -> "); wh(handle); wsn("H."); *)
+  (* Consider mapping Linux error code to some standard error code *)
+  ws("Host.FileOld('"); ws(name); ws("') -> "); wh(handle); wsn("H.");
 RETURN handle END FileOld;
 
 
 PROCEDURE FileNew*(): INTEGER;  (* Create an anonymous file *)
-VAR dir: ARRAY 2 OF CHAR;
-BEGIN dir := ".";
-RETURN sysopen(SYSTEM.ADR(dir), OTMPFILE + ORDWR, 1A0H)  (* 0640: WR- *)
-END FileNew;
+VAR fn: ARRAY 40 OF CHAR;  h, rv: INTEGER;
+BEGIN  (* Would like to use O_TMPFILE but doesn't work on wsl2. *)
+  INC(Anonfnum);  IntToDecimal(Anonfnum, fn);  Append("anonymous", fn);
+  h := sysopen(SYSTEM.ADR(fn), OCREAT+ORDWR, SIRUSR+SIWUSR+SIRGRP);
+  (* ws("Host.FileNew:open() -> "); wh(h); wsn("H."); *)
+  IF h >= 0 THEN
+    rv := sysunlink(SYSTEM.ADR(fn));
+    (* ws("Host.FileNew:unlink('"); ws(fn); ws("') -> "); wh(rv); wsn("H.")*)
+  END;
+  ws("Host.FileNew() -> "); wh(h); wsn("H.");
+RETURN h END FileNew;
 
 
 PROCEDURE FileFlush*(handle: INTEGER);
@@ -450,7 +691,10 @@ BEGIN ASSERT(sysclose(handle) # 0);  handle := -1 END FileClose;
 
 PROCEDURE FileLength*(handle: INTEGER): INTEGER;
 VAR stat: StatDesc;
-BEGIN IF sysfstat(handle, SYSTEM.ADR(stat)) < 0 THEN stat.size := 0 END;
+BEGIN
+  IF sysfstat(handle, SYSTEM.ADR(stat)) < 0 THEN stat.size := 0 END;
+  ws("Host.FileLength("); wh(handle); ws("H) -> "); wh(stat.size); wsn("H.");
+  (*DumpMem(2, SYSTEM.ADR(stat), 0, SYSTEM.SIZE(StatDesc))*)
 RETURN stat.size END FileLength;
 
 
@@ -468,13 +712,23 @@ PROCEDURE FileRegister*(handle: INTEGER; name: ARRAY OF CHAR);
 CONST dir = "";
 VAR rv: INTEGER;
 BEGIN
+  (*ws("Host.FileRegister(h "); wh(handle); ws("H, name "); ws(name); wsn(")");*)
   rv := sysunlink(SYSTEM.ADR(name));  (* Overwrite existing file if any *)
-  ASSERT(syslinkat(handle, SYSTEM.ADR(dir), ATFDCWD, SYSTEM.ADR(name), ATEMPTYPATH) = 0)
+(*rv := syslinkat(handle, SYSTEM.ADR(dir), ATFDCWD, SYSTEM.ADR(name), ATEMPTYPATH);*)
+  rv := syslinkat(handle, 0, ATFDCWD, SYSTEM.ADR(name), ATEMPTYPATH);
+  IF rv # 0 THEN
+    ws("syslinkat(handle "); wh(handle);
+    ws("H, '', ATFDCWD, '"); ws(name);
+    ws("', ATEMPTYPATH) -> -"); wi(-rv); wsn(".")
+  END;
+  ASSERT(rv = 0);
 END FileRegister;
 
 
 PROCEDURE FileUnregister*(handle: INTEGER; name: ARRAY OF CHAR);
-BEGIN ASSERT(sysunlink(SYSTEM.ADR(name)) = 0)
+BEGIN
+  (*ws("Host.FileUnregister(h "); wh(handle); ws("H, name "); ws(name); wsn(")");*)
+  ASSERT(sysunlink(SYSTEM.ADR(name)) = 0)
 END FileUnregister;
 
 
@@ -491,12 +745,32 @@ END FileTime;
 
 
 PROCEDURE FileRead*(h, adr, len: INTEGER): INTEGER;
+VAR rv: INTEGER;
 BEGIN ASSERT(len > 0);
-RETURN sysread(h, adr, len) END FileRead;
+  rv := sysread(h, adr, len);
+  (*
+  ws("Host.FileRead(h "); wh(h); ws("H, adr "); wh(adr);
+  ws("H, len "); wh(len); ws("H, -> "); wh(rv); wsn("H).");
+  *)
+RETURN rv END FileRead;
 
 
 PROCEDURE FileWrite*(h, adr, len: INTEGER);
-BEGIN IF len > 0 THEN ASSERT(syswrite(h, adr, len) = len) END
+VAR byteswritten: INTEGER;
+BEGIN
+  IF len > 0 THEN
+    byteswritten := syswrite(h, adr, len);
+    (*
+    ws("Host.FileWrite(h "); wh(h);
+    ws("H, adr "); wh(adr);
+    ws("H, len "); wh(len);
+    ws("H) -> "); wh(byteswritten); wsn("H.");
+    (*DumpMem(2, adr, adr, len);*)
+    *)
+    IF len # byteswritten THEN
+      Trap(8, "syswrite failed to write all bytes.");
+    END
+  END
 END FileWrite;
 
 
@@ -515,12 +789,14 @@ RETURN heaporg END HeapInit;
 
 
 PROCEDURE Allocate*(size: INTEGER; VAR p, alloc: INTEGER);
-VAR adr, newcommitlen: INTEGER;
+VAR rv, newcommitlen: INTEGER;
 BEGIN
+  (*
   ws("Host.Allocate(size "); wh(size);            wsn("H).");
   ws("  Preload.CoreAdr: "); wh(Preload.CoreAdr); wsn("H.");
   ws("  AllocPtr:    ");     wh(AllocPtr);        wsn("H.");
   ws("  CommitLen:   ");     wh(CommitLen);       wsn("H.");
+  *)
   p     := 0;
   alloc := 0;
   size  := (size + 15) DIV 16 * 16;
@@ -529,11 +805,13 @@ BEGIN
 
       (* Round up to a multiple of 256K *)
       newcommitlen := (AllocPtr + size + 40000H - 1) DIV 40000H * 40000H - Preload.CoreAdr;
+      (*
       ws("* CommitLen increasing from "); wh(CommitLen);
       ws("H to "); wh(newcommitlen); wsn("H *");
+      *)
+      rv := sysmprotect(Preload.CoreAdr+CommitLen, newcommitlen-CommitLen, PROTRWX);
 
-      adr := sysmprotect(Preload.CoreAdr+CommitLen, newcommitlen-CommitLen, PROTRWX);
-      ASSERT(adr = Preload.CoreAdr + CommitLen);
+      ASSERT(rv = 0);
       CommitLen := newcommitlen
     END;
     IF AllocPtr + size <= Preload.CoreAdr + CommitLen THEN
@@ -546,18 +824,92 @@ BEGIN
 END Allocate;
 
 
-(* -------------------------------------------------------------------------- *)
+(* -------------------------- Command line parsing -------------------------- *)
 
-PROCEDURE Init*;
+PROCEDURE ParseCommandLine(pargs: INTEGER);
+VAR
+  i, j, k:  INTEGER;
+  argc:     INTEGER;
+  modstart: INTEGER;
+  modlimit: INTEGER;
+  p:        INTEGER;
+  ch:       CHAR;
+  quote:    BOOLEAN;
+BEGIN
+  SYSTEM.GET(pargs, argc);  INC(pargs, 8);
+
+  (* Parse program name *)
+  SYSTEM.GET(pargs, p);  INC(pargs, 8);
+  i := 0;  modstart := 0;  modlimit := -1;
+  SYSTEM.GET(p, ch);  INC(p);
+  WHILE ch # 0X DO
+    IF    ch = "." THEN modlimit := i
+    ELSIF ch = "/" THEN modlimit := -1;  modstart := i+1
+    END;
+    CommandLine[i] := ch;  INC(i);
+    SYSTEM.GET(p, ch);  INC(p);
+  END;
+
+  ArgStart := i;
+  IF modlimit < 0 THEN modlimit := i END;
+
+  (* Extract module and command names from program name, if any *)
+  j := modstart;
+  k := 0;
+  WHILE j < modlimit DO
+    CmdModule[k] := CommandLine[j];
+    INC(k);  INC(j)
+  END;
+  CmdModule[k] := 0X;
+  IF (k > 0) & (CommandLine[j] = ".") THEN
+    INC(j); k := 0;
+    WHILE j < i DO CmdCommand[k] := CommandLine[j];  INC(j);  INC(k) END;
+    CmdCommand[k] := 0X
+  END;
+
+  (* Add arguments *)
+  SYSTEM.GET(pargs, p);  INC(pargs, 8);
+  WHILE p # 0 DO
+    CommandLine[i] := " ";  INC(i);
+
+    (* Check for spaces in argument *)
+    j := p;
+    SYSTEM.GET(j, ch);  INC(j);
+    WHILE (ch # 0X) & (ch # " ") DO SYSTEM.GET(j, ch);  INC(j) END;
+    quote := ch = " ";
+    IF quote THEN CommandLine[i] := 22X;  INC(i) END;
+    SYSTEM.GET(p, ch);  INC(p);
+    WHILE ch # 0X DO
+      CommandLine[i] := ch;  INC(i);
+      SYSTEM.GET(p, ch);  INC(p)
+    END;
+    IF quote THEN CommandLine[i] := 22X;  INC(i) END;
+
+    SYSTEM.GET(pargs, p);  INC(pargs, 8)
+  END;
+
+  CommandLine[i] := 0X;
+  IF CommandLine[ArgStart] = " " THEN INC(ArgStart) END;
+
+  (*
+  ws("CommandLine: '"); ws(CommandLine); wsn("'.");
+  ws("CmdModule:   '"); ws(CmdModule);   wsn("'.");
+  ws("CmdCommand:  '"); ws(CmdCommand);  wsn("'.");
+  ws("ArgStart:    ");  wi(ArgStart);    wsn(".");
+  *)
+END ParseCommandLine;
+
+
+PROCEDURE Init*(stackorg: INTEGER);
 VAR
   res:        INTEGER;
   reserveadr: INTEGER;
   reservelen: INTEGER;
 BEGIN
   Newline := $0A 00$;
-  wsn("Host starting.");
+  (*wsn("Linux host starting.");*)
 
-  (* End of each month based on year starting 1st March *)
+  (* Length of each month based on year starting 1st March *)
   MonthLen[ 0] := 31;  (* March     *)
   MonthLen[ 1] := 30;  (* April     *)
   MonthLen[ 2] := 31;  (* May       *)
@@ -578,14 +930,27 @@ BEGIN
   Handlers[NilPointerDereferenceProc] := NilPointerDereferenceHandler;
   Handlers[TypeGuardFailureProc]      := TypeGuardFailureHandler;
 
+  SetSignalHandlers;
+
   AllocPtr   := Preload.CoreAdr + Preload.CoreSize;
   CommitLen  := (Preload.CoreSize + 0FFFH) DIV 1000H * 1000H;
   reserveadr := Preload.CoreAdr + CommitLen;
   reservelen := 80000000H - CommitLen;
   res := sysmmap(reserveadr, reservelen, PROTNONE, MAPPRIVATE + MAPFIXED + MAPANON, -1, 0);
-  ASSERT(res = reserveadr)
+  ASSERT(res = reserveadr);
+
+  Anonfnum := Time();
+
+  ParseCommandLine(stackorg)
 END Init;
 
+
+END Host.
+
+
+
+
+(* -------------------------------- obsolete -------------------------------- *)
 
 PROCEDURE TestClock(time: INTEGER);
 CONST day = 24 * 60 * 60 * 10000000;
@@ -657,8 +1022,7 @@ END TimeTest;
 
 
 
-BEGIN Init;
+BEGIN Init(SYSTEM.REG(4));
   TimeTest;
   wsn("Host complete.");
   sysexit(0)
-END Host.

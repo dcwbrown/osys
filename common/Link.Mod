@@ -192,6 +192,7 @@ VAR
 (* Convenience functions *)
 PROCEDURE wn; BEGIN Texts.WriteLn(W); Texts.Append(Texts.Log, W.buf) END wn;
 
+PROCEDURE wc (c: CHAR);          BEGIN Texts.Write(W, c)           END wc;
 PROCEDURE ws (s: ARRAY OF CHAR); BEGIN Texts.WriteString(W, s)     END ws;
 PROCEDURE wsn(s: ARRAY OF CHAR); BEGIN Texts.WriteString(W, s); wn END wsn;
 PROCEDURE wh (i: INTEGER);       BEGIN Texts.WriteHex(W, i)        END wh;
@@ -813,297 +814,6 @@ BEGIN
 RETURN Files.Pos(Binary) - fadr END MakeIconResource;
 
 
-(* ---------------------- Generate EXE for one target ----------------------- *)
-
-PROCEDURE GenerateEXE*(name: ARRAY OF CHAR);
-VAR
-  PEname:      ARRAY 64 OF CHAR;
-  emb:         EmbeddedModule;
-  prev1:       Files.FileName;
-  prev2:       Files.FileName;
-  prev3:       Files.FileName;
-  res:         INTEGER;
-  HeaderSize:  INTEGER;
-  FadrPreload: INTEGER;    RvaPreload:  INTEGER;    PreloadSize: INTEGER;
-  FadrIcon:    INTEGER;    RvaIcon:     INTEGER;    IconSize:    INTEGER;
-  FadrImport:  INTEGER;    RvaImport:   INTEGER;
-  FadrModules: INTEGER;    RvaModules:  INTEGER;
-  ImageBase:   INTEGER;    MadrPreload: INTEGER;
-  numsections: INTEGER;
-BEGIN
-  PEname[0] := 0X;  H.Append(name, PEname);  H.Append(".exe", PEname);
-  BinFile := Files.New(PEname);
-  Files.Set(Binary, BinFile, 0);
-
-  HandlersOffset := SYSTEM.SIZE(H.PreLoadVars)
-                  + 8 * (Kernel32ImportCount + Gdi32ImportCount + User32ImportCount);
-  LinkInnerCore;
-
-  (* Section order:                   *)
-  (*   o  Preload binaries (optional) *)
-  (*   o  Icon resource    (optional) *)
-  (*   o  Import table                *)
-  (*   o  Inner core                  *)
-
-  numsections := 2;
-  IF FirstPreload # NIL THEN INC(numsections) END;
-  IF IconPng      # NIL THEN INC(numsections) END;
-
-  HeaderSize := FileAlign(SYSTEM.SIZE(PEheader)
-              + numsections * SYSTEM.SIZE(SectionHeader));
-
-  FadrPreload := FileAlign(HeaderSize);
-  RvaPreload  := MemAlign(HeaderSize);
-
-  (* Copy preload modules to Preload section *)
-  PreloadSize := 0;
-  IF FirstPreload # NIL THEN
-    emb := FirstPreload;
-    Files.Set(Binary, BinFile, FadrPreload);
-    WHILE emb # NIL DO
-      IF ~IsInnerCore(emb.mod.name) THEN
-        CopyFile(emb.file, Binary, emb.size);
-        INC(PreloadSize, emb.size)
-      END;
-      emb := emb.next
-    END;
-    Files.WriteInt(Binary, 0);  (* Terminate preload modules with empty name *)
-    INC(PreloadSize, 16);
-  END;
-
-  (* Copy icon section (as PE resources) *)
-  IconSize := 0;
-  FadrIcon := FileAlign(FadrPreload + PreloadSize);
-  RvaIcon  := MemAlign(RvaPreload + PreloadSize);
-  IF IconPng # NIL THEN IconSize := MakeIconResource(FadrIcon, RvaIcon) END;
-
-  FadrImport := FileAlign(FadrIcon + IconSize);
-  RvaImport  := MemAlign(RvaIcon + IconSize);
-  BuildImportTables(RvaImport);
-
-  (* Determine file and virtual addresses *)
-
-  FadrModules := FileAlign(FadrImport + ImportSize);
-  RvaModules  := Align(RvaImport + ImportSize, 10000H);
-  ImageBase   := OberonCoreBase - RvaModules;
-
-  ASSERT(RvaImport  + ImportSize <= RvaModules);  (* If fails increase RvaModules  *)
-
-  (* Fill in target addresses *)
-  Idt.Kernel32Target := RvaModules + Core.HostVars + SYSTEM.SIZE(H.PreLoadVars);
-  Idt.Gdi32Target    := Idt.Kernel32Target + 8 * Kernel32ImportCount;
-  Idt.User32Target   := Idt.Gdi32Target    + 8 * Gdi32ImportCount;
-
-  (* Initialisation is at Modules body - it takes care *)
-  (* of initialising Files, Kernel and Host.           *)
-  MadrPreload := 0;
-  IF PreloadSize > 0 THEN MadrPreload := ImageBase + RvaPreload END;
-  PresetWinHost(FadrModules, ImageBase, MadrPreload, IconSize, RvaIcon);
-
-  Files.Set(Binary, BinFile, FadrImport);
-  Files.WriteRaw(Binary, Idt);
-  Files.WriteMem(Binary, SYSTEM.ADR(ImportHints), ImportHintSize);
-  ASSERT(ImportSize = Align(Files.Pos(Binary), 16) - FadrImport);
-
-  WritePEHeader(ImageBase,   HeaderSize,  numsections,
-                FadrPreload, RvaPreload,
-                FadrIcon,    RvaIcon,
-                FadrImport,  RvaImport,
-                FadrModules, RvaModules);
-
-  Files.Set(Binary, BinFile, FadrModules);
-  Files.WriteMem(Binary, SYSTEM.ADR(Core.Mem), Core.Size);
-
-  IF Files.Pos(Binary) MOD FileAlignment # 0 THEN
-    Files.Set(Binary, BinFile, FileAlign(Files.Pos(Binary))-1);
-    Files.WriteByte(Binary, 0);
-  END;
-
-  (* Shuffle previous versions *)
-  prev1 := BinFile.name; H.Append(".-1", prev1);
-  prev2 := BinFile.name; H.Append(".-2", prev2);
-  prev3 := BinFile.name; H.Append(".-3", prev3);
-
-  res   := H.FileMove(prev2, prev3);
-  res   := H.FileMove(prev1, prev2);
-  res   := H.FileMove(BinFile.name, prev1);
-
-  Files.Register(BinFile);
-
-  FirstPreload := NIL;
-  LastPreload  := NIL
-END GenerateEXE;
-
-
-(* ---------------------- Generate ELF for one target ----------------------- *)
-
-PROCEDURE PresetLinHost(MadrPreload: INTEGER);
-VAR
-  preloadvars: H.PreLoadVars;
-BEGIN
-  H.ZeroFill(preloadvars);
-  preloadvars.Exeadr      := 0;
-  preloadvars.CoreAdr     := OberonCoreBase;
-  preloadvars.CoreSize    := Core.Size;
-  preloadvars.MadrPreload := MadrPreload;
-  SYSTEM.COPY(SYSTEM.ADR(preloadvars), SYSTEM.ADR(Core.Mem[Core.HostVars]), SYSTEM.SIZE(H.PreLoadVars));
-END PresetLinHost;
-
-
-PROCEDURE GenerateELF*(name: ARRAY OF CHAR);
-VAR
-  HostHdr:    Modules.Module;
-  KernelHdr:  Modules.Module;
-  FilesHdr:   Modules.Module;
-  ModulesHdr: Modules.Module;
-  entry:      INTEGER;
-  prev1:      Files.FileName;
-  prev2:      Files.FileName;
-  prev3:      Files.FileName;
-  res:        INTEGER;
-  fadrcore:   INTEGER;
-BEGIN
-  Core.ModCount   := 0;
-  Core.Size       := 0;
-  Core.EntryPoint := 0;
-  HandlersOffset  := SYSTEM.SIZE(H.PreLoadVars);
-
-  HostHdr        := LoadModule("Host.x64");
-  HostHdr.next   := NIL;
-
-  Core.HostVars   := HostHdr.vars - OberonCoreBase;
-  Core.EntryPoint := ORD(HostHdr) - SYSTEM.ADR(Core.Mem) + HostHdr.init;
-  PresetLinHost(0);
-
-  entry    := OberonCoreBase + Core.EntryPoint;
-  fadrcore := 1000H;
-
-  (*
-  LinkInnerCore("LinHost.x64");
-  entry := RvaModules + Core.EntryPoint;
-  *)
-
-  BinFile := Files.New(name);
-  Files.Set(Binary, BinFile, 0);
-  Files.WriteByte(Binary, 7FH);  Files.WriteMem(Binary, SYSTEM.ADR("ELF"), 3);
-  Files.WriteByte(Binary, 2);     (* 64 bit                                 *)
-  Files.WriteByte(Binary, 1);     (* Little endian                          *)
-  Files.WriteByte(Binary, 1);     (* ELF v1                                 *)
-  Files.WriteByte(Binary, 3);     (* Linux                                  *)
-  Files.WriteInt (Binary, 0);     (* e_ident unused by Linux >= 2.6         *)
-  WriteWord(2);                   (* Executable file                        *)
-  WriteWord(3EH);                 (* AMD x86-64                             *)
-  WriteDWord(1);                  (* Original version of ELF                *)
-  Files.WriteInt(Binary, entry);  (* Entry point                            *)
-  Files.WriteInt(Binary, 40H);    (* Address of program header table        *)
-  Files.WriteInt(Binary, 0);      (* Address of section header table        *)
-  WriteDWord(0);                  (* Flags                                  *)
-  WriteWord(40H);                 (* Size of this header                    *)
-  WriteWord(38H);                 (* Program header table entry size        *)
-  WriteWord(1);                   (* Number of program header table entries *)
-  WriteWord(40H);                 (* Section header table entry size        *)
-  WriteWord(0);                   (* Number of section header table entries *)
-  WriteWord(0);                   (* Section index containing names         *)
-  ASSERT(Files.Pos(Binary) = 40H);
-
-  (* Core segment program header *)
-  WriteDWord(1);                     (* Loadable segment                      *)
-  WriteDWord(7);                     (* Readable, writeable, executable       *)
-  Files.WriteInt(Binary, fadrcore);  (* Offset of segment content in ELF file *)
-  Files.WriteInt(Binary, OberonCoreBase);  (* Virtual address of section in memory *)
-  Files.WriteInt(Binary, 0);         (* Physical address (not used)           *)
-  Files.WriteInt(Binary, Core.Size); (* Size of section in ELF file           *)
-  Files.WriteInt(Binary, Core.Size); (* Size of section in memory             *)
-  Files.WriteInt(Binary, 1000H);     (* Alignment                             *)
-  ASSERT(Files.Pos(Binary) = 78H);
-
-  (* Core *)
-  Files.Set(Binary, BinFile, fadrcore);
-  Files.WriteMem(Binary, SYSTEM.ADR(Core.Mem), Core.Size);
-
-  (* Shuffle previous versions *)
-  prev1 := BinFile.name; H.Append(".-1", prev1);
-  prev2 := BinFile.name; H.Append(".-2", prev2);
-  prev3 := BinFile.name; H.Append(".-3", prev3);
-
-  res   := H.FileMove(prev2, prev3);
-  res   := H.FileMove(prev1, prev2);
-  res   := H.FileMove(BinFile.name, prev1);
-
-  Files.Register(BinFile);
-
-  FirstPreload := NIL;
-  LastPreload  := NIL
-END GenerateELF;
-
-
-(* --------------------------- Preloaded modules ---------------------------- *)
-
-PROCEDURE IsPreloaded(name: ARRAY OF CHAR): BOOLEAN;
-VAR emb: EmbeddedModule;
-BEGIN emb := FirstPreload;
-  WHILE (emb # NIL) & (emb.mod.name # name) DO emb := emb.next END;
-RETURN emb # NIL END IsPreloaded;
-
-
-PROCEDURE AddPreloadModule(name: ARRAY OF CHAR; reqkey: INTEGER);
-VAR
-  fn:   Files.FileName;
-  f:    Files.File;
-  size: INTEGER;
-  r:    Files.Rider;
-  hdr:  Modules.ModDesc;
-  imp:  Modules.ModuleName;
-  key:  INTEGER;
-  emb:  EmbeddedModule;
-
-BEGIN
-  IF ~IsPreloaded(name) THEN
-    fn := name;  H.Append(".x64", fn);  f := Files.Old(fn);
-    IF f = NIL THEN
-      ws("Link.Mod cannot find "); ws(fn);
-      wsn(".");  ASSERT(FALSE)
-    ELSE
-      Files.Set(r, f, 0);  Files.ReadRaw(r, hdr);
-      IF hdr.magic # "Oberon5" THEN
-        ws("Link.Mod: "); ws(fn); wsn(" corrupt header.");
-        ASSERT(FALSE)
-      ELSIF hdr.name # name THEN
-        ws("Link.Mod: "); ws(fn); wsn(" wrong module name.");
-        ASSERT(FALSE)
-      ELSIF (reqkey # 0) & (reqkey # hdr.key) THEN
-        ws("Link.Mod: "); ws(fn); ws(" key ");  wh(hdr.key);
-        ws("H not requested key ");  wh(reqkey);  wsn("H.");
-        ASSERT(FALSE)
-      ELSE
-        size := Files.Length(f);
-        IF (size <= 0) OR (size MOD 16 # 0) THEN
-          ws("Link.Mod: "); ws(fn); ws(" length "); wi(size);
-          wsn(" is not a whole multiple of 16.");
-          ASSERT(FALSE)
-        ELSE
-          Files.Set(r, f, (SYSTEM.SIZE(Modules.ModDesc) + 15) DIV 16 * 16);
-          Files.ReadString(r, imp);
-          WHILE imp[0] # 0X DO
-            Files.ReadInt(r, key);
-            AddPreloadModule(imp, key);
-            Files.ReadString(r, imp);
-          END;
-          NEW(emb);
-          emb.size := size;
-          emb.next := NIL;
-          emb.mod  := hdr;
-          emb.file := f;
-          IF FirstPreload = NIL THEN FirstPreload := emb ELSE LastPreload.next := emb END;
-          LastPreload := emb;
-          INC(PreloadSize, emb.size)
-        END
-      END
-    END
-  END
-END AddPreloadModule;
-
-
 (* -------------------- Check for icon file <target>.png -------------------- *)
 
 PROCEDURE SwapDW(x: INTEGER): INTEGER;
@@ -1166,6 +876,327 @@ BEGIN
 END CheckIcon;
 
 
+(* ------------------------ Write preload to binary ------------------------- *)
+
+PROCEDURE WritePreload(fadr: INTEGER);
+VAR emb: EmbeddedModule;
+BEGIN
+  PreloadSize := 0;
+  IF FirstPreload # NIL THEN
+    emb := FirstPreload;
+    Files.Set(Binary, BinFile, fadr);
+    WHILE emb # NIL DO
+      IF ~IsInnerCore(emb.mod.name) THEN
+        CopyFile(emb.file, Binary, emb.size);
+        INC(PreloadSize, emb.size)
+      END;
+      emb := emb.next
+    END;
+    Files.WriteInt(Binary, 0);  (* Terminate preload modules with empty name *)
+    INC(PreloadSize, 16);
+  END;
+END WritePreload;
+
+
+(* ---------------------- Generate EXE for one target ----------------------- *)
+
+PROCEDURE GeneratePE*(name: ARRAY OF CHAR);
+VAR
+  PEname:      ARRAY 64 OF CHAR;
+  prev1:       Files.FileName;
+  prev2:       Files.FileName;
+  prev3:       Files.FileName;
+  res:         INTEGER;
+  HeaderSize:  INTEGER;
+  FadrPreload: INTEGER;    RvaPreload:  INTEGER;
+  FadrIcon:    INTEGER;    RvaIcon:     INTEGER;    IconSize:    INTEGER;
+  FadrImport:  INTEGER;    RvaImport:   INTEGER;
+  FadrModules: INTEGER;    RvaModules:  INTEGER;
+  ImageBase:   INTEGER;    MadrPreload: INTEGER;
+  numsections: INTEGER;
+BEGIN
+  CheckIcon(name);
+
+  PEname[0] := 0X;  H.Append(name, PEname);  H.Append(".exe", PEname);
+  BinFile := Files.New(PEname);
+  Files.Set(Binary, BinFile, 0);
+
+  HandlersOffset := SYSTEM.SIZE(H.PreLoadVars)
+                  + 8 * (Kernel32ImportCount + Gdi32ImportCount + User32ImportCount);
+  LinkInnerCore;
+
+  (* Section order:                   *)
+  (*   o  Preload binaries (optional) *)
+  (*   o  Icon resource    (optional) *)
+  (*   o  Import table                *)
+  (*   o  Inner core                  *)
+
+  numsections := 2;
+  IF FirstPreload # NIL THEN INC(numsections) END;
+  IF IconPng      # NIL THEN INC(numsections) END;
+
+  HeaderSize := FileAlign(SYSTEM.SIZE(PEheader)
+              + numsections * SYSTEM.SIZE(SectionHeader));
+
+  FadrPreload := FileAlign(HeaderSize);
+  RvaPreload  := MemAlign(HeaderSize);
+
+  WritePreload(FadrPreload);
+
+
+  (* Copy icon section (as PE resources) *)
+  IconSize := 0;
+  FadrIcon := FileAlign(FadrPreload + PreloadSize);
+  RvaIcon  := MemAlign(RvaPreload + PreloadSize);
+  IF IconPng # NIL THEN IconSize := MakeIconResource(FadrIcon, RvaIcon) END;
+
+  FadrImport := FileAlign(FadrIcon + IconSize);
+  RvaImport  := MemAlign(RvaIcon + IconSize);
+  BuildImportTables(RvaImport);
+
+  (* Determine file and virtual addresses *)
+
+  FadrModules := FileAlign(FadrImport + ImportSize);
+  RvaModules  := Align(RvaImport + ImportSize, 10000H);
+  ImageBase   := OberonCoreBase - RvaModules;
+
+  ASSERT(RvaImport  + ImportSize <= RvaModules);  (* If fails increase RvaModules  *)
+
+  (* Fill in target addresses *)
+  Idt.Kernel32Target := RvaModules + Core.HostVars + SYSTEM.SIZE(H.PreLoadVars);
+  Idt.Gdi32Target    := Idt.Kernel32Target + 8 * Kernel32ImportCount;
+  Idt.User32Target   := Idt.Gdi32Target    + 8 * Gdi32ImportCount;
+
+  (* Initialisation is at Modules body - it takes care *)
+  (* of initialising Files, Kernel and Host.           *)
+  MadrPreload := 0;
+  IF PreloadSize > 0 THEN MadrPreload := ImageBase + RvaPreload END;
+  PresetWinHost(FadrModules, ImageBase, MadrPreload, IconSize, RvaIcon);
+
+  Files.Set(Binary, BinFile, FadrImport);
+  Files.WriteRaw(Binary, Idt);
+  Files.WriteMem(Binary, SYSTEM.ADR(ImportHints), ImportHintSize);
+  ASSERT(ImportSize = Align(Files.Pos(Binary), 16) - FadrImport);
+
+  WritePEHeader(ImageBase,   HeaderSize,  numsections,
+                FadrPreload, RvaPreload,
+                FadrIcon,    RvaIcon,
+                FadrImport,  RvaImport,
+                FadrModules, RvaModules);
+
+  Files.Set(Binary, BinFile, FadrModules);
+  Files.WriteMem(Binary, SYSTEM.ADR(Core.Mem), Core.Size);
+
+  IF Files.Pos(Binary) MOD FileAlignment # 0 THEN
+    Files.Set(Binary, BinFile, FileAlign(Files.Pos(Binary))-1);
+    Files.WriteByte(Binary, 0);
+  END;
+
+  (* Shuffle previous versions *)
+  prev1 := BinFile.name; H.Append(".-1", prev1);
+  prev2 := BinFile.name; H.Append(".-2", prev2);
+  prev3 := BinFile.name; H.Append(".-3", prev3);
+
+  res   := H.FileMove(prev2, prev3);
+  res   := H.FileMove(prev1, prev2);
+  res   := H.FileMove(BinFile.name, prev1);
+
+  Files.Register(BinFile);
+
+  FirstPreload := NIL;
+  LastPreload  := NIL
+END GeneratePE;
+
+
+(* ---------------------- Generate ELF for one target ----------------------- *)
+
+PROCEDURE PresetLinHost(MadrPreload: INTEGER);
+VAR
+  preloadvars: H.PreLoadVars;
+BEGIN
+  H.ZeroFill(preloadvars);
+  preloadvars.Exeadr      := 0;
+  preloadvars.CoreAdr     := OberonCoreBase;
+  preloadvars.CoreSize    := Core.Size;
+  preloadvars.MadrPreload := MadrPreload;
+  SYSTEM.COPY(SYSTEM.ADR(preloadvars), SYSTEM.ADR(Core.Mem[Core.HostVars]), SYSTEM.SIZE(H.PreLoadVars));
+END PresetLinHost;
+
+
+PROCEDURE GenerateELF*(name: ARRAY OF CHAR);
+VAR
+  HostHdr:     Modules.Module;
+  KernelHdr:   Modules.Module;
+  FilesHdr:    Modules.Module;
+  ModulesHdr:  Modules.Module;
+  entry:       INTEGER;
+  prev1:       Files.FileName;
+  prev2:       Files.FileName;
+  prev3:       Files.FileName;
+  res:         INTEGER;
+  fadrcore:    INTEGER;
+  fadrpreload: INTEGER;
+  madrpreload: INTEGER;
+  numsegments: INTEGER;
+BEGIN
+  Core.ModCount   := 0;
+  Core.Size       := 0;
+  Core.EntryPoint := 0;
+  HandlersOffset  := SYSTEM.SIZE(H.PreLoadVars);
+
+  LinkInnerCore;
+
+  BinFile := Files.New(name);
+
+  (*H.ws("PreloadSize: "); H.wh(PreloadSize); H.wsn("H.");*)
+  numsegments := 1;
+  fadrcore    := 1000H;
+  IF FirstPreload # NIL THEN
+    INC(numsegments);
+    fadrpreload := 1000H;
+    WritePreload(fadrpreload);
+    fadrcore   := Align(fadrpreload + PreloadSize, 1000H);
+    madrpreload := 4000000H;
+  END;
+
+  PresetLinHost(madrpreload);
+
+  entry    := OberonCoreBase + Core.EntryPoint;
+
+  Files.Set(Binary, BinFile, 0);
+  Files.WriteByte(Binary, 7FH);  Files.WriteMem(Binary, SYSTEM.ADR("ELF"), 3);
+  Files.WriteByte(Binary, 2);     (* 64 bit                                 *)
+  Files.WriteByte(Binary, 1);     (* Little endian                          *)
+  Files.WriteByte(Binary, 1);     (* ELF v1                                 *)
+  Files.WriteByte(Binary, 3);     (* Linux                                  *)
+  Files.WriteInt (Binary, 0);     (* e_ident unused by Linux >= 2.6         *)
+  WriteWord(2);                   (* Executable file                        *)
+  WriteWord(3EH);                 (* AMD x86-64                             *)
+  WriteDWord(1);                  (* Original version of ELF                *)
+  Files.WriteInt(Binary, entry);  (* Entry point                            *)
+  Files.WriteInt(Binary, 40H);    (* Address of program header table        *)
+  Files.WriteInt(Binary, 0);      (* Address of section header table        *)
+  WriteDWord(0);                  (* Flags                                  *)
+  WriteWord(40H);                 (* Size of this header                    *)
+  WriteWord(38H);                 (* Program header table entry size        *)
+  WriteWord(numsegments);         (* Number of program header table entries *)
+  WriteWord(40H);                 (* Section header table entry size        *)
+  WriteWord(0);                   (* Number of section header table entries *)
+  WriteWord(0);                   (* Section index containing names         *)
+  ASSERT(Files.Pos(Binary) = 40H);
+
+  IF FirstPreload # NIL THEN
+    (* Preload segment header *)
+    WriteDWord(1);                        (* Loadable segment                      *)
+    WriteDWord(4);                        (* Readable                              *)
+    Files.WriteInt(Binary, fadrpreload);  (* Offset of segment content in ELF file *)
+    Files.WriteInt(Binary, madrpreload);   (* Virtual address of section in memory *)
+    Files.WriteInt(Binary, 0);            (* Physical address (not used)           *)
+    Files.WriteInt(Binary, PreloadSize);  (* Size of section in ELF file           *)
+    Files.WriteInt(Binary, PreloadSize);  (* Size of section in memory             *)
+    Files.WriteInt(Binary, 1000H);        (* Alignment                             *)
+  END;
+
+  (* Core segment program header *)
+  WriteDWord(1);                     (* Loadable segment                      *)
+  WriteDWord(7);                     (* Readable, writeable, executable       *)
+  Files.WriteInt(Binary, fadrcore);  (* Offset of segment content in ELF file *)
+  Files.WriteInt(Binary, OberonCoreBase);  (* Virtual address of section in memory *)
+  Files.WriteInt(Binary, 0);         (* Physical address (not used)           *)
+  Files.WriteInt(Binary, Core.Size); (* Size of section in ELF file           *)
+  Files.WriteInt(Binary, Core.Size); (* Size of section in memory             *)
+  Files.WriteInt(Binary, 1000H);     (* Alignment                             *)
+
+  ASSERT(Files.Pos(Binary) = 40H + 38H * numsegments);
+
+  (* Core *)
+  Files.Set(Binary, BinFile, fadrcore);
+  Files.WriteMem(Binary, SYSTEM.ADR(Core.Mem), Core.Size);
+
+  (* Shuffle previous versions *)
+  prev1 := BinFile.name; H.Append(".-1", prev1);
+  prev2 := BinFile.name; H.Append(".-2", prev2);
+  prev3 := BinFile.name; H.Append(".-3", prev3);
+
+  res   := H.FileMove(prev2, prev3);
+  res   := H.FileMove(prev1, prev2);
+  res   := H.FileMove(BinFile.name, prev1);
+
+  Files.Register(BinFile);
+
+  FirstPreload := NIL;
+  LastPreload  := NIL
+END GenerateELF;
+
+
+(* --------------------------- Preloaded modules ---------------------------- *)
+
+PROCEDURE IsAlreadyPreloaded(name: ARRAY OF CHAR): BOOLEAN;
+VAR emb: EmbeddedModule;
+BEGIN emb := FirstPreload;
+  WHILE (emb # NIL) & (emb.mod.name # name) DO emb := emb.next END
+RETURN emb # NIL END IsAlreadyPreloaded;
+
+
+PROCEDURE AddPreloadModule(name: ARRAY OF CHAR; reqkey: INTEGER);
+VAR
+  fn:   Files.FileName;
+  f:    Files.File;
+  size: INTEGER;
+  r:    Files.Rider;
+  hdr:  Modules.ModDesc;
+  imp:  Modules.ModuleName;
+  key:  INTEGER;
+  emb:  EmbeddedModule;
+
+BEGIN
+  IF ~(IsInnerCore(name) OR IsAlreadyPreloaded(name)) THEN
+    (*H.ws("Adding preload module "); H.ws(name); H.wsn(".");*)
+    fn := name;  H.Append(".x64", fn);  f := Files.Old(fn);
+    IF f = NIL THEN
+      ws("Link.Mod cannot find "); ws(fn);
+      wsn(".");  ASSERT(FALSE)
+    ELSE
+      Files.Set(r, f, 0);  Files.ReadRaw(r, hdr);
+      IF hdr.magic # "Oberon5" THEN
+        ws("Link.Mod: "); ws(fn); wsn(" corrupt header.");
+        ASSERT(FALSE)
+      ELSIF hdr.name # name THEN
+        ws("Link.Mod: "); ws(fn); wsn(" wrong module name.");
+        ASSERT(FALSE)
+      ELSIF (reqkey # 0) & (reqkey # hdr.key) THEN
+        ws("Link.Mod: "); ws(fn); ws(" key ");  wh(hdr.key);
+        ws("H not requested key ");  wh(reqkey);  wsn("H.");
+        ASSERT(FALSE)
+      ELSE
+        size := Files.Length(f);
+        IF (size <= 0) OR (size MOD 16 # 0) THEN
+          ws("Link.Mod: "); ws(fn); ws(" length "); wi(size);
+          wsn(" is not a whole multiple of 16.");
+          ASSERT(FALSE)
+        ELSE
+          Files.Set(r, f, (SYSTEM.SIZE(Modules.ModDesc) + 15) DIV 16 * 16);
+          Files.ReadString(r, imp);
+          WHILE imp[0] # 0X DO
+            Files.ReadInt(r, key);
+            AddPreloadModule(imp, key);
+            Files.ReadString(r, imp);
+          END;
+          NEW(emb);
+          emb.size := size;
+          emb.next := NIL;
+          emb.mod  := hdr;
+          emb.file := f;
+          IF FirstPreload = NIL THEN FirstPreload := emb ELSE LastPreload.next := emb END;
+          LastPreload := emb;
+          INC(PreloadSize, emb.size)
+        END
+      END
+    END
+  END
+END AddPreloadModule;
+
+
 PROCEDURE ParseTarget(
   VAR r: Texts.Reader;
   VAR ch: CHAR;
@@ -1194,23 +1225,22 @@ BEGIN
 END ParseTarget;
 
 
-PROCEDURE Link*;
+PROCEDURE Link(tgthost: INTEGER);
 VAR
   r:       Texts.Reader;
   ch:      CHAR;
   target:  ARRAY 64 OF CHAR;
   modname: ARRAY 64 OF CHAR;
   i:       INTEGER;
-  tgthost: INTEGER;
 BEGIN
-  tgthost := Win;
   (* Parse argument modname[.commandname] from parameter as arg *)
   Texts.OpenReader(r, Texts.Par.text, Texts.Par.pos);
   Texts.Read(r, ch);
 
   ParseTarget(r, ch, target, modname);
   WHILE (target[0] # 0X) & (target # "~") DO
-    ws("  linking ");  wsn(target);
+    ws("  linking "); ws(target);
+    IF tgthost = Win THEN wsn(" as Windows PE.") ELSE wsn(" as Linux ELF.") END;
 
     AddPreloadModule(modname, 0);
 
@@ -1227,22 +1257,14 @@ BEGIN
       WHILE ch = " " DO Texts.Read(r, ch) END
     END;
 
-    IF ch = "/" THEN
-      Texts.Read(r, ch);
-      IF ch = "l" THEN tgthost := Lin ELSE tgthost := Win END;
-      REPEAT Texts.Read(r, ch) UNTIL ch > " "
-    END;
-
-    IF tgthost = Win THEN
-      CheckIcon(target);
-      GenerateEXE(target)
-    ELSE
-      GenerateELF(target)
-    END;
+    IF tgthost = Win THEN GeneratePE(target) ELSE GenerateELF(target) END;
 
     ParseTarget(r, ch, target, modname)
   END
 END Link;
+
+PROCEDURE PE*;   BEGIN Link(Win) END PE;
+PROCEDURE ELF*;  BEGIN Link(Lin) END ELF;
 
 
 BEGIN

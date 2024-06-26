@@ -1789,8 +1789,7 @@ PROCEDURE REG*(VAR x: Item);
 VAR r: INTEGER;
 BEGIN Trace(TraceAny, "REG(x "); l.Item(x, Tr); l.sn(")", Tr);
   ASSERT(x.mode = Const);
-  r := Reserve(x.n, {});
-  MoveReg(r, x.n);
+  r := Reserve(x.n, {});  IF r # x.n THEN MoveReg(r, x.n) END;
   x.n := r;  x.mode := Reg
 END REG;
 

@@ -197,12 +197,12 @@ END SetClock;
 
 (* -------------------------------------------------------------------------- *)
 
-PROCEDURE Init*;  (* Called from Files.Init *)
+PROCEDURE Init*(stackorg: INTEGER);  (* Called from Files.Init *)
 CONST
   reserve = 80000000H;  (* Reserve 2GB contiguous *)
   commit  = 2000000H;   (* Initially commit 32MB  *)
 BEGIN
-  H.Init;
+  H.Init(stackorg);
   heapOrg := H.HeapInit(reserve, commit);
 
   heapLim := heapOrg + commit;

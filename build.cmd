@@ -7,7 +7,7 @@ rd /s /q build 2>NUL
 md build >NUL 2>NUL
 cd build
 copy ..\knowngood\ORP.Compile.exe >NUL 2>NUL
-copy ..\knowngood\Link.Link.exe >NUL 2>NUL
+copy ..\knowngood\Link.PE.exe >NUL 2>NUL
 ::
 ::
 ::  goto outercorebuild
@@ -24,8 +24,8 @@ copy /Y ..\knowngood\*.mod >NUL
 copy /Y ..\common\Link.mod >NUL
 ORP.Compile Host.Mod/s Kernel.Mod/s Files.Mod/s Modules.Mod/s ~    || goto end
 ORP.Compile Fonts.Mod/s Texts.Mod/s Link.Mod/s ~                   || goto end
-Link.Link Link                                                     || goto end
-move /Y Link.exe Link.Link.exe >NUL
+Link.PE Link                                                       || goto end
+move /Y Link.exe Link.PE.exe >NUL
 ::
 ::
 :noprebuild
@@ -39,7 +39,7 @@ copy /Y ..\win\*.mod >NUL
 ORP.Compile Host.Mod/s Kernel.Mod/s Files.Mod/s Modules.Mod/s ~     || goto end
 ORP.Compile Fonts.Mod/s Texts.Mod/s Link.Mod/s ORS.Mod/s ~          || goto end
 ORP.Compile ORB.Mod/s X64.Mod/s Listing.Mod/s ORG.Mod/s ORP.Mod/s ~ || goto end
-Link.Link ORP.Compile Link.Link                                     || goto end
+Link.PE ORP.Compile Link.PE                                         || goto end
 ::
 ::
 echo.
@@ -50,7 +50,7 @@ echo.
 ORP.Compile Host.Mod/s Kernel.Mod/s Files.Mod/s Modules.Mod/s ~     || goto end
 ORP.Compile Fonts.Mod/s Texts.Mod/s Link.Mod/s ORS.Mod/s ~          || goto end
 ORP.Compile ORB.Mod/s X64.Mod/s Listing.Mod/s ORG.Mod/s ORP.Mod/s ~ || goto end
-Link.Link ORP.Compile Link.Link                                     || goto end
+Link.PE ORP.Compile Link.PE                                     || goto end
 goto oberonbuild
 ::
 ::
@@ -76,7 +76,7 @@ ORP.Compile FileDir.Mod/s Gui.Mod/s Input.Mod/s Display.Mod/s ~ || goto end
 ORP.Compile Viewers.Mod/s Oberon.Mod/s MenuViewers.Mod/s ~      || goto end
 ORP.Compile TextFrames.Mod/s Edit.Mod/s System.Mod/s ~          || goto end
 copy /Y ..\*.png >NUL 2>NUL
-Link.Link Oberon+System+ORP+Link                                || goto end
+Link.PE Oberon+System+ORP+Link                                || goto end
 
 echo.
 echo --------------------------- Run Oberon system ----------------------------

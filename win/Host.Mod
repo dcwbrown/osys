@@ -331,7 +331,7 @@ END Time;
 
 
 PROCEDURE TimeAsClock*(time: INTEGER): INTEGER;
-(* Returns UTC time in PO2013 format:               *)
+(* Returns UTC time in PO2013 format:            *)
 (* 38/year-2000,4/month,5/day,5/hour,6/min,6/sec *)
 CONST
   DaysperYear     = 365;
@@ -987,6 +987,7 @@ VAR ch: CHAR;
 BEGIN wn; ws("Press any key to continue "); ch := GetChar(); wn
 END PressKeyToContinue;
 
+
 (* -------------------------- Command line parsing -------------------------- *)
 
 PROCEDURE ParseCommandLine;
@@ -1053,7 +1054,7 @@ BEGIN
 END ParseCommandLine;
 
 
-PROCEDURE Init*;  (* Called from Kernel.init *)
+PROCEDURE Init*(stackorg: INTEGER);  (* Called from Kernel.init *)
 VAR
   res:        INTEGER;
   reserveadr: INTEGER;
@@ -1082,8 +1083,10 @@ BEGIN
   MonthLen[ 9] := 31;  (* December  *)
   MonthLen[10] := 31;  (* January   *)
 
+  (*
   ws("Oberon Host.Mod starting at "); WriteClock(TimeAsClock(Time())); wsn(" UTC.");
   ws("Time 0: "); WriteClock(TimeAsClock(0)); wsn(".");
+  *)
 
   Handlers[NewProc]                   := NewPointerHandler;
   Handlers[AssertionFailureProc]      := AssertionFailureHandler;
