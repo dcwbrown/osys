@@ -82,6 +82,13 @@ TYPE
 
   FileName = ARRAY MaxPath OF CHAR;
 
+  HostFile* = RECORD
+    name*:       FileName;
+    registered*: BOOLEAN;
+    handle:      INTEGER;
+    unregname:   FileName;
+  END;
+
 
 (* Start of pre-loaded variables (preset by Link.mod/Windows loader) *)
 
@@ -96,7 +103,7 @@ VAR
                                               handles, flags, env, dir,
                                               startupinfo, processinfo: INTEGER): INTEGER;
   DeleteFileW*:                    PROCEDURE\(lpFilename: INTEGER): INTEGER;
-  ExitProcess*:                    PROCEDURE\(exitcode: INTEGER);
+  ExitProcess:                     PROCEDURE\(exitcode: INTEGER);
   FileTimeToLocalFileTime*:        PROCEDURE\(filetime, localfiletime: INTEGER): INTEGER;
   FileTimeToSystemTime*:           PROCEDURE\(filetime, systemtime: INTEGER): INTEGER;
   FindClose*:                      PROCEDURE\(hfind: INTEGER): INTEGER;
@@ -217,6 +224,8 @@ VAR
   ExitCode:    INTEGER;
   TrapDepth:   INTEGER;
   TrapHandler: PROCEDURE(adr: INTEGER; desc: ARRAY OF CHAR);
+
+  DeleteUnregisteredFilesAtExit: PROCEDURE;
 
   MonthLen:    ARRAY 11 OF INTEGER;
 
@@ -507,7 +516,10 @@ PROCEDURE SetExitCode*(code: INTEGER);
 BEGIN ExitCode := code END SetExitCode;
 
 PROCEDURE Exit*;
-BEGIN ExitProcess(ExitCode) END Exit;
+BEGIN
+  IF DeleteUnregisteredFilesAtExit # NIL THEN DeleteUnregisteredFilesAtExit END;
+  ExitProcess(ExitCode)
+END Exit;
 
 (* ---------------------- Exception and trap handling ----------------------- *)
 
@@ -764,29 +776,46 @@ END MessageBox;
 (* ------------- Platform independent low level file operations ------------- *)
 (* -------------------------------------------------------------------------- *)
 
-PROCEDURE FileOld*(name: ARRAY OF CHAR): INTEGER;
-VAR name16: ARRAY 261 OF SYSTEM.CARD16;  handle: INTEGER;
+PROCEDURE MakeUnregName(VAR file: HostFile);
+VAR stamp: ARRAY 20 OF CHAR;
 BEGIN
-  handle := Utf8ToUtf16(name, name16);
-  handle := CreateFileW(SYSTEM.ADR(name16), 010000000H (* access: GenericAll *),
-            7 (* mode: FileShareRead, FileShareWrite, FileShareDelete *), 0,
-            3 (* disposition: open exisiting *), 0 (* flags: none *), 0);
-  IF handle < 0 THEN  (* Try again read only *)
-    handle := CreateFileW(SYSTEM.ADR(name16), 080000000H (* access: GenericRead *),
-                          1 (* mode: FileShareRead *), 0,
-                          3 (* disposition: open exisiting *), 0 (* flags: none *), 0);
+  file.unregname := file.name;
+  Append(".unreg-", file.unregname);
+  IntToDecimal(Time() MOD 20000000H, stamp);
+  Append(stamp, file.unregname)
+END MakeUnregName;
+
+
+PROCEDURE FileOld*(VAR file: HostFile): BOOLEAN;
+VAR
+  name16:  ARRAY 261 OF SYSTEM.CARD16;
+  rv:      INTEGER;
+  success: BOOLEAN;
+BEGIN
+  rv := Utf8ToUtf16(file.name, name16);
+  file.handle := CreateFileW(SYSTEM.ADR(name16), 010000000H (* access: GenericAll *),
+                             7 (* mode: FileShareRead, FileShareWrite, FileShareDelete *), 0,
+                             3 (* disposition: open exisiting *), 0 (* flags: none *), 0);
+  IF file.handle < 0 THEN  (* Try again read only *)
+    file.handle := CreateFileW(SYSTEM.ADR(name16), 080000000H (* access: GenericRead *),
+                               1 (* mode: FileShareRead *), 0,
+                               3 (* disposition: open exisiting *), 0 (* flags: none *), 0);
   END;
-RETURN handle END FileOld;
-
-
-PROCEDURE MakeTempFile(VAR name: ARRAY OF CHAR);
-VAR temppath: FileName;  res: INTEGER;
-BEGIN
-  res := GetTempPathA(LEN(temppath), SYSTEM.ADR(temppath));
-  ASSERT((res > 0) & (res <= LEN(temppath)));
-  res := GetTempFileNameA(SYSTEM.ADR(temppath), SYSTEM.ADR("OSY"), 0, SYSTEM.ADR(name));
-  ASSERT(res # 0)
-END MakeTempFile;
+  success := file.handle >= 0;
+  IF success THEN
+    MakeUnregName(file);
+    file.registered := TRUE;
+  END
+  (*;
+  ws("Host.FileOld '"); ws(file.name); ws("': -> ");
+  IF success THEN
+    ws("success: handle "); wh(file.handle);
+    ws("h, unregname '"); ws(file.unregname); wsn("'.")
+  ELSE
+    wsn("fail.")
+  END
+  *)
+RETURN success END FileOld;
 
 
 PROCEDURE FileSetDisposition(handle, disposition: INTEGER);
@@ -794,32 +823,53 @@ BEGIN ASSERT(SetFileInformationByHandle(handle, 4, SYSTEM.ADR(disposition), 8) #
 END FileSetDisposition;
 
 
-PROCEDURE FileNew*(): INTEGER;
-VAR tempname: ARRAY MaxPath OF CHAR;  handle: INTEGER;
+PROCEDURE FileNew*(VAR file: HostFile);
+VAR name16: ARRAY 261 OF SYSTEM.CARD16;  rv, retries: INTEGER;
 BEGIN
-  MakeTempFile(tempname);
-  handle := FileOld(tempname);  ASSERT(handle >= 0);
-  FileSetDisposition(handle, 1);  (* 1 = DeleteFile on close *)
-RETURN handle END FileNew;
+  file.registered := FALSE;  retries := 0;
+  REPEAT
+    MakeUnregName(file);
+    rv := Utf8ToUtf16(file.unregname, name16);
+    file.handle := CreateFileW(SYSTEM.ADR(name16), 010000000H (* access: GenericAll *),
+                               7 (* mode: FileShareRead, FileShareWrite, FileShareDelete *), 0,
+                               1 (* disposition: create new *), 0 (* flags: none *), 0);
+    rv := GetLastError();  INC(retries)
+  UNTIL (file.handle >= 0) OR (rv # 80 (* file exists *)) OR (retries > 100);
+  IF retries > 100 THEN Trap(-1, "Couldn't find unused temporary file name") END;
+  IF file.handle < 0 THEN AssertWinError(rv) END;
+  ASSERT(file.handle >= 0);
+  FileSetDisposition(file.handle, 1);  (* 1 = DeleteFile on close *)
+END FileNew;
 
 
-PROCEDURE FileFlush*(handle: INTEGER);
+PROCEDURE FileFlush*(file: HostFile);
 VAR rv: INTEGER;
-BEGIN rv := FlushFileBuffers(handle) END FileFlush;
+BEGIN rv := FlushFileBuffers(file.handle) END FileFlush;
 
 
-PROCEDURE FileClose*(VAR handle: INTEGER);
-BEGIN ASSERT(CloseHandle(handle) # 0);  handle := -1 END FileClose;
+PROCEDURE FileClose*(VAR file: HostFile);
+VAR
+  name16: ARRAY 261 OF SYSTEM.CARD16;
+  rv:     INTEGER;
+BEGIN
+  ASSERT(CloseHandle(file.handle) # 0);
+  IF ~file.registered THEN
+    rv := Utf8ToUtf16(file.unregname, name16);
+    rv := DeleteFileW(SYSTEM.ADR(name16));
+  END;
+  file.handle := -1
+END FileClose;
 
 
-PROCEDURE FileLength*(handle: INTEGER): INTEGER;
+PROCEDURE FileLength*(file: HostFile): INTEGER;
 VAR res, size: INTEGER;
-BEGIN ASSERT(GetFileSizeEx(handle, SYSTEM.ADR(size)) # 0)
+BEGIN ASSERT(GetFileSizeEx(file.handle, SYSTEM.ADR(size)) # 0)
 RETURN size END FileLength;
 
-PROCEDURE FileSetPos*(handle, pos: INTEGER);
+
+PROCEDURE FileSetPos*(file: HostFile; pos: INTEGER);
 BEGIN
-  IF SetFilePointerEx(handle, pos, 0, 0) = 0 THEN
+  IF SetFilePointerEx(file.handle, pos, 0, 0) = 0 THEN
     Trap(0, "Host.FileSetPos: SetFilePointerEx failed")
   END;
 END FileSetPos;
@@ -866,23 +916,23 @@ BEGIN
 END FileSetName;
 
 
-PROCEDURE FileRegister*(handle: INTEGER; name: ARRAY OF CHAR);
+PROCEDURE FileRegister*(VAR file: HostFile);
 BEGIN
-  FileSetDisposition(handle, 0);  (* Remove delete on close flag *)
-  FileSetName(handle, name)
+  FileSetDisposition(file.handle, 0);  (* Remove delete on close flag *)
+  FileSetName(file.handle, file.name);
+  file.registered := TRUE
 END FileRegister;
 
 
-PROCEDURE FileUnregister*(handle: INTEGER; name: ARRAY OF CHAR);
-VAR tempname: ARRAY MaxPath OF CHAR;
+PROCEDURE FileUnregister*(VAR file: HostFile);
 BEGIN
-  MakeTempFile(tempname);
-  FileSetName(handle, tempname);
-  FileSetDisposition(handle, 1);  (* 1 = DeleteFile on close *)
+  FileSetName(file.handle, file.unregname);
+  FileSetDisposition(file.handle, 1);  (* 1 = DeleteFile on close *)
+  file.registered := FALSE;
 END FileUnregister;
 
 
-PROCEDURE FileTime*(hfile: INTEGER): INTEGER;
+PROCEDURE FileTime*(file: HostFile): INTEGER;
 TYPE infodesc = RECORD-
     creation: INTEGER;
     access:   INTEGER;
@@ -894,29 +944,32 @@ VAR
   res:  INTEGER;
   info: infodesc;
 BEGIN
-  res := GetFileInformationByHandleEx(hfile, 0, SYSTEM.ADR(info), SYSTEM.SIZE(infodesc));
+  res := GetFileInformationByHandleEx(file.handle, 0, SYSTEM.ADR(info), SYSTEM.SIZE(infodesc));
   IF res = 0 THEN AssertWinError(GetLastError()) END;
 RETURN info.write - 10000000 * 24 * 60 * 60 * (399 * 365 + 96)  (* Bias to 2000-01-01 UTC *)
 END FileTime;
 
 
-PROCEDURE FileRead*(h, adr, len: INTEGER): INTEGER;
+PROCEDURE FileRead*(file: HostFile; adr, len: INTEGER): INTEGER;
 VAR bytesread: INTEGER;
 BEGIN ASSERT(len > 0);
-  IF ReadFile(h, adr, len, SYSTEM.ADR(bytesread), 0) = 0 THEN  (* read failed *)
+  IF ReadFile(file.handle, adr, len, SYSTEM.ADR(bytesread), 0) = 0 THEN  (* read failed *)
     bytesread := -1
   END;
 RETURN bytesread END FileRead;
 
 
-PROCEDURE FileWrite*(h, adr, len: INTEGER);
+PROCEDURE FileWrite*(file: HostFile; adr, len: INTEGER);
 VAR byteswritten: INTEGER;
 BEGIN
   IF len > 0 THEN
-    ASSERT(WriteFile(h, adr, len, SYSTEM.ADR(byteswritten), 0) # 0);
+    ASSERT(WriteFile(file.handle, adr, len, SYSTEM.ADR(byteswritten), 0) # 0);
     ASSERT(byteswritten = len)
   END
 END FileWrite;
+
+PROCEDURE SetDeleteUnregisteredFilesAtExit*(delete: PROCEDURE);
+BEGIN DeleteUnregisteredFilesAtExit := delete END SetDeleteUnregisteredFilesAtExit;
 
 
 (* -------------------------------------------------------------------------- *)
@@ -1050,8 +1103,7 @@ BEGIN
   WHILE (i < LEN(CommandLine) - 3) & (ch # 0) DO
     PutUtf8(ch, CommandLine, i);  GetUtf16Mem(adr, ch)
   END;
-  CommandLine[i] := 0X;
-
+  CommandLine[i] := 0X
 END ParseCommandLine;
 
 

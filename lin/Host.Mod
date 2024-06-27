@@ -511,7 +511,7 @@ BEGIN
   ELSIF PFRMP  IN err  THEN wsn("RMP violation")
   ELSE                      wsn("permissions violation")
   END;
-  sysexit(99)
+  ExitCode := 99; Exit
 END SignalHandler;
 
 
@@ -554,7 +554,7 @@ BEGIN  (* retoffset is callers local var size *)
   ELSE
     TrapHandler(adr, desc);
   END;
-  sysexit(99)
+  ExitCode := 99; Exit
 END Trap;
 
 PROCEDURE NewPointerHandler();
@@ -686,7 +686,6 @@ BEGIN
   IF file.fd < 0 THEN  (* Try again readonly *)
     file.fd := sysopen(SYSTEM.ADR(file.name), ORDONLY, 0)
   END;
-  ws("Host.FileOld('"); ws(file.name); ws("') -> "); wh(file.fd); wsn("H.");
   success := file.fd >= 0;
   IF success THEN
     MakeUnregName(file);
@@ -717,9 +716,10 @@ BEGIN rv := sysfsync(file.fd) END FileFlush;
 PROCEDURE FileClose*(VAR file: HostFile);
 VAR rv: INTEGER;
 BEGIN
-  ASSERT(sysclose(file.fd) # 0);
-  IF ~file.registered THEN rv := sysunlink(SYSTEM.ADR(file.unregname)) END;
-  file.fd := -1
+  IF file.fd >= 0 THEN
+    ASSERT(sysclose(file.fd) = 0); file.fd := -1;
+    IF ~file.registered THEN rv := sysunlink(SYSTEM.ADR(file.unregname)) END
+  END
 END FileClose;
 
 
@@ -727,8 +727,6 @@ PROCEDURE FileLength*(file: HostFile): INTEGER;
 VAR stat: StatDesc;
 BEGIN
   IF sysfstat(file.fd, SYSTEM.ADR(stat)) < 0 THEN stat.size := 0 END;
-  ws("Host.FileLength("); wh(file.fd); ws("H) -> "); wh(stat.size); wsn("H.");
-  (*DumpMem(2, SYSTEM.ADR(stat), 0, SYSTEM.SIZE(StatDesc))*)
 RETURN stat.size END FileLength;
 
 
@@ -746,7 +744,6 @@ PROCEDURE FileRegister*(VAR file: HostFile);
 VAR rv: INTEGER;
 BEGIN
   ASSERT(~file.registered);
-  (*ws("Host.FileRegister(h "); wh(handle); ws("H, name "); ws(name); wsn(")");*)
   rv := sysunlink(SYSTEM.ADR(file.name));  (* Overwrite existing file if any *)
   rv := sysrename(SYSTEM.ADR(file.unregname), SYSTEM.ADR(file.name));
   IF rv # 0 THEN
@@ -992,83 +989,3 @@ END Init;
 
 
 END Host.
-
-
-
-
-(* -------------------------------- obsolete -------------------------------- *)
-
-PROCEDURE TestClock(time: INTEGER);
-CONST day = 24 * 60 * 60 * 10000000;
-VAR i, clock, year: INTEGER;
-BEGIN
-  clock := TimeAsClock(time);  i := 0;
-  wn; ws("Testing starting from "); wh(time); ws("H - "); WriteClock(clock); ws(":");
-  year := clock DIV 4000000H;
-  WHILE clock DIV 4000000H < year + 1 DO
-    IF (clock DIV 20000H MOD 20H = 1) THEN wn END;
-    IF clock DIV 20000H MOD 20H >= 28 THEN WriteDate(clock);  ws("  ") END;
-    INC(time, day);  clock := TimeAsClock(time);
-    INC(i)
-  END;
-  wn; wn
-END TestClock;
-
-PROCEDURE #229 sysclockgetres(id, adr: INTEGER): INTEGER;
-
-PROCEDURE TimeTest;
-CONST
-  day      = 24 * 60 * 60 * 10000000;
-  year     = 365 * day;
-  leapyear = 366 * day;
-VAR
-  time, clock, i: INTEGER;
-  t1, t2, t3, tres: RECORD- sec, nsec: INTEGER END;
-BEGIN
-  ASSERT(sysclockgetres(0, SYSTEM.ADR(tres)) = 0);
-
-  ws("Timer resolution "); wi(tres.sec);
-  ws(" seconds and "); wi(tres.nsec); wsn(" nanoseconds.");
-
-  WriteClock(TimeAsClock(Time()));  wn;
-
-
-  FOR i := 1 TO 5 DO
-    ASSERT(sysclockgettime(0, SYSTEM.ADR(t1))
-         + sysclockgettime(0, SYSTEM.ADR(t2))
-         + sysclockgettime(0, SYSTEM.ADR(t3)) = 0);
-    ws(" gettime deltas: "); wi(t3.nsec - t2.nsec);
-    ws(", "); wi(t2.nsec - t1.nsec); wsn(".")
-  END;
-
-
-  TestClock(0);                    (* 1970 *)
-  (*
-  TestClock(1 * year);             (* 1971 *)
-  TestClock(2 * year);             (* 1972 *)
-  TestClock(30 * year + 7 * day);  (* 2000 *)
-
-  TestClock(-year);                (* 1969 *)
-  TestClock(-2 * year - day);      (* 1968 *)
-
-  TestClock(-(year *  100 + day * 24));  (* 1870AD *)
-  TestClock(-(year *   70 + day * 17));  (* 1900AD *)
-  TestClock(-(year *  170 + day * 41));  (* 1800AD *)
-  TestClock(-(year *  270 + day * 65));  (* 1700AD *)
-  TestClock(-(year *  369 + day * 89));  (* 1601AD *)
-  TestClock(-(year *  370 + day * 90));  (* 1600AD *)
-  TestClock(-(year * 1970 + day * 478)); (*    0AD *)
-  TestClock(-(year * 1971 + day * 478)); (*    1BC *)
-  TestClock(-(year * 2470 + day * 599)); (*  500BC *)
-  TestClock(year   * 2530 + day * 614);  (* 4500AD *)
-  *)
-
-END TimeTest;
-
-
-
-
-BEGIN Init(SYSTEM.REG(4));
-  TimeTest;
-  wsn("Host complete.");
-  sysexit(0)

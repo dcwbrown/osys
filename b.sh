@@ -27,5 +27,12 @@ cmd ORP.Compile Host.Mod/s Kernel.Mod/s Files.Mod/s Modules.Mod/s
 cmd ORP.Compile Fonts.Mod/s Texts.Mod/s Link.Mod/s ORS.Mod/s
 cmd ORP.Compile ORB.Mod/s X64.Mod/s Listing.Mod/s ORG.Mod/s ORP.Mod/s
 cmd Link.ELF ORP.Compile
-./ORP.Compile Host.Mod/s
+#
+#
+# Rebuild using Linux compiler
+#
+#
+./ORP.Compile Host.Mod/s Kernel.Mod/s Files.Mod/s Modules.Mod/s
+./ORP.Compile Fonts.Mod/s Texts.Mod/s Link.Mod/s ORS.Mod/s
+./ORP.Compile ORB.Mod/s X64.Mod/s Listing.Mod/s ORG.Mod/s ORP.Mod/s
 

@@ -852,9 +852,6 @@ VAR
   name16: ARRAY 261 OF SYSTEM.CARD16;
   rv:     INTEGER;
 BEGIN
-  ws("Host.FileClose '");
-  IF file.registered THEN ws(file.name) ELSE ws(file.unregname) END;
-  wsn("'.");
   ASSERT(CloseHandle(file.handle) # 0);
   IF ~file.registered THEN
     rv := Utf8ToUtf16(file.unregname, name16);

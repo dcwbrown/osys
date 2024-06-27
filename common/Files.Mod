@@ -24,7 +24,7 @@ TYPE
     dirty:   BOOLEAN;
     bufpos:  INTEGER;  (* File position at start of buffer, -1 if not in use *)
     buflen:  INTEGER;  (* normally full, less at end of file *)
-    filelen: INTEGER;  (* Current length on disk, excluded writes to buffer at eof *)
+    filelen: INTEGER;  (* Current length on disk, excluding latest writes to buffer at eof *)
   END;
 
   Rider* = RECORD
@@ -51,9 +51,10 @@ BEGIN
     IF f = NIL THEN
       NEW(f);  H.ZeroFill(f^);  f.name := name;
       IF H.FileOld(f^) THEN
-        f.next   := first;
-        f.bufpos := -1;
-        first    := f;
+        f.next    := first;
+        f.bufpos  := -1;
+        f.filelen := H.FileLength(f^);
+        first     := f;
       ELSE
         f := NIL
       END
@@ -67,9 +68,10 @@ VAR f: File;
 BEGIN
   NEW(f);  H.ZeroFill(f^);  f.name := name;
   H.FileNew(f^);
-  f.next   := first;
-  f.bufpos := -1;
-  first    := f;
+  f.next    := first;
+  f.bufpos  := -1;
+  f.filelen := 0;
+  first     := f;
 RETURN f END New;
 
 
@@ -86,12 +88,21 @@ BEGIN f := first;
 END UnregisterByName;
 
 
+PROCEDURE UpdateLength(f: File);
+BEGIN
+  IF (f.bufpos >= 0) & (f.bufpos + f.buflen > f.filelen) THEN
+    f.filelen := f.bufpos + f.buflen
+  END
+END UpdateLength;
+
+
 PROCEDURE FlushBuffer(f: File);
 BEGIN
   IF (f.bufpos >= 0) & f.dirty THEN
     H.FileSetPos(f^, f.bufpos);
     H.FileWrite(f^, SYSTEM.ADR(f.buf), f.buflen);
-    f.dirty := FALSE
+    f.dirty := FALSE;
+    UpdateLength(f)
   END
 END FlushBuffer;
 
@@ -122,7 +133,8 @@ BEGIN
 END Rename;
 
 
-PROCEDURE Length*(f: File): INTEGER; RETURN H.FileLength(f^) END Length;
+PROCEDURE Length*(f: File): INTEGER;
+BEGIN UpdateLength(f) RETURN f.filelen END Length;
 
 
 PROCEDURE Date*(f: File): INTEGER;  (* In 100 nanosecond ticks since 2000-01-01 UTC *)
@@ -146,12 +158,6 @@ BEGIN RETURN r.pos END Pos;
 PROCEDURE Base*(VAR r: Rider): File;
 BEGIN RETURN r.file END Base;
 
-(*
-PROCEDURE SetFilePos(f: File; pos: INTEGER);
-VAR res: INTEGER;
-BEGIN IF pos # f.pos THEN H.FileSetPos(f^, pos);  f.pos := pos END
-END SetFilePos;
-*)
 
 (* ----------------------- Read/Write through buffer ------------------------ *)
 
@@ -261,14 +267,10 @@ END WriteMem;
 
 
 PROCEDURE Close*(f: File);
-BEGIN IF f # NIL THEN FlushBuffer(f); H.FileFlush(f^) END
-END Close;
-
-
+BEGIN IF f # NIL THEN FlushBuffer(f); H.FileFlush(f^) END END Close;
 
 
 (* ---------------------------------- Read ---------------------------------- *)
-
 
 PROCEDURE ReadRaw*(VAR r: Rider;  VAR var: ARRAY OF BYTE);
 BEGIN ReadMem(r, SYSTEM.ADR(var), LEN(var)) END ReadRaw;
@@ -385,6 +387,7 @@ END CloseCollectableFiles;
 PROCEDURE DeleteUnregisteredFilesAtExit;
 VAR f: File;
 BEGIN
+f := first;
   WHILE f # NIL DO
     IF ~f.registered THEN H.FileClose(f^) END;
     f := f.next
