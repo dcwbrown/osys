@@ -18,12 +18,9 @@ TYPE
   FileName* = ARRAY MaxPath OF CHAR;
 
   File*    = POINTER TO FileDesc;
-  FileDesc = RECORD
+  FileDesc = RECORD (H.HostFile)
     next:       POINTER- TO FileDesc;  (* Non-collecting list of open files *)
-    name*:      FileName;
-    registered: BOOLEAN;
     pos:        INTEGER;
-    handle:     INTEGER
   END;
 
   Rider* = RECORD
@@ -48,15 +45,13 @@ BEGIN
     f := first;
     WHILE (f # NIL) & ~(f.registered & (f.name = name)) DO f := f.next END;
     IF f = NIL THEN
-      handle := H.FileOld(name);
-      IF handle >= 0 THEN
-        NEW(f);  H.ZeroFill(f^);
-        f.next       := first;
-        f.name       := name;
-        f.registered := TRUE;
-        f.pos        := 0;
-        f.handle     := handle;
-        first        := f;
+      NEW(f);  H.ZeroFill(f^);  f.name := name;
+      IF H.FileOld(f^) THEN
+        f.next := first;
+        f.pos  := 0;
+        first  := f;
+      ELSE
+        f := NIL
       END
     END
   END
@@ -66,24 +61,20 @@ RETURN f END Old;
 PROCEDURE New*(name: ARRAY OF CHAR): File;
 VAR f: File;
 BEGIN
-  NEW(f);  H.ZeroFill(f^);
-  f.next       := first;
-  f.name       := name;
-  f.registered := FALSE;
-  f.pos        := 0;
-  f.handle     := H.FileNew();
-  first := f;
+  NEW(f);  H.ZeroFill(f^);  f.name := name;
+  H.FileNew(f^);
+  f.next := first;
+  f.pos  := 0;
+  first  := f;
 RETURN f END New;
 
 
 PROCEDURE Close*(f: File);
-BEGIN IF f # NIL THEN H.FileFlush(f.handle) END
+BEGIN IF f # NIL THEN H.FileFlush(f^) END
 END Close;
 
 
-PROCEDURE Unregister(f: File);
-BEGIN H.FileUnregister(f.handle, f.name);  f.registered := FALSE
-END Unregister;
+PROCEDURE Unregister(f: File); BEGIN H.FileUnregister(f^) END Unregister;
 
 
 PROCEDURE UnregisterByName(name: ARRAY OF CHAR);
@@ -100,8 +91,7 @@ PROCEDURE Register*(f: File);
 BEGIN
   IF (f # NIL) & (f.name[0] # 0X) & ~f.registered THEN
     UnregisterByName(f.name);
-    H.FileRegister(f.handle, f.name);
-    f.registered := TRUE;
+    H.FileRegister(f^)
   END
 END Register;
 
@@ -122,12 +112,11 @@ BEGIN
 END Rename;
 
 
-PROCEDURE Length*(f: File): INTEGER;
-RETURN H.FileLength(f.handle) END Length;
+PROCEDURE Length*(f: File): INTEGER; RETURN H.FileLength(f^) END Length;
 
 
 PROCEDURE Date*(f: File): INTEGER;  (* In 100 nanosecond ticks since 2000-01-01 UTC *)
-RETURN H.FileTime(f.handle) END Date;
+RETURN H.FileTime(f^) END Date;
 
 
 (* --------------------------------- Riders --------------------------------- *)
@@ -149,7 +138,7 @@ BEGIN RETURN r.file END Base;
 
 PROCEDURE SetFilePos(f: File; pos: INTEGER);
 VAR res: INTEGER;
-BEGIN IF pos # f.pos THEN H.FileSetPos(f.handle, pos);  f.pos := pos END
+BEGIN IF pos # f.pos THEN H.FileSetPos(f^, pos);  f.pos := pos END
 END SetFilePos;
 
 (* ---------------------------------- Read ---------------------------------- *)
@@ -167,7 +156,7 @@ VAR f: File; bytesread: INTEGER;
 BEGIN
   IF len > 0 THEN
     f := r.file;  SetFilePos(f, r.pos);
-    bytesread := H.FileRead(f.handle, adr, len);
+    bytesread := H.FileRead(f^, adr, len);
     ASSERT(bytesread >= 0);
     INC(f.pos, bytesread);  INC(r.pos, bytesread);
     IF bytesread < len THEN
@@ -230,7 +219,7 @@ PROCEDURE WriteMem*(VAR r: Rider; adr, len: INTEGER);
 VAR res, byteswritten: INTEGER;  f: File;
 BEGIN
   f := r.file;  SetFilePos(f, r.pos);
-  H.FileWrite(f.handle, adr, len);
+  H.FileWrite(f^, adr, len);
   INC(r.pos, len);  f.pos := r.pos
 END WriteMem;
 
@@ -282,9 +271,7 @@ VAR f, g: File;
     END
   RETURN mark END getmark;
 
-  PROCEDURE finalise(f: File);
-  BEGIN IF f.registered THEN H.FileClose(f.handle) END
-  END finalise;
+  PROCEDURE finalise(f: File); BEGIN H.FileClose(f^) END finalise;
 
 BEGIN
   (* Skip first to first still-live file *)
@@ -300,8 +287,22 @@ BEGIN
 END CloseCollectableFiles;
 
 
+PROCEDURE DeleteUnregisteredFilesAtExit;
+VAR f: File;
+BEGIN
+  WHILE f # NIL DO
+    IF ~f.registered THEN H.FileClose(f^) END;
+    f := f.next
+  END
+END DeleteUnregisteredFilesAtExit;
+
+
 (* Files.Mod is initialised by Modules.Init *)
 PROCEDURE Init*(stackorg: INTEGER);
-BEGIN first := NIL;  Kernel.Init(stackorg); END Init;
+BEGIN
+  first := NIL;
+  H.SetDeleteUnregisteredFilesAtExit(DeleteUnregisteredFilesAtExit);
+  Kernel.Init(stackorg);
+END Init;
 
 END Files.

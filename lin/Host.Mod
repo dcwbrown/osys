@@ -69,6 +69,7 @@ CONST
   ORDONLY     = 0;
   ORDWR       = 2;
   OCREAT      = 64;
+  OEXCL       = 128;
   OTMPFILE    = 20200000H;
   SIRUSR      = 100H;
   SIWUSR      = 80H;
@@ -94,6 +95,16 @@ TYPE
     IconSize*:    INTEGER;
     dummy7:       INTEGER;
   END;
+
+  FileName = ARRAY MaxPath OF CHAR;
+
+  HostFile* = RECORD
+    name*:       FileName;
+    registered*: BOOLEAN;
+    fd:          INTEGER;
+    unregname:   FileName;
+  END;
+
 
   StatDesc = RECORD-
     dev:      INTEGER;       (* ID of device containing file     *)
@@ -211,6 +222,8 @@ VAR
   ExitCode:    INTEGER;
   TrapDepth:   INTEGER;
   TrapHandler: PROCEDURE(adr: INTEGER; desc: ARRAY OF CHAR);
+
+  DeleteUnregisteredFilesAtExit: PROCEDURE;
 
   MonthLen:    ARRAY 11 OF INTEGER;
   Anonfnum:    INTEGER;
@@ -405,7 +418,10 @@ PROCEDURE SetExitCode*(code: INTEGER);
 BEGIN ExitCode := code END SetExitCode;
 
 PROCEDURE Exit*;
-BEGIN sysexit(ExitCode) END Exit;
+BEGIN
+  IF DeleteUnregisteredFilesAtExit # NIL THEN DeleteUnregisteredFilesAtExit END;
+  sysexit(ExitCode)
+END Exit;
 
 
 (* ---------------------------- Signal handling ----------------------------- *)
@@ -653,53 +669,71 @@ END WriteClock;
 (* ------------- Platform independent low level file operations ------------- *)
 (* -------------------------------------------------------------------------- *)
 
-PROCEDURE FileOld*(name: ARRAY OF CHAR): INTEGER;
-VAR handle: INTEGER;
+PROCEDURE MakeUnregName(VAR file: HostFile);
+VAR stamp: ARRAY 20 OF CHAR;
 BEGIN
-  handle := sysopen(SYSTEM.ADR(name), ORDWR, 0);
-  IF handle < 0 THEN  (* Try again readonly *)
-    handle := sysopen(SYSTEM.ADR(name), ORDONLY, 0)
+  file.unregname := file.name;
+  Append(".unreg-", file.unregname);
+  IntToDecimal(Time() MOD 20000000H, stamp);
+  Append(stamp, file.unregname)
+END MakeUnregName;
+
+
+PROCEDURE FileOld*(VAR file: HostFile): BOOLEAN;
+VAR success: BOOLEAN;
+BEGIN
+  file.fd := sysopen(SYSTEM.ADR(file.name), ORDWR, 0);
+  IF file.fd < 0 THEN  (* Try again readonly *)
+    file.fd := sysopen(SYSTEM.ADR(file.name), ORDONLY, 0)
   END;
-  (* ws("Host.FileOld("); ws(name); ws(") -> "); wh(handle); wsn("H."); *)
-  (* Consider mapping Linux error code to some standard error code *)
-  ws("Host.FileOld('"); ws(name); ws("') -> "); wh(handle); wsn("H.");
-RETURN handle END FileOld;
+  ws("Host.FileOld('"); ws(file.name); ws("') -> "); wh(file.fd); wsn("H.");
+  success := file.fd >= 0;
+  IF success THEN
+    MakeUnregName(file);
+    file.registered := TRUE;
+  END
+RETURN success END FileOld;
 
 
-PROCEDURE FileNew*(): INTEGER;  (* Create an anonymous file *)
-VAR fn: ARRAY 40 OF CHAR;  h, rv: INTEGER;
-BEGIN  (* Would like to use O_TMPFILE but doesn't work on wsl2. *)
-  INC(Anonfnum);  IntToDecimal(Anonfnum, fn);  Append("anonymous", fn);
-  h := sysopen(SYSTEM.ADR(fn), OCREAT+ORDWR, SIRUSR+SIWUSR+SIRGRP);
-  (* ws("Host.FileNew:open() -> "); wh(h); wsn("H."); *)
-  IF h >= 0 THEN
-    rv := sysunlink(SYSTEM.ADR(fn));
-    (* ws("Host.FileNew:unlink('"); ws(fn); ws("') -> "); wh(rv); wsn("H.")*)
-  END;
-  ws("Host.FileNew() -> "); wh(h); wsn("H.");
-RETURN h END FileNew;
+PROCEDURE FileNew*(VAR file: HostFile);
+VAR retries: INTEGER;
+BEGIN
+  file.registered := FALSE;  retries := 0;
+  REPEAT
+    MakeUnregName(file);
+    file.fd := sysopen(SYSTEM.ADR(file.unregname), OCREAT+OEXCL+ORDWR, SIRUSR+SIWUSR+SIRGRP);
+    INC(retries);
+  UNTIL (file.fd >= 0) OR (file.fd # -17 (* EEXIST *)) OR (retries > 100);
+  IF retries > 100 THEN Trap(-1, "Couldn't find unused temporary file name") END;
+  IF file.fd < 0 THEN Trap(-1, "Couldn't create temporary file") END;
+END FileNew;
 
 
-PROCEDURE FileFlush*(handle: INTEGER);
+PROCEDURE FileFlush*(file: HostFile);
 VAR rv: INTEGER;
-BEGIN rv := sysfsync(handle) END FileFlush;
+BEGIN rv := sysfsync(file.fd) END FileFlush;
 
 
-PROCEDURE FileClose*(VAR handle: INTEGER);
-BEGIN ASSERT(sysclose(handle) # 0);  handle := -1 END FileClose;
+PROCEDURE FileClose*(VAR file: HostFile);
+VAR rv: INTEGER;
+BEGIN
+  ASSERT(sysclose(file.fd) # 0);
+  IF ~file.registered THEN rv := sysunlink(SYSTEM.ADR(file.unregname)) END;
+  file.fd := -1
+END FileClose;
 
 
-PROCEDURE FileLength*(handle: INTEGER): INTEGER;
+PROCEDURE FileLength*(file: HostFile): INTEGER;
 VAR stat: StatDesc;
 BEGIN
-  IF sysfstat(handle, SYSTEM.ADR(stat)) < 0 THEN stat.size := 0 END;
-  ws("Host.FileLength("); wh(handle); ws("H) -> "); wh(stat.size); wsn("H.");
+  IF sysfstat(file.fd, SYSTEM.ADR(stat)) < 0 THEN stat.size := 0 END;
+  ws("Host.FileLength("); wh(file.fd); ws("H) -> "); wh(stat.size); wsn("H.");
   (*DumpMem(2, SYSTEM.ADR(stat), 0, SYSTEM.SIZE(StatDesc))*)
 RETURN stat.size END FileLength;
 
 
-PROCEDURE FileSetPos*(handle, pos: INTEGER);
-BEGIN ASSERT(syslseek(handle, pos, 0) = pos)
+PROCEDURE FileSetPos*(file: HostFile; pos: INTEGER);
+BEGIN ASSERT(syslseek(file.fd, pos, 0) = pos)
 END FileSetPos;
 
 
@@ -708,35 +742,44 @@ BEGIN RETURN sysrename(SYSTEM.ADR(source), SYSTEM.ADR(dest))
 END FileMove;
 
 
-PROCEDURE FileRegister*(handle: INTEGER; name: ARRAY OF CHAR);
-CONST dir = "";
+PROCEDURE FileRegister*(VAR file: HostFile);
 VAR rv: INTEGER;
 BEGIN
+  ASSERT(~file.registered);
   (*ws("Host.FileRegister(h "); wh(handle); ws("H, name "); ws(name); wsn(")");*)
-  rv := sysunlink(SYSTEM.ADR(name));  (* Overwrite existing file if any *)
-(*rv := syslinkat(handle, SYSTEM.ADR(dir), ATFDCWD, SYSTEM.ADR(name), ATEMPTYPATH);*)
-  rv := syslinkat(handle, 0, ATFDCWD, SYSTEM.ADR(name), ATEMPTYPATH);
+  rv := sysunlink(SYSTEM.ADR(file.name));  (* Overwrite existing file if any *)
+  rv := sysrename(SYSTEM.ADR(file.unregname), SYSTEM.ADR(file.name));
   IF rv # 0 THEN
-    ws("syslinkat(handle "); wh(handle);
-    ws("H, '', ATFDCWD, '"); ws(name);
-    ws("', ATEMPTYPATH) -> -"); wi(-rv); wsn(".")
+    ws("sysrename('"); ws(file.unregname);
+    ws("', '"); ws(file.name);
+    ws("' -> -"); wi(-rv); wsn(".")
   END;
   ASSERT(rv = 0);
+  file.registered := TRUE
 END FileRegister;
 
 
-PROCEDURE FileUnregister*(handle: INTEGER; name: ARRAY OF CHAR);
+PROCEDURE FileUnregister*(VAR file: HostFile);
+VAR rv: INTEGER;
 BEGIN
+  ASSERT(file.registered);
   (*ws("Host.FileUnregister(h "); wh(handle); ws("H, name "); ws(name); wsn(")");*)
-  ASSERT(sysunlink(SYSTEM.ADR(name)) = 0)
+  rv := sysrename(SYSTEM.ADR(file.name), SYSTEM.ADR(file.unregname));
+  IF rv # 0 THEN
+    ws("sysrename('"); ws(file.name);
+    ws("', '"); ws(file.unregname);
+    ws("' -> -"); wi(-rv); wsn(".")
+  END;
+  ASSERT(rv = 0);
+  file.registered := FALSE
 END FileUnregister;
 
 
-PROCEDURE FileTime*(hfile: INTEGER): INTEGER;
+PROCEDURE FileTime*(file: HostFile): INTEGER;
 (* Returns Universal time in 100ns ticks since 1970/01/01 00:00:00 *)
 VAR stat: StatDesc;
 BEGIN
-  IF sysfstat(hfile, SYSTEM.ADR(stat)) < 0 THEN
+  IF sysfstat(file.fd, SYSTEM.ADR(stat)) < 0 THEN
     stat.mtimsec := 0;  stat.mtimnsec := 0;
   END;
 RETURN stat.mtimsec * 10000000 + stat.mtimnsec DIV 100  (* Scale to 100ns ticks   *)
@@ -744,10 +787,10 @@ RETURN stat.mtimsec * 10000000 + stat.mtimnsec DIV 100  (* Scale to 100ns ticks 
 END FileTime;
 
 
-PROCEDURE FileRead*(h, adr, len: INTEGER): INTEGER;
+PROCEDURE FileRead*(file: HostFile; adr, len: INTEGER): INTEGER;
 VAR rv: INTEGER;
 BEGIN ASSERT(len > 0);
-  rv := sysread(h, adr, len);
+  rv := sysread(file.fd, adr, len);
   (*
   ws("Host.FileRead(h "); wh(h); ws("H, adr "); wh(adr);
   ws("H, len "); wh(len); ws("H, -> "); wh(rv); wsn("H).");
@@ -755,11 +798,11 @@ BEGIN ASSERT(len > 0);
 RETURN rv END FileRead;
 
 
-PROCEDURE FileWrite*(h, adr, len: INTEGER);
+PROCEDURE FileWrite*(file: HostFile; adr, len: INTEGER);
 VAR byteswritten: INTEGER;
 BEGIN
   IF len > 0 THEN
-    byteswritten := syswrite(h, adr, len);
+    byteswritten := syswrite(file.fd, adr, len);
     (*
     ws("Host.FileWrite(h "); wh(h);
     ws("H, adr "); wh(adr);
@@ -772,6 +815,9 @@ BEGIN
     END
   END
 END FileWrite;
+
+PROCEDURE SetDeleteUnregisteredFilesAtExit*(delete: PROCEDURE);
+BEGIN DeleteUnregisteredFilesAtExit := delete END SetDeleteUnregisteredFilesAtExit;
 
 
 (* -------------------------------------------------------------------------- *)
