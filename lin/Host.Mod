@@ -66,10 +66,11 @@ CONST
   MAPPRIVATE  = 2;
   MAPFIXED    = 10H;
   MAPANON     = 20H;
-  ORDONLY     = 0;
-  ORDWR       = 2;
-  OCREAT      = 64;
-  OEXCL       = 128;
+  ORDONLY     = 00000000H;
+  ORDWR       = 00000002H;
+  OCREAT      = 00000040H;
+  OEXCL       = 00000080H;
+  ODIRECTORY  = 00010000H;
   OTMPFILE    = 20200000H;
   SIRUSR      = 100H;
   SIWUSR      = 80H;
@@ -96,7 +97,7 @@ TYPE
     dummy7:       INTEGER;
   END;
 
-  FileName = ARRAY MaxPath OF CHAR;
+  FileName* = ARRAY MaxPath OF CHAR;
 
   HostFile* = RECORD
     name*:       FileName;
@@ -105,6 +106,13 @@ TYPE
     unregname:   FileName;
   END;
 
+  FileInfo* = RECORD
+    name*:   FileName;
+    date*:   INTEGER;
+    length*: INTEGER;
+  END;
+
+  FileEntryHandler* = PROCEDURE(info: FileInfo; VAR continue: BOOLEAN);
 
   StatDesc = RECORD-
     dev:      INTEGER;       (* ID of device containing file     *)
@@ -201,6 +209,15 @@ struct stat {
     adr:    INTEGER;    (* Only for SIGILL/FPE/SEGV/BUS/TRAP *)
   END;
 
+  DirEntry64 = RECORD-
+    ino:    INTEGER;
+    off:    INTEGER;
+    reclen: SYSTEM.CARD16;
+    type:   BYTE;
+    name:   FileName;
+  END;
+
+
 VAR
   Preload*: PreLoadVars;
 
@@ -246,8 +263,10 @@ PROCEDURE #60  sysexit(i: INTEGER);
 PROCEDURE #74  sysfsync(handle: INTEGER): INTEGER;
 PROCEDURE #82  sysrename(old, new: INTEGER): INTEGER;
 PROCEDURE #87  sysunlink(name: INTEGER): INTEGER;
+PROCEDURE #217 sysgetdents64(fd, adr, len: INTEGER): INTEGER;
 PROCEDURE #228 sysclockgettime(id, adr: INTEGER): INTEGER;
 PROCEDURE #265 syslinkat(olddirfd, oldpath, newdirfd, newpath, flags: INTEGER): INTEGER;
+
 
 PROCEDURE Min*(a, b: INTEGER): INTEGER;
 BEGIN IF a < b THEN b := a END;  RETURN b END Min;
@@ -787,12 +806,7 @@ END FileTime;
 PROCEDURE FileRead*(file: HostFile; adr, len: INTEGER): INTEGER;
 VAR rv: INTEGER;
 BEGIN ASSERT(len > 0);
-  rv := sysread(file.fd, adr, len);
-  (*
-  ws("Host.FileRead(h "); wh(h); ws("H, adr "); wh(adr);
-  ws("H, len "); wh(len); ws("H, -> "); wh(rv); wsn("H).");
-  *)
-RETURN rv END FileRead;
+RETURN sysread(file.fd, adr, len) END FileRead;
 
 
 PROCEDURE FileWrite*(file: HostFile; adr, len: INTEGER);
@@ -800,13 +814,6 @@ VAR byteswritten: INTEGER;
 BEGIN
   IF len > 0 THEN
     byteswritten := syswrite(file.fd, adr, len);
-    (*
-    ws("Host.FileWrite(h "); wh(h);
-    ws("H, adr "); wh(adr);
-    ws("H, len "); wh(len);
-    ws("H) -> "); wh(byteswritten); wsn("H.");
-    (*DumpMem(2, adr, adr, len);*)
-    *)
     IF len # byteswritten THEN
       Trap(8, "syswrite failed to write all bytes.");
     END
@@ -815,6 +822,79 @@ END FileWrite;
 
 PROCEDURE SetDeleteUnregisteredFilesAtExit*(delete: PROCEDURE);
 BEGIN DeleteUnregisteredFilesAtExit := delete END SetDeleteUnregisteredFilesAtExit;
+
+
+PROCEDURE IsSelfOrParent(dir: FileName): BOOLEAN;
+(* TRUE iff /^(.*\/|)\.\.?$/ - if ., .. or path ending in . or .. *)
+VAR i, j: INTEGER;  result: BOOLEAN;
+BEGIN
+  result := FALSE;
+  i := 0;  j := 0;
+  WHILE dir[i] # 0X DO IF dir[i] = "/" THEN j := i + 1 END; INC(i) END;
+  IF dir[j] = "." THEN
+    INC(j);
+    IF (dir[j] = 0X) OR (dir[j] = ".") & (dir[j+1] = 0X) THEN
+      result := TRUE
+    END
+  END
+RETURN result END IsSelfOrParent;
+
+
+PROCEDURE FileEnum(name: FileName; proc: FileEntryHandler; VAR cont: BOOLEAN);
+CONST DTDIR = 4;  DTREG = 8;
+VAR
+  stat:    StatDesc;
+  search:  FileName;
+  fd:      INTEGER;
+  buf:     ARRAY 1024 OF BYTE;
+  pos:     INTEGER;
+  p:       POINTER- TO DirEntry64;
+  i, len:  INTEGER;
+  inf:     FileInfo;
+  bytesrd: INTEGER;
+BEGIN
+  IF ~IsSelfOrParent(name) THEN
+    len := 0; WHILE name[len] # 0X DO search[len] := name[len]; INC(len) END;
+    IF (len > 0) & (search[len-1] # "/") THEN search[len] := "/"; INC(len) END;
+    i := len;
+    search[i] := ".";  search[i+1] := 0X;
+    fd := sysopen(SYSTEM.ADR(search), ORDONLY + ODIRECTORY, 0);
+    IF fd >= 0 THEN
+      cont := TRUE;
+      search[len] := 0X;
+      bytesrd := sysgetdents64(fd, SYSTEM.ADR(buf), LEN(buf));
+      WHILE cont & (bytesrd > 0) DO
+        pos := 0;
+        WHILE cont & (pos < bytesrd) DO
+          SYSTEM.PUT(SYSTEM.ADR(p), SYSTEM.ADR(buf[pos]));
+          inf.name := search;  Append(p.name, inf.name);
+          IF p.type = DTREG THEN     (* Regular file *)
+            inf.date   := 0;
+            inf.length := 0;
+            IF sysstat(SYSTEM.ADR(inf.name), SYSTEM.ADR(stat)) = 0 THEN
+              inf.length := stat.size;
+              inf.date := TimeAsClock(stat.mtimsec * 10000000 + stat.mtimnsec DIV 100  (* Scale to 100ns ticks   *)
+                                    - 10000000 * 24 * 60 * 60 * (30 * 365 + 7))        (* Bias to 2000-01-01 UTC *)
+            END;
+            proc(inf, cont)
+          ELSIF p.type = DTDIR THEN  (* subdirectory *)
+            FileEnum(inf.name, proc, cont)
+          END;
+          INC(pos, p.reclen)
+        END;
+        bytesrd := sysgetdents64(fd, SYSTEM.ADR(buf), LEN(buf));
+      END;
+      ASSERT(sysclose(fd) = 0)
+    END
+  END
+END FileEnum;
+
+PROCEDURE FileEnumerate*(prefix: ARRAY OF CHAR; proc: FileEntryHandler);
+VAR cont: BOOLEAN; fn: FileName;
+BEGIN
+  fn := prefix;
+  FileEnum(fn, proc, cont)
+END FileEnumerate;
 
 
 (* -------------------------------------------------------------------------- *)

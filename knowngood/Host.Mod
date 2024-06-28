@@ -80,7 +80,8 @@ TYPE
     dummy7:       INTEGER;
   END;
 
-  FileName = ARRAY MaxPath OF CHAR;
+  FileName*    = ARRAY MaxPath OF CHAR;
+  WideFileName = ARRAY 260 OF SYSTEM.CARD16;
 
   HostFile* = RECORD
     name*:       FileName;
@@ -88,6 +89,14 @@ TYPE
     handle:      INTEGER;
     unregname:   FileName;
   END;
+
+  FileInfo* = RECORD
+    name*:   FileName;
+    date*:   INTEGER;
+    length*: INTEGER;
+  END;
+
+  FileEntryHandler* = PROCEDURE(info: FileInfo; VAR continue: BOOLEAN);
 
 
 (* Start of pre-loaded variables (preset by Link.mod/Windows loader) *)
@@ -806,15 +815,6 @@ BEGIN
     MakeUnregName(file);
     file.registered := TRUE;
   END
-  (*;
-  ws("Host.FileOld '"); ws(file.name); ws("': -> ");
-  IF success THEN
-    ws("success: handle "); wh(file.handle);
-    ws("h, unregname '"); ws(file.unregname); wsn("'.")
-  ELSE
-    wsn("fail.")
-  END
-  *)
 RETURN success END FileOld;
 
 
@@ -888,17 +888,6 @@ BEGIN
 RETURN res END FileMove;
 
 
-(*
-PROCEDURE FileGetName(handle: INTEGER; VAR name: ARRAY OF CHAR);  (* Get name opened by *)
-VAR namew: ARRAY MaxPath OF SYSTEM.CARD16;  rv: INTEGER;
-BEGIN
-  rv := GetFinalPathNameByHandleW(handle, SYSTEM.ADR(namew), MaxPath, 8);
-  ASSERT(rv <= MaxPath);
-  rv := Utf16ToUtf8(namew, name);
-END FileGetName;
-*)
-
-
 PROCEDURE FileSetName(handle: INTEGER;  name: ARRAY OF CHAR);
 TYPE renamedesc = RECORD-
     ReplaceIfExists: BYTE;
@@ -970,6 +959,100 @@ END FileWrite;
 
 PROCEDURE SetDeleteUnregisteredFilesAtExit*(delete: PROCEDURE);
 BEGIN DeleteUnregisteredFilesAtExit := delete END SetDeleteUnregisteredFilesAtExit;
+
+
+PROCEDURE IsSelfOrParent(dir: ARRAY OF SYSTEM.CARD16): BOOLEAN;
+(* TRUE iff /^(.*[/\]|)\.\.?$/ - if ., .. or path ending in . or .. *)
+VAR i, j: INTEGER;  result: BOOLEAN;
+BEGIN
+  result := FALSE;
+  i := 0;  j := 0;
+  WHILE dir[i] # 0 DO
+    IF (dir[i] = ORD("/")) OR (dir[i] = 5CH) THEN j := i + 1 END;
+    INC(i)
+  END;
+  IF dir[j] = ORD(".") THEN
+    INC(j);
+    IF (dir[j] = 0) OR (dir[j] = ORD(".")) & (dir[j+1] = 0) THEN
+      result := TRUE
+    END
+  END
+RETURN result END IsSelfOrParent;
+
+
+PROCEDURE FileEnum(name: WideFileName; proc: FileEntryHandler; VAR cont: BOOLEAN);
+VAR
+  search: WideFileName;
+  i, j:   INTEGER;
+  len:    INTEGER;
+  hfind:  INTEGER;
+  inf:    FileInfo;
+  data:   RECORD-
+    attribs:   SYSTEM.CARD32;
+    creationl: SYSTEM.CARD32;
+    creationh: SYSTEM.CARD32;
+    accessl:   SYSTEM.CARD32;
+    accessh:   SYSTEM.CARD32;
+    writel:    SYSTEM.CARD32;
+    writeh:    SYSTEM.CARD32;
+    sizeh:     SYSTEM.CARD32;
+    sizel:     SYSTEM.CARD32;
+    res0:      SYSTEM.CARD32;
+    res1:      SYSTEM.CARD32;
+    name:      ARRAY 260 OF SYSTEM.CARD16;
+    dum1:      ARRAY  14 OF SYSTEM.CARD16;  (* alternate file name unused *)
+    dum2:      SYSTEM.CARD32;
+    dum3:      SYSTEM.CARD32;
+    dum4:      SYSTEM.CARD16;
+    dum5:      SYSTEM.CARD32   (* Not set by windows - round up to 260H byes *)
+  END;
+BEGIN
+  IF ~IsSelfOrParent(name) THEN
+    len := 0;
+    WHILE name[len] # 0 DO search[len] := name[len]; INC(len) END;
+    IF len > 0 THEN search[len] := ORD("/"); INC(len) END;
+    i := len;
+    search[i] := ORD("*");  search[i+1] := 0;
+    hfind := FindFirstFileExW(SYSTEM.ADR(search), 1, SYSTEM.ADR(data), 0, 0, 0);
+    cont := TRUE;
+    WHILE cont & (hfind # 0) DO
+      IF 4 IN SYSTEM.VAL(SET, ORD(data.attribs)) THEN  (* recurse into directory *)
+        i := 0;  j := len;
+        WHILE data.name[i] # 0 DO
+          search[j] := data.name[i];  INC(i);  INC(j)
+        END;
+        search[j] := 0;
+        FileEnum(search, proc, cont)
+      ELSE
+        (* Copy full name including directory into inf *)
+        i := 0; j := 0;
+        WHILE i < len DO PutUtf8(search[i], inf.name, j);  INC(i) END;
+        i := 0;
+        WHILE data.name[i] # 0 DO PutUtf8(data.name[i], inf.name, j);  INC(i) END;
+        inf.name[j] := 0X;
+        inf.date   := TimeAsClock(LSL(data.writeh, 32) + data.writel);
+        inf.length := LSL(data.sizeh,  32) + data.sizel;
+        proc(inf, cont)
+      END;
+      IF FindNextFileW(hfind, SYSTEM.ADR(data)) = 0 THEN
+        i := FindClose(hfind);
+        hfind := 0
+      END;
+    END
+  END
+END FileEnum;
+
+PROCEDURE FileEnumerate*(prefix: ARRAY OF CHAR; proc: FileEntryHandler);
+VAR
+  len:  INTEGER;
+  wfn:  WideFileName;
+  cont: BOOLEAN;
+BEGIN
+  len  := Utf8ToUtf16("", wfn);
+  FileEnum(wfn, proc, cont)
+END FileEnumerate;
+
+
 
 
 (* -------------------------------------------------------------------------- *)
