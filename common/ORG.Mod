@@ -836,7 +836,7 @@ PROCEDURE PushLength(x: Item);  (* Push element count of array *)
 BEGIN ASSERT(x.type.form = ORB.Array);
   IF x.mode = Strucp THEN ASSERT(x.type.len < 0);
     PushMem(Eadr, FALSE, 8, RSP, -1, 0, x.n + 8 * X64.SPO + 8);
-  ELSIF x.type.form = String THEN ASSERT(FALSE);
+  ELSIF x.type.form = ORB.String THEN ASSERT(FALSE);
     PushImmediate(x.n)
   ELSE ASSERT(x.type.len >= 0);
     PushImmediate(x.type.len)
@@ -866,7 +866,7 @@ BEGIN
        The type desciptor size field is the (larger) allocation size. *)
   ELSIF x.type.form = ORB.Array THEN ASSERT(x.type.len >= 1);
     PushImmediate(x.type.len * x.type.base.size)
-  ELSIF x.type.form = String THEN
+  ELSIF x.type.form = ORB.String THEN
     PushImmediate(x.n)
   ELSE
     PushImmediate(x.type.size)
