@@ -428,7 +428,7 @@ BEGIN
         IF Y >= Display.Height THEN Y := Display.Height END;
         M.Y := Y;  M.keys := keys;  V := Viewers.This(X, Y);  V.handle(V, M);  prevX := X;  prevY := Y
       END;
-      IF CurTask # NIL THEN
+      IF ~Gui.Shutdown & (CurTask # NIL) THEN
         CurTask := CurTask.next; t := Kernel.Time();
         IF t >= CurTask.nextTime THEN
           CurTask.nextTime := t + CurTask.period; CurTask.state := active; CurTask.handle; CurTask.state := idle
@@ -436,8 +436,8 @@ BEGIN
           Gui.WaitMsgOrTime(CurTask.nextTime - t)
         END
       END
-    END
-  UNTIL Gui.WmQuit;
+    END;
+  UNTIL Gui.Shutdown;
   H.Exit
 END Loop;
 

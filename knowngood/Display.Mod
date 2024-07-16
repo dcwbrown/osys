@@ -28,17 +28,24 @@ MODULE Display;  (*NW 5.11.2013 / 3.7.2016*)
   PROCEDURE Get(a: INTEGER; VAR s: SET);
   VAR dw: SYSTEM.CARD32;  ls: SET;
   BEGIN
-    SYSTEM.GET(a, dw);  ls := SYSTEM.VAL(SET, ORD(dw));
-    ls := LSL(ls * SYSTEM.VAL(SET, 55555555H), 1) + ROR(ls * SYSTEM.VAL(SET, 0AAAAAAAAH), 1);
-    ls := LSL(ls * SYSTEM.VAL(SET, 33333333H), 2) + ROR(ls * SYSTEM.VAL(SET, 0CCCCCCCCH), 2);
-    s  := LSL(ls * SYSTEM.VAL(SET, 0F0F0F0FH), 4) + ROR(ls * SYSTEM.VAL(SET, 0F0F0F0F0H), 4);
+    SYSTEM.GET(a, dw);
+    IF Gui.BitReverse THEN
+      ls := SYSTEM.VAL(SET, ORD(dw));
+      ls := LSL(ls * SYSTEM.VAL(SET, 55555555H), 1) + ROR(ls * SYSTEM.VAL(SET, 0AAAAAAAAH), 1);
+      ls := LSL(ls * SYSTEM.VAL(SET, 33333333H), 2) + ROR(ls * SYSTEM.VAL(SET, 0CCCCCCCCH), 2);
+      s  := LSL(ls * SYSTEM.VAL(SET, 0F0F0F0FH), 4) + ROR(ls * SYSTEM.VAL(SET, 0F0F0F0F0H), 4);
+    ELSE
+      s := SYSTEM.VAL(SET, ORD(dw));
+    END
   END Get;
 
   PROCEDURE Put(a: INTEGER; s: SET);
   BEGIN
-    s := LSL(s * SYSTEM.VAL(SET, 55555555H), 1) + ROR(s * SYSTEM.VAL(SET, 0AAAAAAAAH), 1);
-    s := LSL(s * SYSTEM.VAL(SET, 33333333H), 2) + ROR(s * SYSTEM.VAL(SET, 0CCCCCCCCH), 2);
-    s := LSL(s * SYSTEM.VAL(SET, 0F0F0F0FH), 4) + ROR(s * SYSTEM.VAL(SET, 0F0F0F0F0H), 4);
+    IF Gui.BitReverse THEN
+      s := LSL(s * SYSTEM.VAL(SET, 55555555H), 1) + ROR(s * SYSTEM.VAL(SET, 0AAAAAAAAH), 1);
+      s := LSL(s * SYSTEM.VAL(SET, 33333333H), 2) + ROR(s * SYSTEM.VAL(SET, 0CCCCCCCCH), 2);
+      s := LSL(s * SYSTEM.VAL(SET, 0F0F0F0FH), 4) + ROR(s * SYSTEM.VAL(SET, 0F0F0F0F0H), 4);
+    END;
     SYSTEM.PUT(a, SYSTEM.VAL(SYSTEM.CARD32, s));
   END Put;
 
@@ -210,7 +217,7 @@ MODULE Display;  (*NW 5.11.2013 / 3.7.2016*)
   END ReplPattern;
 
 BEGIN
-  Base   := Gui.Window.bmp.address;
+  Base   := Gui.BitmapAddress;
   Width  := Gui.Width;
   Height := Gui.Height;
   arrow := SYSTEM.ADR($0F0F 0060 0070 0038 001C 000E 0007 8003 C101 E300 7700 3F00 1F00 3F00 7F00 FF00$);

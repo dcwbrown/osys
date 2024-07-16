@@ -3,10 +3,11 @@ IMPORT SYSTEM, H := Host, Texts;
 
 
 CONST
-  Width*     = 1536;
-  Height*    = 1152;
-  Stride*    = Width DIV 8;
-  KeyBufSize = 16;
+  Width*      = 1536;
+  Height*     = 1152;
+  Stride*     = Width DIV 8;
+  BitReverse* = TRUE;
+  KeyBufSize  = 16;
 
 
 TYPE
@@ -46,8 +47,9 @@ HostWindow* = POINTER TO HostWindowDesc;
   END;
 
 VAR
-  W:       Texts.Writer;
-  Window*: HostWindow;
+  W:              Texts.Writer;
+  Window*:        HostWindow;
+  BitmapAddress*: INTEGER;
 
   Keys:    ARRAY KeyBufSize OF BYTE;  (* Scancodes *)
   KeyFull: BOOLEAN;
@@ -57,7 +59,7 @@ VAR
   VKtoScn: INTEGER;
 
   MouseState*: INTEGER;  (* 1/in-window, 3/keys, 12/x, 12/y  *)
-  WmQuit*:     BOOLEAN;
+  Shutdown*:   BOOLEAN;
 
   Dirtyleft:   INTEGER;  (* aka x     *)
   Dirtyright:  INTEGER;  (* aka x + w *)
@@ -163,6 +165,7 @@ BEGIN
     ASSERT(bitmap.address # 0);
     bitmap.width  := w;
     bitmap.height := h;
+    BitmapAddress := bitmap.address;
 
     IF bitmap.context = 0 THEN  (* If no context to reuse *)
       bitmap.context := H.CreateCompatibleDC(0);  ASSERT(bitmap.context # 0);
@@ -590,7 +593,7 @@ BEGIN
   res := H.PeekMessageW(SYSTEM.ADR(msg), 0,0,0,1); (* Get and remove message if available *)
   IF res # 0  THEN
     IF msg.message = 12H THEN
-      WmQuit := TRUE;
+      Shutdown := TRUE;
       MouseState := MouseState MOD 1000000H;  (* All mouse buttons up *)
       KeyIn := KeyOut; KeyFull := FALSE;      (* Clear keybard *)
       res := 0
@@ -658,6 +661,13 @@ PROCEDURE Minimise*;
 BEGIN H.ShowWindow(Window.hwnd, 6) (* SW_MINIMIZE *)
 END Minimise;
 
+PROCEDURE GetScreenMousePos*(VAR x, y: INTEGER);
+VAR curpos: RECORD- x, y: SYSTEM.INT32 END;
+BEGIN
+  H.GetCursorPos(SYSTEM.ADR(curpos));
+  x := curpos.x;  y :=curpos.y
+END GetScreenMousePos;
+
 (* ------------------------- Display initialisation ------------------------- *)
 
 BEGIN
@@ -665,7 +675,7 @@ BEGIN
   Dirtyleft   := Width;   Dirtyright := 0;
   Dirtybottom := Height;  Dirtytop   := 0;
   Tracking    := FALSE;
-  WmQuit      := FALSE;
+  Shutdown    := FALSE;
   ASSERT(H.SetProcessDpiAwarenessContext(-3) # 0);  (* DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE *)
   VKtoScn := SYSTEM.ADR($
     00 00 00 00 00 00 00 00  66 09 00 00 00 5A 00 00
@@ -684,5 +694,5 @@ BEGIN
     00 00 00 00 00 00 00 00  00 00 00 54 61 5B 0E 5D
     00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00
     00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00$);
-  CreateWindow(512, 64, Width, Height)
+  CreateWindow(512, 64, Width, Height);
 END Gui.

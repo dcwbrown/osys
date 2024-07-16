@@ -49,3 +49,10 @@ mv Link Link.ELF
 ./ORP.Compile Viewers.Mod/s Oberon.Mod/s MenuViewers.Mod/s
 ./ORP.Compile TextFrames.Mod/s Edit.Mod/s System.Mod/s
 ./Link.ELF Oberon+System+ORP+Link
+#
+#
+# Run Oberon system
+#
+#
+cp ../*.Tool ../*.Fnt .
+./Oberon

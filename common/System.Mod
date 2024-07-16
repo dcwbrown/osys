@@ -373,8 +373,7 @@ END ShowFonts;
 
 PROCEDURE HandleTitle* (V: Display.Frame; VAR M: Display.FrameMsg);
 VAR
-  x, y: INTEGER;  keys: SET;
-  curpos: RECORD- x, y: SYSTEM.INT32 END;
+  x, y, sx, sy: INTEGER;  keys: SET;
 BEGIN
   CASE M OF
     Oberon.InputMsg:
@@ -382,8 +381,8 @@ BEGIN
         IF    M.keys = {}  THEN Oberon.DrawMouseArrow(M.X, M.Y)
         ELSIF M.keys = {1} THEN MenuViewers.Handle(V, M)
         ELSIF M.keys = {2} THEN REPEAT
-                                  H.GetCursorPos(SYSTEM.ADR(curpos));
-                                  Gui.PositionWindow(curpos.x - M.X, curpos.y - (Display.Height - 1 - M.Y));
+                                  Gui.GetScreenMousePos(sx, sy);
+                                  Gui.PositionWindow(sx - M.X, sy - (Display.Height - 1 - M.Y));
                                   Gui.WaitMsgOrTime(100);  (* Be nice with CPU *)
                                   Input.Mouse(keys, x, y)
                                 UNTIL keys = {}

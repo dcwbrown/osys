@@ -81,7 +81,7 @@ VAR
   W:        Texts.Writer;
   Hdr*:     Modules.ModDesc;
 
-  Str:      ARRAY 8192 OF CHAR;  (* Max bytes of string per module body *)
+  Str:      ARRAY 10000 OF CHAR;  (* Max bytes of string per module body *)
   Strx:     INTEGER;
   StrFix:   ARRAY 512 OF SYSTEM.CARD32;  (* Code offsets needing fixup *)
   StrFInx:  INTEGER;

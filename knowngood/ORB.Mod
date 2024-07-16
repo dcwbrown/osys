@@ -88,6 +88,7 @@ TYPE
     lev*:    INTEGER;   (* >0: local stack frame, lev = proc nesting *)
                         (*  0: module globals                        *)
                         (* <0: -imported module num (-1 .. -16)      *)
+                        (* For type.form=String: length              *)
     next*:    Object;
     dsc*:     Object;
     type*:    Type;
