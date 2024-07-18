@@ -1055,13 +1055,13 @@ BEGIN
     INC(numsegments);
     fadrpreload := 1000H;
     WritePreload(fadrpreload);
-    fadrcore   := Align(fadrpreload + PreloadSize, 1000H);
+    fadrcore    := Align(fadrpreload + PreloadSize, 1000H);
     madrpreload := 4000000H;
   END;
 
   PresetLinHost(madrpreload);
 
-  entry    := OberonCoreBase + Core.EntryPoint;
+  entry := OberonCoreBase + Core.EntryPoint;
 
   Files.Set(Binary, BinFile, 0);
   Files.WriteByte(Binary, 7FH);  Files.WriteMem(Binary, SYSTEM.ADR("ELF"), 3);
@@ -1123,6 +1123,7 @@ BEGIN
   res   := H.FileMove(BinFile.name, prev1);
 
   Files.Register(BinFile);
+  H.FileChangeMode(BinFile^, 5*64 + 5*8 + 7);  (* 0557 -rwxr-xr-x *)
 
   FirstPreload := NIL;
   LastPreload  := NIL

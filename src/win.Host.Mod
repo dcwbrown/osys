@@ -957,6 +957,9 @@ BEGIN
   END
 END FileWrite;
 
+PROCEDURE FileChangeMode*(file: HostFile; mode: INTEGER);
+BEGIN (* No action on Windows *) END FileChangeMode;
+
 PROCEDURE SetDeleteUnregisteredFilesAtExit*(delete: PROCEDURE);
 BEGIN DeleteUnregisteredFilesAtExit := delete END SetDeleteUnregisteredFilesAtExit;
 
