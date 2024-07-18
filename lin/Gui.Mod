@@ -383,10 +383,10 @@ END PaintRow;
 
 PROCEDURE PaintWindow;
 VAR y: INTEGER;
-BEGIN
-  ASSERT(Dirtybottom < Dirtytop);
-  FOR y := Dirtybottom TO Dirtytop - 1 DO PaintRow(y) END;
-  Dirtybottom := Height;  Dirtytop := 0
+BEGIN ASSERT(Dirtybottom < Dirtytop);
+  (*ws("PaintWindow "); wi(Dirtybottom); ws(" up to "); wi(Dirtytop); wsn(".");*)
+  FOR y := Dirtytop - 1 TO Dirtybottom BY -1 DO PaintRow(y) END;
+  SendFlush;  Dirtybottom := Height;  Dirtytop := 0
 END PaintWindow;
 
 
@@ -494,7 +494,7 @@ BEGIN
     ELSIF evcode =  5 THEN HandleMouse(event)  (* ButtonRelease *)
     ELSIF evcode =  6 THEN HandleMouse(event)  (* MotionNotify  *)
     ELSIF evcode =  7 THEN wsn("EnterNotify.")
-    ELSIF evcode = 12 THEN PaintWindow              (* Expose *)
+    ELSIF evcode = 12 THEN Dirtybottom := 0;  Dirtytop := Height;  PaintWindow (* Expose *)
     ELSIF evcode = 19 THEN MapNotify(event)
     ELSIF evcode = 21 THEN ReparentNotify(event)
     ELSIF evcode = 22 THEN ConfigureNotify(event)
@@ -518,6 +518,7 @@ VAR
     revents: SYSTEM.CARD16;
   END;
 BEGIN
+  SendFlush;
   pollfd.fd      := Srv;
   pollfd.events  := 1;   (* POLLIN *)
   pollfd.revents := 0;

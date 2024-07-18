@@ -1259,16 +1259,19 @@ BEGIN
 
     IF tgthost = Win THEN GeneratePE(target) ELSE GenerateELF(target) END;
 
+    (*ws("Link of "); ws(target); ws(" complete.");*)
+
     ParseTarget(r, ch, target, modname)
   END
 END Link;
+
 
 PROCEDURE PE*;   BEGIN Link(Win) END PE;
 PROCEDURE ELF*;  BEGIN Link(Lin) END ELF;
 
 
 BEGIN
-  Texts.OpenWriter(W); wsn("Linker DCWB 2024-05-10");
+  Texts.OpenWriter(W); wsn("ELF and PE linker DCWB 2024-05-10");
   FirstPreload := NIL;
   LastPreload  := NIL;
   PreloadSize  := 0;

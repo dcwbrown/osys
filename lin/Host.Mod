@@ -217,6 +217,8 @@ struct stat {
     name:   FileName;
   END;
 
+  Statistic = RECORD time, count, lastentry: INTEGER END;
+
 
 VAR
   Preload*: PreLoadVars;
@@ -244,6 +246,22 @@ VAR
 
   MonthLen:    ARRAY 11 OF INTEGER;
   Anonfnum:    INTEGER;
+
+  OldStat:        Statistic;
+  NewStat:        Statistic;
+  FlushStat:      Statistic;
+  CloseStat:      Statistic;
+  SetStat:        Statistic;
+  MoveStat:       Statistic;
+  RegisterStat:   Statistic;
+  UnregisterStat: Statistic;
+  UnlinkStat:     Statistic;
+  ReadStat:       Statistic;  ReadBytes:    INTEGER;
+  WriteStat:      Statistic;  WrittenBytes: INTEGER;
+  StatReport:     PROCEDURE;
+  StartTime:      INTEGER;
+  AtNL:           BOOLEAN;
+  TimeStamp:      PROCEDURE;
 
 
 (* ----------------------- Linux syscall system APIs ------------------------ *)
@@ -331,19 +349,21 @@ BEGIN FOR i := 0 TO LEN(buf)-1 DO buf[i] := 0 END END ZeroFill;
 
 PROCEDURE Log*(s: ARRAY OF BYTE);
 VAR res: INTEGER;
-BEGIN res := syswrite(Stdout, SYSTEM.ADR(s), Length(s));
+BEGIN
+  IF AtNL & (TimeStamp # NIL) THEN AtNL := FALSE; TimeStamp END;
+  res := syswrite(Stdout, SYSTEM.ADR(s), Length(s));
 END Log;
 
 PROCEDURE wc*(c: CHAR); BEGIN Log(c) END wc;
 
-PROCEDURE wn*; BEGIN Log(Newline) END wn;
+PROCEDURE wn*; BEGIN Log(Newline); AtNL := TRUE END wn;
 
 PROCEDURE ws*(s: ARRAY OF CHAR); BEGIN Log(s) END ws;
 
 PROCEDURE wsr*(s: ARRAY OF CHAR; w: INTEGER; c: CHAR);  (* Right justified with leading c *)
 BEGIN DEC(w, Length(s));  WHILE w > 0 DO wc(c); DEC(w) END; Log(s) END wsr;
 
-PROCEDURE wsn*(s: ARRAY OF CHAR); BEGIN Log(s); Log(Newline) END wsn;
+PROCEDURE wsn*(s: ARRAY OF CHAR); BEGIN Log(s); Log(Newline); AtNL := TRUE END wsn;
 
 PROCEDURE wh*(n: INTEGER);
 VAR hex: ARRAY 32 OF CHAR;
@@ -439,6 +459,7 @@ BEGIN ExitCode := code END SetExitCode;
 PROCEDURE Exit*;
 BEGIN
   IF DeleteUnregisteredFilesAtExit # NIL THEN DeleteUnregisteredFilesAtExit END;
+  IF StatReport # NIL THEN StatReport END;
   sysexit(ExitCode)
 END Exit;
 
@@ -683,6 +704,63 @@ PROCEDURE WriteClock*(clock: INTEGER);
 BEGIN WriteDate(clock); wc(" "); WriteTime(clock)
 END WriteClock;
 
+PROCEDURE WriteTimestamp;
+VAR now, clock, ms: INTEGER;
+BEGIN
+  now   := Time();
+  clock := TimeAsClock(now);
+  ms    := now DIV 10000 MOD 1000;
+  WriteTime(clock);  wc(".");  wir(ms, 3, "0"); ws(". ");
+END WriteTimestamp;
+
+
+PROCEDURE InitStatistic(VAR s: Statistic);
+BEGIN ZeroFill(s) END InitStatistic;
+
+PROCEDURE Enter(VAR s: Statistic);
+BEGIN s.lastentry := Time() END Enter;
+
+PROCEDURE Leave(VAR s: Statistic);
+BEGIN INC(s.time, Time() - s.lastentry);  INC(s.count) END Leave;
+
+PROCEDURE WriteStatistic(s: Statistic);
+BEGIN
+  wi(s.time DIV 10000);  ws("ms: count ");  wi(s.count);
+  IF s.count > 0 THEN
+    ws(", each ");  wi((s.time DIV s.count) DIV 10000);  ws("ms")
+  END
+END WriteStatistic;
+
+PROCEDURE ReportStats;
+BEGIN
+  wsn("Exit statistics:");
+
+  ws("  Old:        ");  WriteStatistic(OldStat);        wsn(".");
+  ws("  New:        ");  WriteStatistic(NewStat);        wsn(".");
+  ws("  Flush:      ");  WriteStatistic(FlushStat);      wsn(".");
+  ws("  Close:      ");  WriteStatistic(CloseStat);      wsn(".");
+  ws("  Set:        ");  WriteStatistic(SetStat);        wsn(".");
+  ws("  Move:       ");  WriteStatistic(MoveStat);       wsn(".");
+  ws("  Register:   ");  WriteStatistic(RegisterStat);   wsn(".");
+  ws("  Unregister: ");  WriteStatistic(UnregisterStat); wsn(".");
+  ws("  Unlink:     ");  WriteStatistic(UnlinkStat);     wsn(".");
+
+  ws("  Read:       ");  WriteStatistic(ReadStat);
+  ws(", bytes "); wi(ReadBytes);
+  IF ReadBytes > 0 THEN ws(", each "); wi(ReadBytes DIV ReadStat.count) END;
+  wsn(".");
+
+  ws("  Write:      ");  WriteStatistic(WriteStat);
+  ws(", bytes "); wi(WrittenBytes);
+  IF WrittenBytes > 0 THEN ws(", each "); wi(WrittenBytes DIV WriteStat.count) END;
+  wsn(".");
+  ws("  Total:      ");
+  wi((OldStat.time    + NewStat.time  + FlushStat.time    + CloseStat.time
+    + SetStat.time    + MoveStat.time + RegisterStat.time + UnregisterStat.time
+    + UnlinkStat.time + ReadStat.time + WriteStat.time) DIV 10000); wsn("ms.");
+  ws("Run time ");  wi((Time() - StartTime) DIV 10000); wsn("ms.");
+END ReportStats;
+
 
 (* -------------------------------------------------------------------------- *)
 (* ------------- Platform independent low level file operations ------------- *)
@@ -701,6 +779,7 @@ END MakeUnregName;
 PROCEDURE FileOld*(VAR file: HostFile): BOOLEAN;
 VAR success: BOOLEAN;
 BEGIN
+  Enter(OldStat);
   file.fd := sysopen(SYSTEM.ADR(file.name), ORDWR, 0);
   IF file.fd < 0 THEN  (* Try again readonly *)
     file.fd := sysopen(SYSTEM.ADR(file.name), ORDONLY, 0)
@@ -709,13 +788,15 @@ BEGIN
   IF success THEN
     MakeUnregName(file);
     file.registered := TRUE;
-  END
+  END;
+  Leave(OldStat);
 RETURN success END FileOld;
 
 
 PROCEDURE FileNew*(VAR file: HostFile);
 VAR retries: INTEGER;
 BEGIN
+  Enter(NewStat);
   file.registered := FALSE;  retries := 0;
   REPEAT
     MakeUnregName(file);
@@ -724,20 +805,28 @@ BEGIN
   UNTIL (file.fd >= 0) OR (file.fd # -17 (* EEXIST *)) OR (retries > 100);
   IF retries > 100 THEN Trap(-1, "Couldn't find unused temporary file name") END;
   IF file.fd < 0 THEN Trap(-1, "Couldn't create temporary file") END;
+  Leave(NewStat);
 END FileNew;
 
 
 PROCEDURE FileFlush*(file: HostFile);
 VAR rv: INTEGER;
-BEGIN rv := sysfsync(file.fd) END FileFlush;
+BEGIN Enter(FlushStat); rv := sysfsync(file.fd); Leave(FlushStat); END FileFlush;
 
 
 PROCEDURE FileClose*(VAR file: HostFile);
 VAR rv: INTEGER;
 BEGIN
   IF file.fd >= 0 THEN
+    Enter(CloseStat);
     ASSERT(sysclose(file.fd) = 0); file.fd := -1;
-    IF ~file.registered THEN rv := sysunlink(SYSTEM.ADR(file.unregname)) END
+    Leave(CloseStat);
+    IF ~file.registered THEN
+      Enter(UnlinkStat);
+      rv := sysunlink(SYSTEM.ADR(file.unregname));
+      Leave(UnlinkStat);
+    END;
+    Leave(UnlinkStat);
   END
 END FileClose;
 
@@ -750,18 +839,23 @@ RETURN stat.size END FileLength;
 
 
 PROCEDURE FileSetPos*(file: HostFile; pos: INTEGER);
-BEGIN ASSERT(syslseek(file.fd, pos, 0) = pos)
+BEGIN Enter(SetStat); ASSERT(syslseek(file.fd, pos, 0) = pos); Leave(SetStat);
 END FileSetPos;
 
 
 PROCEDURE FileMove*(source, dest: ARRAY OF CHAR): INTEGER;
-BEGIN RETURN sysrename(SYSTEM.ADR(source), SYSTEM.ADR(dest))
-END FileMove;
+VAR res: INTEGER;
+BEGIN
+  Enter(MoveStat);
+  res := sysrename(SYSTEM.ADR(source), SYSTEM.ADR(dest));
+  Leave(MoveStat);
+RETURN res END FileMove;
 
 
 PROCEDURE FileRegister*(VAR file: HostFile);
 VAR rv: INTEGER;
 BEGIN
+  Enter(RegisterStat);
   ASSERT(~file.registered);
   rv := sysunlink(SYSTEM.ADR(file.name));  (* Overwrite existing file if any *)
   rv := sysrename(SYSTEM.ADR(file.unregname), SYSTEM.ADR(file.name));
@@ -771,13 +865,15 @@ BEGIN
     ws("' -> -"); wi(-rv); wsn(".")
   END;
   ASSERT(rv = 0);
-  file.registered := TRUE
+  file.registered := TRUE;
+  Leave(RegisterStat);
 END FileRegister;
 
 
 PROCEDURE FileUnregister*(VAR file: HostFile);
 VAR rv: INTEGER;
 BEGIN
+  Enter(UnregisterStat);
   ASSERT(file.registered);
   (*ws("Host.FileUnregister(h "); wh(handle); ws("H, name "); ws(name); wsn(")");*)
   rv := sysrename(SYSTEM.ADR(file.name), SYSTEM.ADR(file.unregname));
@@ -787,7 +883,8 @@ BEGIN
     ws("' -> -"); wi(-rv); wsn(".")
   END;
   ASSERT(rv = 0);
-  file.registered := FALSE
+  file.registered := FALSE;
+  Leave(UnregisterStat);
 END FileUnregister;
 
 
@@ -804,16 +901,21 @@ END FileTime;
 
 
 PROCEDURE FileRead*(file: HostFile; adr, len: INTEGER): INTEGER;
-VAR rv: INTEGER;
+VAR res: INTEGER;
 BEGIN ASSERT(len > 0);
-RETURN sysread(file.fd, adr, len) END FileRead;
+  Enter(ReadStat);
+  res := sysread(file.fd, adr, len);
+  Leave(ReadStat);  INC(ReadBytes, len);
+RETURN res END FileRead;
 
 
 PROCEDURE FileWrite*(file: HostFile; adr, len: INTEGER);
 VAR byteswritten: INTEGER;
 BEGIN
   IF len > 0 THEN
+    Enter(WriteStat);
     byteswritten := syswrite(file.fd, adr, len);
+    Leave(WriteStat);  INC(WrittenBytes, byteswritten);
     IF len # byteswritten THEN
       Trap(8, "syswrite failed to write all bytes.");
     END
@@ -1030,7 +1132,10 @@ VAR
   reservelen: INTEGER;
 BEGIN
   Newline := $0A 00$;
-  (*wsn("Linux host starting.");*)
+  AtNL := TRUE;
+  TimeStamp := WriteTimestamp;
+  wsn("Host starting.");
+  StartTime := Time();
 
   (* Length of each month based on year starting 1st March *)
   MonthLen[ 0] := 31;  (* March     *)
@@ -1063,6 +1168,19 @@ BEGIN
   ASSERT(res = reserveadr);
 
   Anonfnum := Time();
+
+  InitStatistic(OldStat);
+  InitStatistic(NewStat);
+  InitStatistic(FlushStat);
+  InitStatistic(CloseStat);
+  InitStatistic(SetStat);
+  InitStatistic(MoveStat);
+  InitStatistic(RegisterStat);
+  InitStatistic(UnregisterStat);
+  InitStatistic(UnlinkStat);
+  InitStatistic(ReadStat);   ReadBytes    := 0;
+  InitStatistic(WriteStat);  WrittenBytes := 0;
+  StatReport := ReportStats;
 
   ParseCommandLine(stackorg)
 END Init;

@@ -18,7 +18,6 @@ PROCEDURE \ wab (a, b: INTEGER);
 BEGIN H.ws("W: a "); H.wi(a); H.ws(", b "); H.wi(b); H.wsn(".")
 END wab;
 
-(*$la+lc+*)
 PROCEDURE / lab (a, b: INTEGER);
 BEGIN H.ws("L: a "); H.wi(a); H.ws(", b "); H.wi(b); H.wsn(".")
 END lab;
