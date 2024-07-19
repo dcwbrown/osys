@@ -217,7 +217,7 @@ struct stat {
     name:   FileName;
   END;
 
-  Statistic = RECORD time, count, lastentry: INTEGER END;
+  (*Statistic = RECORD time, count, lastentry: INTEGER END;*)
 
 
 VAR
@@ -247,6 +247,9 @@ VAR
   MonthLen:    ARRAY 11 OF INTEGER;
   Anonfnum:    INTEGER;
 
+  (*
+  AtNL:      BOOLEAN;
+  TimeStamp: PROCEDURE;
   OldStat:        Statistic;
   NewStat:        Statistic;
   FlushStat:      Statistic;
@@ -260,9 +263,7 @@ VAR
   WriteStat:      Statistic;  WrittenBytes: INTEGER;
   StatReport:     PROCEDURE;
   StartTime:      INTEGER;
-  AtNL:           BOOLEAN;
-  TimeStamp:      PROCEDURE;
-
+  *)
 
 (* ----------------------- Linux syscall system APIs ------------------------ *)
 
@@ -285,7 +286,6 @@ PROCEDURE #91  sysfchmod(fd, mode: INTEGER): INTEGER;
 PROCEDURE #217 sysgetdents64(fd, adr, len: INTEGER): INTEGER;
 PROCEDURE #228 sysclockgettime(id, adr: INTEGER): INTEGER;
 PROCEDURE #265 syslinkat(olddirfd, oldpath, newdirfd, newpath, flags: INTEGER): INTEGER;
-
 
 
 PROCEDURE Min*(a, b: INTEGER): INTEGER;
@@ -352,20 +352,20 @@ BEGIN FOR i := 0 TO LEN(buf)-1 DO buf[i] := 0 END END ZeroFill;
 PROCEDURE Log*(s: ARRAY OF BYTE);
 VAR res: INTEGER;
 BEGIN
-  IF AtNL & (TimeStamp # NIL) THEN AtNL := FALSE; TimeStamp END;
+  (*IF AtNL & (TimeStamp # NIL) THEN AtNL := FALSE; TimeStamp END;*)
   res := syswrite(Stdout, SYSTEM.ADR(s), Length(s));
 END Log;
 
 PROCEDURE wc*(c: CHAR); BEGIN Log(c) END wc;
 
-PROCEDURE wn*; BEGIN Log(Newline); AtNL := TRUE END wn;
+PROCEDURE wn*; BEGIN Log(Newline); (*AtNL := TRUE*) END wn;
 
 PROCEDURE ws*(s: ARRAY OF CHAR); BEGIN Log(s) END ws;
 
 PROCEDURE wsr*(s: ARRAY OF CHAR; w: INTEGER; c: CHAR);  (* Right justified with leading c *)
 BEGIN DEC(w, Length(s));  WHILE w > 0 DO wc(c); DEC(w) END; Log(s) END wsr;
 
-PROCEDURE wsn*(s: ARRAY OF CHAR); BEGIN Log(s); Log(Newline); AtNL := TRUE END wsn;
+PROCEDURE wsn*(s: ARRAY OF CHAR); BEGIN Log(s); Log(Newline); (*AtNL := TRUE*) END wsn;
 
 PROCEDURE wh*(n: INTEGER);
 VAR hex: ARRAY 32 OF CHAR;
@@ -385,6 +385,7 @@ BEGIN IntToDecimal(n, dec); wsr(dec, w, c) END wir;
 
 PROCEDURE wb*(n: INTEGER);
 BEGIN WHILE n > 0 DO wc(" "); DEC(n) END END wb;
+
 
 (* -------------------------------------------------------------------------- *)
 
@@ -461,7 +462,7 @@ BEGIN ExitCode := code END SetExitCode;
 PROCEDURE Exit*;
 BEGIN
   IF DeleteUnregisteredFilesAtExit # NIL THEN DeleteUnregisteredFilesAtExit END;
-  IF StatReport # NIL THEN StatReport END;
+  (*IF StatReport # NIL THEN StatReport END;*)
   sysexit(ExitCode)
 END Exit;
 
@@ -716,6 +717,7 @@ BEGIN
 END WriteTimestamp;
 
 
+(*
 PROCEDURE InitStatistic(VAR s: Statistic);
 BEGIN ZeroFill(s) END InitStatistic;
 
@@ -762,6 +764,7 @@ BEGIN
     + UnlinkStat.time + ReadStat.time + WriteStat.time) DIV 10000); wsn("ms.");
   ws("Run time ");  wi((Time() - StartTime) DIV 10000); wsn("ms.");
 END ReportStats;
+*)
 
 
 (* -------------------------------------------------------------------------- *)
@@ -781,7 +784,7 @@ END MakeUnregName;
 PROCEDURE FileOld*(VAR file: HostFile): BOOLEAN;
 VAR success: BOOLEAN;
 BEGIN
-  Enter(OldStat);
+  (*Enter(OldStat);*)
   file.fd := sysopen(SYSTEM.ADR(file.name), ORDWR, 0);
   IF file.fd < 0 THEN  (* Try again readonly *)
     file.fd := sysopen(SYSTEM.ADR(file.name), ORDONLY, 0)
@@ -791,74 +794,68 @@ BEGIN
     MakeUnregName(file);
     file.registered := TRUE;
   END;
-  Leave(OldStat);
+  (*Leave(OldStat);*)
 RETURN success END FileOld;
 
 
 PROCEDURE FileNew*(VAR file: HostFile);
+BEGIN file.registered := FALSE;  file.fd := -1 END FileNew;
+
+
+PROCEDURE EnsureFD(VAR file: HostFile);
 VAR retries: INTEGER;
 BEGIN
-  Enter(NewStat);
-  file.registered := FALSE;  retries := 0;
-  REPEAT
-    MakeUnregName(file);
-    file.fd := sysopen(SYSTEM.ADR(file.unregname), OCREAT+OEXCL+ORDWR, SIRUSR+SIWUSR+SIRGRP);
-    INC(retries);
-  UNTIL (file.fd >= 0) OR (file.fd # -17 (* EEXIST *)) OR (retries > 100);
-  IF retries > 100 THEN Trap(-1, "Couldn't find unused temporary file name") END;
-  IF file.fd < 0 THEN Trap(-1, "Couldn't create temporary file") END;
-  Leave(NewStat);
-END FileNew;
+  IF file.fd < 0 THEN ASSERT(~file.registered);
+    retries := 0;
+    REPEAT
+      MakeUnregName(file);
+      file.fd := sysopen(SYSTEM.ADR(file.unregname), OCREAT+OEXCL+ORDWR, SIRUSR+SIWUSR+SIRGRP);
+      INC(retries);
+    UNTIL (file.fd >= 0) OR (file.fd # -17 (* EEXIST *)) OR (retries > 100);
+    IF retries > 100 THEN Trap(-1, "Couldn't find unused temporary file name") END;
+    IF file.fd < 0 THEN Trap(-1, "Couldn't create temporary file") END
+  END;
+END EnsureFD;
 
 
 PROCEDURE FileFlush*(file: HostFile);
 VAR rv: INTEGER;
-BEGIN Enter(FlushStat); rv := sysfsync(file.fd); Leave(FlushStat); END FileFlush;
+BEGIN IF file.fd >= 0 THEN rv := sysfsync(file.fd); END END FileFlush;
 
 
 PROCEDURE FileClose*(VAR file: HostFile);
 VAR rv: INTEGER;
 BEGIN
   IF file.fd >= 0 THEN
-    Enter(CloseStat);
     ASSERT(sysclose(file.fd) = 0); file.fd := -1;
-    Leave(CloseStat);
     IF ~file.registered THEN
-      Enter(UnlinkStat);
-      rv := sysunlink(SYSTEM.ADR(file.unregname));
-      Leave(UnlinkStat);
-    END;
-    Leave(UnlinkStat);
+      rv := sysunlink(SYSTEM.ADR(file.unregname))
+    END
   END
 END FileClose;
 
 
 PROCEDURE FileLength*(file: HostFile): INTEGER;
-VAR stat: StatDesc;
+VAR stat: StatDesc;  rv: INTEGER;
 BEGIN
-  IF sysfstat(file.fd, SYSTEM.ADR(stat)) < 0 THEN stat.size := 0 END;
+  stat.size := 0;
+  IF file.fd >= 0 THEN rv := sysfstat(file.fd, SYSTEM.ADR(stat)) END
 RETURN stat.size END FileLength;
 
 
-PROCEDURE FileSetPos*(file: HostFile; pos: INTEGER);
-BEGIN Enter(SetStat); ASSERT(syslseek(file.fd, pos, 0) = pos); Leave(SetStat);
+PROCEDURE FileSetPos*(VAR file: HostFile; pos: INTEGER);
+BEGIN EnsureFD(file);  ASSERT(syslseek(file.fd, pos, 0) = pos);
 END FileSetPos;
 
 
 PROCEDURE FileMove*(source, dest: ARRAY OF CHAR): INTEGER;
-VAR res: INTEGER;
-BEGIN
-  Enter(MoveStat);
-  res := sysrename(SYSTEM.ADR(source), SYSTEM.ADR(dest));
-  Leave(MoveStat);
-RETURN res END FileMove;
+BEGIN RETURN sysrename(SYSTEM.ADR(source), SYSTEM.ADR(dest)) END FileMove;
 
 
 PROCEDURE FileRegister*(VAR file: HostFile);
 VAR rv: INTEGER;
 BEGIN
-  Enter(RegisterStat);
-  ASSERT(~file.registered);
+  ASSERT(~file.registered);  ASSERT(file.fd >= 0);
   rv := sysunlink(SYSTEM.ADR(file.name));  (* Overwrite existing file if any *)
   rv := sysrename(SYSTEM.ADR(file.unregname), SYSTEM.ADR(file.name));
   IF rv # 0 THEN
@@ -868,14 +865,14 @@ BEGIN
   END;
   ASSERT(rv = 0);
   file.registered := TRUE;
-  Leave(RegisterStat);
+  (*Leave(RegisterStat);*)
 END FileRegister;
 
 
 PROCEDURE FileUnregister*(VAR file: HostFile);
 VAR rv: INTEGER;
 BEGIN
-  Enter(UnregisterStat);
+  (*Enter(UnregisterStat);*)
   ASSERT(file.registered);
   (*ws("Host.FileUnregister(h "); wh(handle); ws("H, name "); ws(name); wsn(")");*)
   rv := sysrename(SYSTEM.ADR(file.name), SYSTEM.ADR(file.unregname));
@@ -886,7 +883,7 @@ BEGIN
   END;
   ASSERT(rv = 0);
   file.registered := FALSE;
-  Leave(UnregisterStat);
+  (*Leave(UnregisterStat);*)
 END FileUnregister;
 
 
@@ -903,21 +900,16 @@ END FileTime;
 
 
 PROCEDURE FileRead*(file: HostFile; adr, len: INTEGER): INTEGER;
-VAR res: INTEGER;
-BEGIN ASSERT(len > 0);
-  Enter(ReadStat);
-  res := sysread(file.fd, adr, len);
-  Leave(ReadStat);  INC(ReadBytes, len);
-RETURN res END FileRead;
+BEGIN ASSERT(len > 0);  ASSERT(file.fd >= 0);
+RETURN sysread(file.fd, adr, len) END FileRead;
 
 
-PROCEDURE FileWrite*(file: HostFile; adr, len: INTEGER);
+PROCEDURE FileWrite*(VAR file: HostFile; adr, len: INTEGER);
 VAR byteswritten: INTEGER;
 BEGIN
   IF len > 0 THEN
-    Enter(WriteStat);
+    EnsureFD(file);
     byteswritten := syswrite(file.fd, adr, len);
-    Leave(WriteStat);  INC(WrittenBytes, byteswritten);
     IF len # byteswritten THEN
       Trap(8, "syswrite failed to write all bytes.");
     END
@@ -1140,10 +1132,12 @@ VAR
   reservelen: INTEGER;
 BEGIN
   Newline := $0A 00$;
+  (*
   AtNL := TRUE;
   TimeStamp := WriteTimestamp;
   wsn("Host starting.");
   StartTime := Time();
+  *)
 
   (* Length of each month based on year starting 1st March *)
   MonthLen[ 0] := 31;  (* March     *)
@@ -1177,6 +1171,7 @@ BEGIN
 
   Anonfnum := Time();
 
+  (*
   InitStatistic(OldStat);
   InitStatistic(NewStat);
   InitStatistic(FlushStat);
@@ -1189,6 +1184,7 @@ BEGIN
   InitStatistic(ReadStat);   ReadBytes    := 0;
   InitStatistic(WriteStat);  WrittenBytes := 0;
   StatReport := ReportStats;
+  *)
 
   ParseCommandLine(stackorg)
 END Init;

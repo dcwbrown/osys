@@ -46,21 +46,21 @@ TYPE
 
   Context = POINTER- TO ContextRecord;
   ContextRecord = RECORD-
-    P1Home, P2Home, P3Home, P4Home, P5Home, P6Home: INTEGER;             (*   0 *)
-    ContextFlags, MxCsr:                            SYSTEM.CARD32;       (* 030 *)
-    SegCs, SegDs, SegEs, SegFs, SegGs, SegSs:       SYSTEM.CARD16;       (* 038 *)
-    EFlags:                                         SYSTEM.CARD32;       (* 044 *)
-    Dr0, Dr1, Dr2, Dr3, Dr6, Dr7:                   INTEGER;             (* 048 *)
-    rax, rcx, rdx, rbx, rsp, rbp, rsi, rdi:         INTEGER;             (* 078 *)
-    r8,  r9,  r10, r11, r12, r13, r14, r15, rip:    INTEGER;             (* 0B8 *)
-    FloatingPointContext:                           ARRAY 64 OF INTEGER; (* 100 *)
-    VectorRegisters:  (* 26 x M128A *)              ARRAY 52 OF INTEGER; (* 300 *)
-    VectorControl:                                  INTEGER;             (* 4A0 *)
-    DebugControl:                                   INTEGER;             (* 4A8 *)
-    LastBranchToRip:                                INTEGER;             (* 4B0 *)
-    LastBranchFromRip:                              INTEGER;             (* 4B8 *)
-    LastExceptionToRip:                             INTEGER;             (* 4C0 *)
-    LastExceptionFromRip:                           INTEGER;             (* 4C8 *)
+    P1Home, P2Home, P3Home, P4Home, P5Home, P6Home: INTEGER;             (*   0H *)
+    ContextFlags, MxCsr:                            SYSTEM.CARD32;       (* 030H *)
+    SegCs, SegDs, SegEs, SegFs, SegGs, SegSs:       SYSTEM.CARD16;       (* 038H *)
+    EFlags:                                         SYSTEM.CARD32;       (* 044H *)
+    Dr0, Dr1, Dr2, Dr3, Dr6, Dr7:                   INTEGER;             (* 048H *)
+    rax, rcx, rdx, rbx, rsp, rbp, rsi, rdi:         INTEGER;             (* 078H *)
+    r8,  r9,  r10, r11, r12, r13, r14, r15, rip:    INTEGER;             (* 0B8H *)
+    FloatingPointContext:                           ARRAY 64 OF INTEGER; (* 100H *)
+    VectorRegisters:  (* 26 x M128A *)              ARRAY 52 OF INTEGER; (* 300H *)
+    VectorControl:                                  INTEGER;             (* 4A0H *)
+    DebugControl:                                   INTEGER;             (* 4A8H *)
+    LastBranchToRip:                                INTEGER;             (* 4B0H *)
+    LastBranchFromRip:                              INTEGER;             (* 4B8H *)
+    LastExceptionToRip:                             INTEGER;             (* 4C0H *)
+    LastExceptionFromRip:                           INTEGER;             (* 4C8H *)
   END;
 
   ExceptionPointers = POINTER- TO ExceptionPointersDesc;
@@ -824,27 +824,32 @@ END FileSetDisposition;
 
 
 PROCEDURE FileNew*(VAR file: HostFile);
+BEGIN file.registered := FALSE;  file.handle := -1; END FileNew;
+
+
+PROCEDURE EnsureHandle(VAR file: HostFile);
 VAR name16: ARRAY 261 OF SYSTEM.CARD16;  rv, retries: INTEGER;
 BEGIN
-  file.registered := FALSE;  retries := 0;
-  REPEAT
-    MakeUnregName(file);
-    rv := Utf8ToUtf16(file.unregname, name16);
-    file.handle := CreateFileW(SYSTEM.ADR(name16), 010000000H (* access: GenericAll *),
-                               7 (* mode: FileShareRead, FileShareWrite, FileShareDelete *), 0,
-                               1 (* disposition: create new *), 0 (* flags: none *), 0);
-    rv := GetLastError();  INC(retries)
-  UNTIL (file.handle >= 0) OR (rv # 80 (* file exists *)) OR (retries > 100);
-  IF retries > 100 THEN Trap(-1, "Couldn't find unused temporary file name") END;
-  IF file.handle < 0 THEN AssertWinError(rv) END;
-  ASSERT(file.handle >= 0);
-  FileSetDisposition(file.handle, 1);  (* 1 = DeleteFile on close *)
-END FileNew;
+  IF file.handle < 0 THEN ASSERT(~file.registered);
+    retries := 0;
+    REPEAT
+      MakeUnregName(file);
+      rv := Utf8ToUtf16(file.unregname, name16);
+      file.handle := CreateFileW(SYSTEM.ADR(name16), 010000000H (* access: GenericAll *),
+                                 7 (* mode: FileShareRead, FileShareWrite, FileShareDelete *), 0,
+                                 1 (* disposition: create new *), 0 (* flags: none *), 0);
+      rv := GetLastError();  INC(retries)
+    UNTIL (file.handle >= 0) OR (rv # 80 (* file exists *)) OR (retries > 100);
+    IF retries > 100 THEN Trap(-1, "Couldn't find unused temporary file name") END;
+    IF file.handle < 0 THEN AssertWinError(rv) END;
+    FileSetDisposition(file.handle, 1);  (* 1 = DeleteFile on close *)
+  END
+END EnsureHandle;
 
 
 PROCEDURE FileFlush*(file: HostFile);
 VAR rv: INTEGER;
-BEGIN rv := FlushFileBuffers(file.handle) END FileFlush;
+BEGIN IF file.handle >= 0 THEN rv := FlushFileBuffers(file.handle) END END FileFlush;
 
 
 PROCEDURE FileClose*(VAR file: HostFile);
@@ -852,23 +857,29 @@ VAR
   name16: ARRAY 261 OF SYSTEM.CARD16;
   rv:     INTEGER;
 BEGIN
-  ASSERT(CloseHandle(file.handle) # 0);
-  IF ~file.registered THEN
-    rv := Utf8ToUtf16(file.unregname, name16);
-    rv := DeleteFileW(SYSTEM.ADR(name16));
+  IF file.handle >= 0 THEN
+    ASSERT(CloseHandle(file.handle) # 0);
+    IF ~file.registered THEN
+      rv := Utf8ToUtf16(file.unregname, name16);
+      rv := DeleteFileW(SYSTEM.ADR(name16));
+    END
   END;
   file.handle := -1
 END FileClose;
 
 
 PROCEDURE FileLength*(file: HostFile): INTEGER;
-VAR res, size: INTEGER;
-BEGIN ASSERT(GetFileSizeEx(file.handle, SYSTEM.ADR(size)) # 0)
+VAR size: INTEGER;
+BEGIN size := 0;
+  IF file.handle >= 0 THEN
+    ASSERT(GetFileSizeEx(file.handle, SYSTEM.ADR(size)) # 0)
+  END
 RETURN size END FileLength;
 
 
-PROCEDURE FileSetPos*(file: HostFile; pos: INTEGER);
+PROCEDURE FileSetPos*(VAR file: HostFile; pos: INTEGER);
 BEGIN
+  EnsureHandle(file);
   IF SetFilePointerEx(file.handle, pos, 0, 0) = 0 THEN
     Trap(0, "Host.FileSetPos: SetFilePointerEx failed")
   END;
@@ -897,6 +908,7 @@ TYPE renamedesc = RECORD-
   END;
 VAR rename: renamedesc;  rv: INTEGER;
 BEGIN
+  ASSERT(handle >= 0);
   ZeroFill(rename);
   rename.ReplaceIfExists := 1;
   rename.length := Utf8ToUtf16(name, rename.namew) - 1;
@@ -907,6 +919,7 @@ END FileSetName;
 
 PROCEDURE FileRegister*(VAR file: HostFile);
 BEGIN
+  ASSERT(~file.registered);  ASSERT(file.handle >= 0);
   FileSetDisposition(file.handle, 0);  (* Remove delete on close flag *)
   FileSetName(file.handle, file.name);
   file.registered := TRUE
@@ -933,6 +946,7 @@ VAR
   res:  INTEGER;
   info: infodesc;
 BEGIN
+  ASSERT(file.handle >= 0);
   res := GetFileInformationByHandleEx(file.handle, 0, SYSTEM.ADR(info), SYSTEM.SIZE(infodesc));
   IF res = 0 THEN AssertWinError(GetLastError()) END;
 RETURN info.write - 10000000 * 24 * 60 * 60 * (399 * 365 + 96)  (* Bias to 2000-01-01 UTC *)
@@ -941,17 +955,18 @@ END FileTime;
 
 PROCEDURE FileRead*(file: HostFile; adr, len: INTEGER): INTEGER;
 VAR bytesread: INTEGER;
-BEGIN ASSERT(len > 0);
+BEGIN ASSERT(len > 0);  ASSERT(file.handle >= 0);
   IF ReadFile(file.handle, adr, len, SYSTEM.ADR(bytesread), 0) = 0 THEN  (* read failed *)
     bytesread := -1
   END;
 RETURN bytesread END FileRead;
 
 
-PROCEDURE FileWrite*(file: HostFile; adr, len: INTEGER);
+PROCEDURE FileWrite*(VAR file: HostFile; adr, len: INTEGER);
 VAR byteswritten: INTEGER;
 BEGIN
   IF len > 0 THEN
+    EnsureHandle(file);
     ASSERT(WriteFile(file.handle, adr, len, SYSTEM.ADR(byteswritten), 0) # 0);
     ASSERT(byteswritten = len)
   END

@@ -8,10 +8,12 @@
 background docs/*
 build/*
 buildlin/*
+build.*/*
 ctesting/*
 external/*
 fasm/*
 knowngood.prev*/*
+knowngood-*/*
 knowngood/Oberon.exe
 p6000/*
 Pirklbauer/*
