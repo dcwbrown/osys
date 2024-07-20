@@ -5,20 +5,8 @@
 *.sublime-*
 *.sym
 *.x64
-background docs/*
-build/*
-buildlin/*
+context/*
 build.*/*
-ctesting/*
-external/*
-fasm/*
-knowngood.prev*/*
 knowngood-*/*
 knowngood/Oberon.exe
-p6000/*
-Pirklbauer/*
-projects/*
 t[0-9]
-Wirth/download*
-Wirth/old/*
-Wirth/PaulReed/*
