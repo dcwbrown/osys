@@ -10,9 +10,9 @@ cd build.lin
 cp ../src/*.Mod .
 cp ../knowngood/ORP.Compile ../knowngood/Link.ELF .
 #
-#
-# Build Linux compiler
-#
+echo
+echo ----------------------- Build Linux Oberon compiler -----------------------
+echo
 #
 ./ORP.Compile Lin.Host.Mod/s Kernel.Mod/s Files.Mod/s Modules.Mod/s
 ./ORP.Compile Fonts.Mod/s Texts.Mod/s Link.Mod/s ORS.Mod/s
@@ -20,9 +20,9 @@ cp ../knowngood/ORP.Compile ../knowngood/Link.ELF .
 ./Link.ELF ORP.Compile Link
 mv Link Link.ELF
 #
-#
-# Build Oberon system
-#
+echo
+echo ------------------------- Build LinuOberon system -------------------------
+echo
 #
 ./ORP.Compile FileDir.Mod/s Lin.Gui.Mod/s Input.Mod/s Display.Mod/s
 ./ORP.Compile Viewers.Mod/s Oberon.Mod/s MenuViewers.Mod/s
@@ -35,4 +35,9 @@ mv Link Link.ELF
 #
 cp ../fnt/*.Fnt .
 cp ../Lin.System.Tool System.Tool
+#
+echo
+echo --------------------------- Start Linux Oberon ----------------------------
+echo
+#
 ./Oberon

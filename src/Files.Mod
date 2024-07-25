@@ -1,5 +1,5 @@
-MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
-               (*DB 2024-07-21 Replace direct disk access by host file system *)
+MODULE Files;  (*DB 2024-07-25*)
+               (*Based on NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
 
 IMPORT SYSTEM, H := Host, Kernel;
 
@@ -9,7 +9,8 @@ TYPE
   File*  = POINTER TO FileDesc;
   Buffer = POINTER TO BufferRecord;
 
-  Rider* = RECORD eof*: BOOLEAN;
+  Rider* = RECORD
+    eof*: BOOLEAN;
     res*: INTEGER;
     file: File;
     pos:  INTEGER;
@@ -20,7 +21,7 @@ TYPE
     next:     POINTER- TO FileDesc;  (* Non-collecting list of open files *)
     nofbufs:  INTEGER;
     firstbuf: Buffer;
-    pos:      INTEGER;  (* A whole multiple of Bufsize except when at the end of file *)
+    pos:      INTEGER;  (* A whole multiple of Bufsize unless at EOF *)
     len:      INTEGER;
   END;
 
@@ -185,20 +186,16 @@ RETURN H.FileTime(f^) END Date;
 
 (* --------------------------------- Riders --------------------------------- *)
 
-PROCEDURE Set*(VAR r: Rider; f: File; pos: INTEGER);
+PROCEDURE Set*(VAR r: Rider;  f: File;  pos: INTEGER);
 BEGIN
+  ASSERT(f # NIL);
+  IF pos < 0 THEN pos := 0 ELSIF pos > f.len THEN pos := f.len END;
   r.eof  := FALSE;
   r.res  := 0;
   r.file := f;
-  IF f # NIL THEN
-    r.buf := f.firstbuf;
-    IF    pos < 0     THEN r.pos := 0
-    ELSIF pos < f.len THEN r.pos := pos
-    ELSE                   r.pos := f.len
-    END
-  END;
+  r.pos  := pos;
+  r.buf  := f.firstbuf
 END Set;
-
 
 PROCEDURE Pos* (VAR r: Rider): INTEGER; RETURN r.pos  END Pos;
 PROCEDURE Base*(VAR r: Rider): File;    RETURN r.file END Base;
@@ -207,7 +204,7 @@ PROCEDURE Base*(VAR r: Rider): File;    RETURN r.file END Base;
 (* ---------------------------------- Read ---------------------------------- *)
 
 PROCEDURE ReadMem*(VAR r: Rider; adr, len: INTEGER);
-VAR buf: Buffer;  page, offs, copylen: INTEGER;
+VAR page, offs, copylen: INTEGER;
 BEGIN
   offs := r.pos MOD Bufsize;
   IF (r.pos DIV Bufsize = r.buf.page) & (offs + len <= r.buf.lim) THEN
@@ -216,24 +213,17 @@ BEGIN
     INC(r.pos, len)
   ELSE
     WHILE len > 0 DO
-      page := r.pos DIV Bufsize;
-      offs := r.pos MOD Bufsize;
-      IF page = r.buf.page THEN
-        IF offs < r.buf.lim THEN  (* At least the first byte to be read is in the current buffer *)
-          copylen := r.buf.lim - offs;
-          IF copylen > len THEN copylen := len END;
-          SYSTEM.COPY(SYSTEM.ADR(r.buf.data[offs]), adr, copylen);
-          INC(r.pos, copylen);  INC(adr, copylen);  DEC(len, copylen)
-        ELSE (* at end of file *)
-          ASSERT(r.pos = r.file.len);
-          WHILE len > 0 DO
-            SYSTEM.PUT(adr, SYSTEM.VAL(BYTE, 0));
-            INC(adr);  DEC(len)
-          END;
-          r.eof := TRUE;
-        END
-      ELSE
-        r.buf := GetBuf(r.file, page)
+      page := r.pos DIV Bufsize;  offs := r.pos MOD Bufsize;
+      IF r.buf.page # page THEN r.buf := GetBuf(r.file, page) END;
+      IF offs < r.buf.lim THEN  (* At least the first byte to be read is in the current buffer *)
+        copylen := r.buf.lim - offs;  IF copylen > len THEN copylen := len END;
+        SYSTEM.COPY(SYSTEM.ADR(r.buf.data[offs]), adr, copylen);
+        INC(r.pos, copylen);  INC(adr, copylen);  DEC(len, copylen)
+      ELSE (* at end of file *)  ASSERT(r.pos = r.file.len);
+        WHILE len > 0 DO
+          SYSTEM.PUT(adr, SYSTEM.VAL(BYTE, 0));  INC(adr);  DEC(len)
+        END;
+        r.eof := TRUE;
       END
     END
   END
@@ -272,7 +262,7 @@ BEGIN n := 0;  y := 0;
   ReadByte(r, b);
   WHILE b >= 80H DO  INC(y, LSL(b - 80H, n));  INC(n, 7);  ReadByte(r, b)  END;
   INC(y, LSL(b, n));
-  IF n < 57 THEN y := ASR(LSL(y, 57-n), 57-n)  (* Sign extend *) END;
+  IF n < 57 THEN y := ASR(LSL(y, 57-n), 57-n) (* Sign extend *) END;
   x := y;
 END ReadNum;
 
@@ -280,37 +270,30 @@ END ReadNum;
 (* --------------------------------- Write ---------------------------------- *)
 
 PROCEDURE WriteMem*(VAR r: Rider; adr, len: INTEGER);
-VAR f: File;  buf: Buffer;  page, offs, copylen: INTEGER;
+VAR f: File;  page, offs, copylen: INTEGER;
 BEGIN
   offs := r.pos MOD Bufsize;
-  buf  := r.buf;
-  IF (r.pos DIV Bufsize = buf.page) & (offs + len <= Bufsize) THEN
-    (* Fast case, all data will go into the current buffer *)
-    SYSTEM.COPY(adr, SYSTEM.ADR(buf.data[offs]), len);
+  IF (r.pos DIV Bufsize = r.buf.page) & (offs + len <= Bufsize) THEN
+    (* Fast case, all data will fit into the current buffer *)
+    SYSTEM.COPY(adr, SYSTEM.ADR(r.buf.data[offs]), len);
     INC(r.pos, len);
     IF r.pos > r.file.len THEN
       r.file.len := r.pos;
-      ASSERT(offs + len > buf.lim);
-      buf.lim := offs + len
+      ASSERT(offs + len > r.buf.lim);
+      r.buf.lim := offs + len
     END;
-    buf.mod := TRUE
+    r.buf.mod := TRUE
   ELSE
     WHILE len > 0 DO
-      page := r.pos DIV Bufsize;
-      offs := r.pos MOD Bufsize;
-      buf  := r.buf;
-      IF page = buf.page THEN
-        ASSERT(offs <= buf.lim);  (* r.pos must be within or at end of file *)
-        copylen := Bufsize - offs;
-        IF copylen > len THEN copylen := len END;
-        SYSTEM.COPY(adr, SYSTEM.ADR(buf.data[offs]), copylen);
-        buf.mod := TRUE;
-        INC(r.pos, copylen);  INC(adr, copylen);  DEC(len, copylen);
-        IF offs + copylen > buf.lim THEN buf.lim := offs + copylen END;
-        IF r.pos > r.file.len THEN r.file.len := r.pos END;
-      ELSE
-        r.buf := GetBuf(r.file, page)
-      END
+      page := r.pos DIV Bufsize;  offs := r.pos MOD Bufsize;
+      IF r.buf.page # page THEN r.buf := GetBuf(r.file, page) END;
+      ASSERT(offs <= r.buf.lim);  (* r.pos must be within or at end of file *)
+      copylen := Bufsize - offs;  IF copylen > len THEN copylen := len END;
+      SYSTEM.COPY(adr, SYSTEM.ADR(r.buf.data[offs]), copylen);
+      r.buf.mod := TRUE;
+      INC(r.pos, copylen);  INC(adr, copylen);  DEC(len, copylen);
+      IF offs + copylen > r.buf.lim THEN r.buf.lim := offs + copylen END;
+      IF r.pos > r.file.len THEN r.file.len := r.pos END;
     END
   END
 END WriteMem;
