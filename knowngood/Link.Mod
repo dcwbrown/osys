@@ -222,6 +222,20 @@ RETURN (name = "Host")  OR (name = "Kernel")
     OR (name = "Files") OR (name = "Modules")
 END IsInnerCore;
 
+PROCEDURE SetFilePos(VAR r: Files.Rider; f: Files.File; pos: INTEGER);
+(* If pos beyond end of file fills gap with zeroes *)
+VAR l: INTEGER;
+BEGIN
+  l := Files.Length(f);
+  IF pos <= l THEN
+    Files.Set(r, f, pos)
+  ELSE
+    Files.Set(r, f, l);
+    l := pos - l;
+    WHILE l > 0 DO Files.WriteByte(r, 0);  DEC(l) END
+  END
+END SetFilePos;
+
 
 (* -------------------------------------------------------------------------- *)
 (* -------------------------------------------------------------------------- *)
@@ -320,7 +334,7 @@ BEGIN
   hdr.importTableRVA          := RvaImport;
   hdr.importTableSize         := RvaModules - RvaImport;
 
-  Files.Set(Binary, BinFile, 0);
+  SetFilePos(Binary, BinFile, 0);
   Files.WriteRaw(Binary, hdr);
 
   (* Write section headers *)
@@ -379,7 +393,7 @@ PROCEDURE LinkImport*(
 );
 VAR
   disp:           SYSTEM.INT32;
-  Coremodadr:         INTEGER;
+  Coremodadr:     INTEGER;
   expoffset:      INTEGER;
   absreloc:       INTEGER;
   handlersoffset: INTEGER;
@@ -439,7 +453,7 @@ VAR
 BEGIN
   f := Files.Old(fn);
   IF f = NIL THEN ws("Cannot load ");  ws(fn);  wn; ASSERT(FALSE) END;
-  Files.Set(R, f, 0);
+  SetFilePos(R, f, 0);
   mod := SYSTEM.VAL(Modules.Module, SYSTEM.ADR(Core.Mem[Core.Size]));
   Files.ReadRaw(R, mod^);
   Core.ModAdr[Core.ModCount].name := mod.name;
@@ -472,7 +486,7 @@ BEGIN
 (* TODO - Implement module ref counts *)
 
   (* Link imports *)
-  Files.Set(R, f, mod.imprefs);
+  SetFilePos(R, f, mod.imprefs);
   Files.ReadRaw(R, impcnt);
   FOR i := 1 TO impcnt DO
     Files.ReadRaw(R, offset);
@@ -712,7 +726,7 @@ VAR
   i:   INTEGER;
   r1:  Files.Rider;
 BEGIN
-  Files.Set(r1, f, 0);
+  SetFilePos(r1, f, 0);
   i := size DIV LEN(buf);
   WHILE i > 0 DO
     Files.ReadRaw(r1, buf);
@@ -794,7 +808,7 @@ PROCEDURE MakeIconResource(fadr, rva: INTEGER): INTEGER;
 VAR size: INTEGER;
 BEGIN
   size := Files.Length(IconPng);
-  Files.Set(Binary, BinFile, fadr);
+  SetFilePos(Binary, BinFile, fadr);
   (*00*) WriteResourceDirectoryTable(2);
   (*10*) WriteResourceDirectoryEntry(3,    80000020H); (* -> 2d lev for icons *)
   (*18*) WriteResourceDirectoryEntry(14,   80000038H); (* -> 2d lev for icon group *)
@@ -833,7 +847,7 @@ VAR
   end: BOOLEAN;
 BEGIN
   H.ZeroFill(hdr);  hdr.width := 0FFFFFFFFH;  (* Mark as not found *)
-  Files.Set(r, f, 0);
+  SetFilePos(r, f, 0);
   Files.ReadInt(r, i);  end := r.res # 0;
   IF ~end THEN end := i # 0A1A0A0D474E5089H END;
   IF ~end THEN
@@ -852,7 +866,7 @@ BEGIN
           END;
           end := TRUE
         ELSE
-          Files.Set(r, f, Files.Pos(r) + len + 4);  (* skip content and checksum *)
+          SetFilePos(r, f, Files.Pos(r) + len + 4);  (* skip content and checksum *)
         END
       END
     UNTIL end
@@ -884,7 +898,7 @@ BEGIN
   PreloadSize := 0;
   IF FirstPreload # NIL THEN
     emb := FirstPreload;
-    Files.Set(Binary, BinFile, fadr);
+    SetFilePos(Binary, BinFile, fadr);
     WHILE emb # NIL DO
       IF ~IsInnerCore(emb.mod.name) THEN
         CopyFile(emb.file, Binary, emb.size);
@@ -903,9 +917,9 @@ END WritePreload;
 PROCEDURE GeneratePE*(name: ARRAY OF CHAR);
 VAR
   PEname:      ARRAY 64 OF CHAR;
-  prev1:       Files.FileName;
-  prev2:       Files.FileName;
-  prev3:       Files.FileName;
+  prev1:       H.FileName;
+  prev2:       H.FileName;
+  prev3:       H.FileName;
   res:         INTEGER;
   HeaderSize:  INTEGER;
   FadrPreload: INTEGER;    RvaPreload:  INTEGER;
@@ -919,7 +933,7 @@ BEGIN
 
   PEname[0] := 0X;  H.Append(name, PEname);  H.Append(".exe", PEname);
   BinFile := Files.New(PEname);
-  Files.Set(Binary, BinFile, 0);
+  SetFilePos(Binary, BinFile, 0);
 
   HandlersOffset := SYSTEM.SIZE(H.PreLoadVars)
                   + 8 * (Kernel32ImportCount + Gdi32ImportCount + User32ImportCount);
@@ -973,7 +987,8 @@ BEGIN
   IF PreloadSize > 0 THEN MadrPreload := ImageBase + RvaPreload END;
   PresetWinHost(FadrModules, ImageBase, MadrPreload, IconSize, RvaIcon);
 
-  Files.Set(Binary, BinFile, FadrImport);
+  WHILE FadrImport > Files.Length(BinFile) DO Files.WriteByte(Binary, 0) END;
+  SetFilePos(Binary, BinFile, FadrImport);
   Files.WriteRaw(Binary, Idt);
   Files.WriteMem(Binary, SYSTEM.ADR(ImportHints), ImportHintSize);
   ASSERT(ImportSize = Align(Files.Pos(Binary), 16) - FadrImport);
@@ -984,11 +999,11 @@ BEGIN
                 FadrImport,  RvaImport,
                 FadrModules, RvaModules);
 
-  Files.Set(Binary, BinFile, FadrModules);
+  SetFilePos(Binary, BinFile, FadrModules);
   Files.WriteMem(Binary, SYSTEM.ADR(Core.Mem), Core.Size);
 
   IF Files.Pos(Binary) MOD FileAlignment # 0 THEN
-    Files.Set(Binary, BinFile, FileAlign(Files.Pos(Binary))-1);
+    SetFilePos(Binary, BinFile, FileAlign(Files.Pos(Binary))-1);
     Files.WriteByte(Binary, 0);
   END;
 
@@ -1030,9 +1045,9 @@ VAR
   FilesHdr:    Modules.Module;
   ModulesHdr:  Modules.Module;
   entry:       INTEGER;
-  prev1:       Files.FileName;
-  prev2:       Files.FileName;
-  prev3:       Files.FileName;
+  prev1:       H.FileName;
+  prev2:       H.FileName;
+  prev3:       H.FileName;
   res:         INTEGER;
   fadrcore:    INTEGER;
   fadrpreload: INTEGER;
@@ -1063,7 +1078,7 @@ BEGIN
 
   entry := OberonCoreBase + Core.EntryPoint;
 
-  Files.Set(Binary, BinFile, 0);
+  SetFilePos(Binary, BinFile, 0);
   Files.WriteByte(Binary, 7FH);  Files.WriteMem(Binary, SYSTEM.ADR("ELF"), 3);
   Files.WriteByte(Binary, 2);     (* 64 bit                                 *)
   Files.WriteByte(Binary, 1);     (* Little endian                          *)
@@ -1110,7 +1125,7 @@ BEGIN
   ASSERT(Files.Pos(Binary) = 40H + 38H * numsegments);
 
   (* Core *)
-  Files.Set(Binary, BinFile, fadrcore);
+  SetFilePos(Binary, BinFile, fadrcore);
   Files.WriteMem(Binary, SYSTEM.ADR(Core.Mem), Core.Size);
 
   (* Shuffle previous versions *)
@@ -1141,7 +1156,7 @@ RETURN emb # NIL END IsAlreadyPreloaded;
 
 PROCEDURE AddPreloadModule(name: ARRAY OF CHAR; reqkey: INTEGER);
 VAR
-  fn:   Files.FileName;
+  fn:   H.FileName;
   f:    Files.File;
   size: INTEGER;
   r:    Files.Rider;
@@ -1158,7 +1173,7 @@ BEGIN
       ws("Link.Mod cannot find "); ws(fn);
       wsn(".");  ASSERT(FALSE)
     ELSE
-      Files.Set(r, f, 0);  Files.ReadRaw(r, hdr);
+      SetFilePos(r, f, 0);  Files.ReadRaw(r, hdr);
       IF hdr.magic # "Oberon5" THEN
         ws("Link.Mod: "); ws(fn); wsn(" corrupt header.");
         ASSERT(FALSE)
@@ -1176,7 +1191,7 @@ BEGIN
           wsn(" is not a whole multiple of 16.");
           ASSERT(FALSE)
         ELSE
-          Files.Set(r, f, (SYSTEM.SIZE(Modules.ModDesc) + 15) DIV 16 * 16);
+          SetFilePos(r, f, (SYSTEM.SIZE(Modules.ModDesc) + 15) DIV 16 * 16);
           Files.ReadString(r, imp);
           WHILE imp[0] # 0X DO
             Files.ReadInt(r, key);

@@ -1,60 +1,61 @@
-MODULE Files;  (* DCWB 2024-01-11..2024-05-11 *)
+MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
+               (*DB 2024-07-21 Replace direct disk access by host file system *)
 
-(* Meaning of result codes used by Wirth Files.Check/Delete/Rename:
+IMPORT SYSTEM, H := Host, Kernel;
 
-   -1 - Empty filename ("")
-    0 - OK
-    2 - File not found
-    3 - Starts with non-letter
-    4 - Too long
-    5 - Contains other than letter, digit or "."
-*)
-
-IMPORT SYSTEM, Kernel, H := Host;
-
-CONST MaxPath = H.MaxPath;
+CONST MaxBufs = 4;  Bufsize = 4096;
 
 TYPE
-  FileName* = ARRAY MaxPath OF CHAR;
+  File*  = POINTER TO FileDesc;
+  Buffer = POINTER TO BufferRecord;
 
-  File*    = POINTER TO FileDesc;
-  FileDesc = RECORD (H.HostFile)
-    next:    POINTER- TO FileDesc;  (* Non-collecting list of open files *)
-    buf:     ARRAY 4096 OF BYTE;
-    dirty:   BOOLEAN;
-    bufpos:  INTEGER;  (* File position at start of buffer, -1 if not in use *)
-    buflen:  INTEGER;  (* normally full, less at end of file *)
-    filelen: INTEGER;  (* Current length on disk, excluding latest writes to buffer at eof *)
+  Rider* = RECORD eof*: BOOLEAN;
+    res*: INTEGER;
+    file: File;
+    pos:  INTEGER;
+    buf:  Buffer
   END;
 
-  Rider* = RECORD
-    eof*:  BOOLEAN;
-    res*:  INTEGER;
-    pos:   INTEGER;
-    file:  File;
+  FileDesc = RECORD (H.HostFile)
+    next:     POINTER- TO FileDesc;  (* Non-collecting list of open files *)
+    nofbufs:  INTEGER;
+    firstbuf: Buffer;
+    pos:      INTEGER;  (* A whole multiple of Bufsize except when at the end of file *)
+    len:      INTEGER;
+  END;
+
+  BufferRecord = RECORD
+    page: INTEGER;
+    lim:  INTEGER;
+    mod:  BOOLEAN;
+    next: Buffer;
+    data: ARRAY Bufsize OF BYTE;
   END;
 
 VAR
-  first:  POINTER- TO FileDesc;  (* uncollected list of open files *)
+  first: POINTER- TO FileDesc;  (* uncollected list of open files *)
 
-
-(* --------------------------------- Files ---------------------------------- *)
 
 PROCEDURE Old*(name: ARRAY OF CHAR): File;
-VAR handle: INTEGER;  f: File;
-BEGIN
-  IF name[0] = 0X THEN
-    f := NIL  (* E.g. commonly when Texts.Open passed "" as filename *)
-  ELSE
+VAR f: File;  buf: Buffer;
+BEGIN f := NIL;
+  IF name[0] # 0X THEN
     f := first;
     WHILE (f # NIL) & ~(f.registered & (f.name = name)) DO f := f.next END;
     IF f = NIL THEN
       NEW(f);  H.ZeroFill(f^);  f.name := name;
       IF H.FileOld(f^) THEN
-        f.next    := first;
-        f.bufpos  := -1;
-        f.filelen := H.FileLength(f^);
-        first     := f;
+        NEW(buf);
+        buf.page   := 0;
+        buf.next   := buf;
+        buf.mod    := FALSE;
+        buf.lim    := H.FileRead(f^, SYSTEM.ADR(buf.data), Bufsize);  ASSERT(buf.lim >= 0);
+        f.firstbuf := buf;
+        f.nofbufs  := 1;
+        f.pos      := buf.lim;
+        f.len      := H.FileLength(f^);
+        f.next     := first;
+        first      := f;
       ELSE
         f := NIL
       END
@@ -64,80 +65,121 @@ RETURN f END Old;
 
 
 PROCEDURE New*(name: ARRAY OF CHAR): File;
-VAR f: File;
+VAR f: File;  buf: Buffer;
 BEGIN
-  NEW(f);  H.ZeroFill(f^);  f.name := name;
+  NEW(buf);
+  buf.page := 0;
+  buf.mod  := TRUE;
+  buf.lim  := 0;
+  buf.next := buf;
+  NEW(f);  H.ZeroFill(f^);
+  f.name     := name;
+  f.firstbuf := buf;
+  f.nofbufs  := 1;
+  f.next     := first;
+  first      := f;
   H.FileNew(f^);
-  f.next    := first;
-  f.bufpos  := -1;
-  f.filelen := 0;
-  first     := f;
 RETURN f END New;
 
 
-PROCEDURE Unregister(f: File); BEGIN H.FileUnregister(f^) END Unregister;
+PROCEDURE ReadBuf(f: File; buf: Buffer; page: INTEGER);  (* page = sector number *)
+VAR pos: INTEGER;
+BEGIN
+  pos := page * Bufsize;
+  IF f.pos # pos THEN H.FileSetPos(f^, pos) END;
+  buf.lim  := H.FileRead(f^, SYSTEM.ADR(buf.data), Bufsize);  ASSERT(buf.lim >= 0);
+  f.pos    := pos + buf.lim;
+  IF f.pos > f.len THEN f.len := f.pos END;
+  buf.page := page;
+  buf.mod  := FALSE;
+END ReadBuf;
+
+
+PROCEDURE WriteBuf(f: File; buf: Buffer);
+VAR pos: INTEGER;
+BEGIN
+  pos := buf.page * Bufsize;
+  IF f.pos # pos THEN H.FileSetPos(f^, pos) END;
+  H.FileWrite(f^, SYSTEM.ADR(buf.data), buf.lim);
+  f.pos := pos + buf.lim;
+  buf.mod := FALSE
+END WriteBuf;
+
+
+PROCEDURE Buf(f: File; page: INTEGER): Buffer;
+VAR buf: Buffer;
+BEGIN buf := f.firstbuf;
+  WHILE (buf.page # page) & (buf.next # f.firstbuf) DO buf := buf.next END;
+  IF buf.page # page THEN buf := NIL END
+RETURN buf END Buf;
+
+
+PROCEDURE GetBuf(f: File; page: INTEGER): Buffer;
+VAR buf: Buffer;
+BEGIN buf := f.firstbuf;
+  WHILE (buf.page # page) & (buf.next # f.firstbuf) DO buf := buf.next END;
+  IF buf.page # page THEN
+    IF f.nofbufs < MaxBufs THEN  (*allocate new buffer*)
+      NEW(buf); buf.next := f.firstbuf.next; f.firstbuf.next := buf; INC(f.nofbufs)
+    ELSE (*reuse a buffer*)
+      f.firstbuf := buf;
+      IF buf.mod THEN WriteBuf(f, buf) END
+    END;
+    IF page * Bufsize <= f.len THEN
+      ReadBuf(f, buf, page)
+    ELSE
+      buf.page := page; buf.lim := 0; buf.mod := FALSE
+    END
+  END;
+  RETURN buf
+END GetBuf;
+
+
+PROCEDURE Unbuffer(f: File);
+VAR buf: Buffer;
+BEGIN buf := f.firstbuf;
+  REPEAT IF buf.mod THEN WriteBuf(f, buf) END;  buf := buf.next
+  UNTIL buf = f.firstbuf
+END Unbuffer;
 
 
 PROCEDURE UnregisterByName(name: ARRAY OF CHAR);
 VAR f: File;
 BEGIN f := first;
   WHILE f # NIL DO
-    IF f.registered & (f.name = name) THEN Unregister(f) END;
+    IF f.registered & (f.name = name) THEN H.FileUnregister(f^) END;
     f := f.next;
   END;
 END UnregisterByName;
 
 
-PROCEDURE UpdateLength(f: File);
-BEGIN
-  IF (f.bufpos >= 0) & (f.bufpos + f.buflen > f.filelen) THEN
-    f.filelen := f.bufpos + f.buflen
-  END
-END UpdateLength;
-
-
-PROCEDURE FlushBuffer(f: File);
-BEGIN
-  IF (f.bufpos >= 0) & f.dirty THEN
-    H.FileSetPos(f^, f.bufpos);
-    H.FileWrite(f^, SYSTEM.ADR(f.buf), f.buflen);
-    f.dirty := FALSE;
-    UpdateLength(f)
-  END
-END FlushBuffer;
-
-
 PROCEDURE Register*(f: File);
 BEGIN
-  IF (f # NIL) & (f.name[0] # 0X) & ~f.registered THEN
-    UnregisterByName(f.name);
-    FlushBuffer(f);
-    H.FileRegister(f^)
+  IF (f # NIL) & (f.name[0] # 0X) THEN
+    Unbuffer(f);
+    IF ~f.registered THEN UnregisterByName(f.name);  H.FileRegister(f^) END
   END
 END Register;
 
 
+PROCEDURE Close*(f: File);
+BEGIN IF f # NIL THEN Unbuffer(f) END END Close;
+
+
+PROCEDURE Delete*(name: ARRAY OF CHAR; VAR res: INTEGER);
+BEGIN IF H.FileDelete(name) THEN res := 0 ELSE res := 2 END END Delete;
+
+
 PROCEDURE Rename*(old, new: ARRAY OF CHAR; VAR res: INTEGER);
-(* Returns
-   0 - success
-   2 - old name not found
-*)
-VAR f: File;
-BEGIN
-  UnregisterByName(new);
-  res := H.FileMove(old, new);
-  IF res # 0 THEN
-    f := first;  WHILE (f # NIL) & (f.name # old) DO f := f.next END;
-    IF (f # NIL) & f.registered THEN f.name := new END
-  END;
+BEGIN res := H.FileMove(old, new);
+  IF res # 0 THEN res := 2 END
 END Rename;
 
 
-PROCEDURE Length*(f: File): INTEGER;
-BEGIN UpdateLength(f) RETURN f.filelen END Length;
+PROCEDURE Length*(f: File): INTEGER; RETURN f.len END Length;
 
 
-PROCEDURE Date*(f: File): INTEGER;  (* In 100 nanosecond ticks since 2000-01-01 UTC *)
+PROCEDURE Date*(f: File): INTEGER; (* In 100 nanosecond ticks since 2000-01-01 UTC *)
 RETURN H.FileTime(f^) END Date;
 
 
@@ -145,132 +187,57 @@ RETURN H.FileTime(f^) END Date;
 
 PROCEDURE Set*(VAR r: Rider; f: File; pos: INTEGER);
 BEGIN
-  IF pos < 0 THEN pos := 0 END;
-  r.eof   := FALSE;
-  r.res   := 0;
-  r.file  := f;
-  r.pos   := pos;
+  r.eof  := FALSE;
+  r.res  := 0;
+  r.file := f;
+  IF f # NIL THEN
+    r.buf := f.firstbuf;
+    IF    pos < 0     THEN r.pos := 0
+    ELSIF pos < f.len THEN r.pos := pos
+    ELSE                   r.pos := f.len
+    END
+  END;
 END Set;
 
-PROCEDURE Pos*(VAR r: Rider): INTEGER;
-BEGIN RETURN r.pos END Pos;
 
-PROCEDURE Base*(VAR r: Rider): File;
-BEGIN RETURN r.file END Base;
-
-
-(* ----------------------- Read/Write through buffer ------------------------ *)
-
-PROCEDURE ZeroMem(adr, len: INTEGER);
-VAR zero: INTEGER;
-BEGIN
-  WHILE len >= 8 DO SYSTEM.PUT(adr, 0);  INC(adr, 8);  DEC(len, 8) END;
-  WHILE len > 0 DO SYSTEM.PUT(adr, 0X);  INC(adr);  DEC(len)  END;
-END ZeroMem;
-
-
-PROCEDURE LoadBuffer(f: File; pos: INTEGER);
-BEGIN
-  (*
-  H.ws("LoadBuffer '"); H.ws(f.name);
-  H.ws("', pos "); H.wh(pos);
-  H.ws("H, f.bufpos "); H.wh(f.bufpos);
-  H.wsn("H.");
-  *)
-  FlushBuffer(f);
-  IF pos DIV 4096 * 4096 # f.bufpos THEN
-    (*
-    H.wsn("Load buffer from disk.");
-    *)
-    f.bufpos := pos DIV 4096 * 4096;
-    H.FileSetPos(f^, f.bufpos);
-    f.buflen := H.FileRead(f^, SYSTEM.ADR(f.buf), 4096);
-    IF f.buflen < 0 THEN f.buflen := 0 END;
-  END;
-  (*
-  H.ws("LoadBuffer complete, bufpos "); H.wh(f.bufpos);
-  H.ws("H, buflen "); H.wh(f.buflen); H.wsn("H.");
-  *)
-END LoadBuffer;
-
-
-PROCEDURE ReadMem*(VAR r: Rider; adr, len: INTEGER);
-VAR f: File;  copyoffset, copylength: INTEGER;
-BEGIN f := r.file;
-  (*
-    H.ws("ReadMem '"); H.ws(r.file.name);
-    H.ws("' at "); H.wh(r.pos); H.ws("H, len "); H.wh(len); H.wsn("H.");
-  *)
-  WHILE len > 0 DO
-    (* Satisfy as much as possible from buffer, or reload buffer *)
-    IF (f.bufpos >= 0) & (r.pos >= f.bufpos) & (r.pos < f.bufpos + f.buflen) THEN
-      (* Calculate affected part of buffer *)
-      copyoffset := r.pos - f.bufpos;
-      copylength := f.buflen - copyoffset;  ASSERT(copylength > 0);
-      IF copylength > len THEN copylength := len END;
-      SYSTEM.COPY(SYSTEM.ADR(f.buf[copyoffset]), adr, copylength);
-      INC(adr, copylength);  INC(r.pos, copylength);  DEC(len, copylength);
-    ELSE
-      (* Load appropriate buffer *)
-      LoadBuffer(f, r.pos);
-      IF r.pos >= f.bufpos + f.buflen THEN  (* cannot satisfy any further reading *)
-        r.eof := TRUE;   r.res := len;
-        ZeroMem(adr, len);
-        len := 0
-      END
-    END
-  END;
-  (*
-  H.wsn("ReadMem complete.")
-  *)
-END ReadMem;
-
-
-PROCEDURE WriteMem*(VAR r: Rider; adr, len: INTEGER);
-VAR f: File;  copyoffset, copylength: INTEGER;
-BEGIN f := r.file;
-  (*
-  H.ws("WriteMem '"); H.ws(r.file.name);
-  H.ws("' at "); H.wh(r.pos); H.ws("H, len "); H.wh(len); H.wsn("H.");
-  *)
-  WHILE len > 0 DO
-    (*
-    H.ws("WriteMem loop. r.pos "); H.wh(r.pos);
-    H.ws("H, f.bufpos "); H.wh(f.bufpos);
-    H.ws("H, f.buflen "); H.wh(f.buflen);
-    H.ws("H, len "); H.wh(len); H.wsn("H.");
-    *)
-    (* Write as much as possible to existing buffer, or advance buffer *)
-    IF (f.bufpos >= 0) & (r.pos >= f.bufpos) & (r.pos < f.bufpos + 4096) THEN
-      (* Write as much as possible to existing buffer *)
-      copyoffset := r.pos - f.bufpos;
-      copylength := 4096 - copyoffset;  IF copylength > len THEN copylength := len END;
-      ASSERT(copylength > 0);  ASSERT(copylength <= 4096);
-      (*
-      H.ws("  copyoffset "); H.wh(copyoffset);
-      H.ws("H, copylength "); H.wh(copylength); H.wsn("H.");
-      *)
-      IF copyoffset > f.buflen THEN ZeroMem(SYSTEM.ADR(f.buf[f.buflen]), copyoffset - f.buflen) END;
-
-      SYSTEM.COPY(adr, SYSTEM.ADR(f.buf[copyoffset]), copylength);
-      IF f.buflen < copyoffset + copylength THEN f.buflen := copyoffset + copylength END;
-      INC(adr, copylength);  INC(r.pos, copylength);  DEC(len, copylength);
-      f.dirty := TRUE;
-    ELSE
-      LoadBuffer(f, r.pos)
-    END
-  END;
-  (*
-  H.wsn("WriteMem complete.")
-  *)
-END WriteMem;
-
-
-PROCEDURE Close*(f: File);
-BEGIN IF f # NIL THEN FlushBuffer(f); H.FileFlush(f^) END END Close;
+PROCEDURE Pos* (VAR r: Rider): INTEGER; RETURN r.pos  END Pos;
+PROCEDURE Base*(VAR r: Rider): File;    RETURN r.file END Base;
 
 
 (* ---------------------------------- Read ---------------------------------- *)
+
+PROCEDURE ReadMem*(VAR r: Rider; adr, len: INTEGER);
+VAR buf: Buffer;  page, offs, copylen: INTEGER;
+BEGIN
+  offs := r.pos MOD Bufsize;
+  IF (r.pos DIV Bufsize = r.buf.page) & (offs + len <= r.buf.lim) THEN
+    (* Fast case - all data in current buffer *)
+    SYSTEM.COPY(SYSTEM.ADR(r.buf.data[offs]), adr, len);
+    INC(r.pos, len)
+  ELSE
+    WHILE len > 0 DO
+      page := r.pos DIV Bufsize;
+      offs := r.pos MOD Bufsize;
+      IF page = r.buf.page THEN
+        IF offs < r.buf.lim THEN  (* At least the first byte to be read is in the current buffer *)
+          copylen := r.buf.lim - offs;
+          IF copylen > len THEN copylen := len END;
+          SYSTEM.COPY(SYSTEM.ADR(r.buf.data[offs]), adr, copylen);
+          INC(r.pos, copylen);  INC(adr, copylen);  DEC(len, copylen)
+        ELSE (* at end of file *)
+          ASSERT(r.pos = r.file.len);
+          WHILE len > 0 DO
+            SYSTEM.PUT(adr, SYSTEM.VAL(BYTE, 0));
+            INC(adr);  DEC(len)
+          END;
+          r.eof := TRUE;
+        END
+      ELSE
+        r.buf := GetBuf(r.file, page)
+      END
+    END
+  END
+END ReadMem;
 
 PROCEDURE ReadRaw*(VAR r: Rider;  VAR var: ARRAY OF BYTE);
 BEGIN ReadMem(r, SYSTEM.ADR(var), LEN(var)) END ReadRaw;
@@ -301,24 +268,52 @@ END ReadString;
 
 PROCEDURE ReadNum*(VAR r: Rider; VAR x: INTEGER);
 VAR n, y: INTEGER;  b: BYTE;
-BEGIN
-  n := 0;
-  y := 0;
+BEGIN n := 0;  y := 0;
   ReadByte(r, b);
-  WHILE b >= 80H DO
-    INC(y, LSL(b - 80H, n));
-    INC(n, 7);
-    ReadByte(r, b);
-  END;
+  WHILE b >= 80H DO  INC(y, LSL(b - 80H, n));  INC(n, 7);  ReadByte(r, b)  END;
   INC(y, LSL(b, n));
-  IF n < 57 THEN
-    y := ASR(LSL(y, 57-n), 57-n)  (* Sign extend *)
-  END;
+  IF n < 57 THEN y := ASR(LSL(y, 57-n), 57-n)  (* Sign extend *) END;
   x := y;
 END ReadNum;
 
 
-(* ---------------------------------- Write --------------------------------- *)
+(* --------------------------------- Write ---------------------------------- *)
+
+PROCEDURE WriteMem*(VAR r: Rider; adr, len: INTEGER);
+VAR f: File;  buf: Buffer;  page, offs, copylen: INTEGER;
+BEGIN
+  offs := r.pos MOD Bufsize;
+  buf  := r.buf;
+  IF (r.pos DIV Bufsize = buf.page) & (offs + len <= Bufsize) THEN
+    (* Fast case, all data will go into the current buffer *)
+    SYSTEM.COPY(adr, SYSTEM.ADR(buf.data[offs]), len);
+    INC(r.pos, len);
+    IF r.pos > r.file.len THEN
+      r.file.len := r.pos;
+      ASSERT(offs + len > buf.lim);
+      buf.lim := offs + len
+    END;
+    buf.mod := TRUE
+  ELSE
+    WHILE len > 0 DO
+      page := r.pos DIV Bufsize;
+      offs := r.pos MOD Bufsize;
+      buf  := r.buf;
+      IF page = buf.page THEN
+        ASSERT(offs <= buf.lim);  (* r.pos must be within or at end of file *)
+        copylen := Bufsize - offs;
+        IF copylen > len THEN copylen := len END;
+        SYSTEM.COPY(adr, SYSTEM.ADR(buf.data[offs]), copylen);
+        buf.mod := TRUE;
+        INC(r.pos, copylen);  INC(adr, copylen);  DEC(len, copylen);
+        IF offs + copylen > buf.lim THEN buf.lim := offs + copylen END;
+        IF r.pos > r.file.len THEN r.file.len := r.pos END;
+      ELSE
+        r.buf := GetBuf(r.file, page)
+      END
+    END
+  END
+END WriteMem;
 
 PROCEDURE WriteRaw*(VAR r: Rider; var: ARRAY OF BYTE);
 BEGIN WriteMem(r, SYSTEM.ADR(var), LEN(var)) END WriteRaw;
@@ -348,7 +343,7 @@ END WriteString;
 
 PROCEDURE WriteNum*(VAR r: Rider; x: INTEGER); (* Write 7 bits a time least sig bit first *)
 BEGIN
-  WHILE (x < -40H) OR (x >= 40H) DO WriteByte(r, x MOD 80H + 80H); x := ASR(x, 7) END ;
+  WHILE (x < -40H) OR (x >= 40H) DO WriteByte(r, x MOD 80H + 80H); x := ASR(x, 7) END;
   WriteByte(r, x MOD 80H)
 END WriteNum;
 
@@ -395,7 +390,7 @@ f := first;
 END DeleteUnregisteredFilesAtExit;
 
 
-(* Files.Mod is initialised by Modules.Init *)
+(* Files.Mod Init is called by Modules.Init *)
 PROCEDURE Init*(stackorg: INTEGER);
 BEGIN
   first := NIL;

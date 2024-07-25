@@ -812,10 +812,18 @@ BEGIN
   END;
   success := file.handle >= 0;
   IF success THEN
-    MakeUnregName(file);
     file.registered := TRUE;
+    MakeUnregName(file);
   END
 RETURN success END FileOld;
+
+
+PROCEDURE FileLength*(file: HostFile): INTEGER;
+VAR length: INTEGER;
+BEGIN
+  ASSERT(file.handle >= 0);
+  ASSERT(GetFileSizeEx(file.handle, SYSTEM.ADR(length)) # 0);
+RETURN length END FileLength;
 
 
 PROCEDURE FileSetDisposition(handle, disposition: INTEGER);
@@ -824,7 +832,7 @@ END FileSetDisposition;
 
 
 PROCEDURE FileNew*(VAR file: HostFile);
-BEGIN file.registered := FALSE;  file.handle := -1; END FileNew;
+BEGIN file.registered := FALSE;  file.handle := -1 END FileNew;
 
 
 PROCEDURE EnsureHandle(VAR file: HostFile);
@@ -868,21 +876,12 @@ BEGIN
 END FileClose;
 
 
-PROCEDURE FileLength*(file: HostFile): INTEGER;
-VAR size: INTEGER;
-BEGIN size := 0;
-  IF file.handle >= 0 THEN
-    ASSERT(GetFileSizeEx(file.handle, SYSTEM.ADR(size)) # 0)
-  END
-RETURN size END FileLength;
-
-
 PROCEDURE FileSetPos*(VAR file: HostFile; pos: INTEGER);
 BEGIN
   EnsureHandle(file);
   IF SetFilePointerEx(file.handle, pos, 0, 0) = 0 THEN
     Trap(0, "Host.FileSetPos: SetFilePointerEx failed")
-  END;
+  END
 END FileSetPos;
 
 
@@ -904,14 +903,14 @@ TYPE renamedesc = RECORD-
     ReplaceIfExists: BYTE;
     dummyhandle:     INTEGER;
     length:          SYSTEM.CARD32;
-    namew:           ARRAY MaxPath OF SYSTEM.CARD16;
+    name16:          ARRAY MaxPath OF SYSTEM.CARD16;
   END;
 VAR rename: renamedesc;  rv: INTEGER;
 BEGIN
   ASSERT(handle >= 0);
   ZeroFill(rename);
   rename.ReplaceIfExists := 1;
-  rename.length := Utf8ToUtf16(name, rename.namew) - 1;
+  rename.length := Utf8ToUtf16(name, rename.name16) - 1;
   ASSERT(SetFileInformationByHandle(
     handle, 3, SYSTEM.ADR(rename), SYSTEM.SIZE(renamedesc)) # 0);
 END FileSetName;
@@ -953,10 +952,10 @@ RETURN info.write - 10000000 * 24 * 60 * 60 * (399 * 365 + 96)  (* Bias to 2000-
 END FileTime;
 
 
-PROCEDURE FileRead*(file: HostFile; adr, len: INTEGER): INTEGER;
+PROCEDURE FileRead*(VAR file: HostFile; adr, len: INTEGER): INTEGER;
 VAR bytesread: INTEGER;
 BEGIN ASSERT(len > 0);  ASSERT(file.handle >= 0);
-  IF ReadFile(file.handle, adr, len, SYSTEM.ADR(bytesread), 0) = 0 THEN  (* read failed *)
+  IF ReadFile(file.handle, adr, len, SYSTEM.ADR(bytesread), 0) = 0 THEN
     bytesread := -1
   END;
 RETURN bytesread END FileRead;
@@ -968,7 +967,7 @@ BEGIN
   IF len > 0 THEN
     EnsureHandle(file);
     ASSERT(WriteFile(file.handle, adr, len, SYSTEM.ADR(byteswritten), 0) # 0);
-    ASSERT(byteswritten = len)
+    ASSERT(byteswritten = len);
   END
 END FileWrite;
 
@@ -1071,6 +1070,12 @@ BEGIN
 END FileEnumerate;
 
 
+PROCEDURE FileDelete*(name: ARRAY OF CHAR): BOOLEAN;
+VAR name16: ARRAY MaxPath OF SYSTEM.CARD16;  rv: INTEGER;
+BEGIN
+  rv := Utf8ToUtf16(name, name16);
+  RETURN DeleteFileW(SYSTEM.ADR(name16)) # 0
+END FileDelete;
 
 
 (* -------------------------------------------------------------------------- *)

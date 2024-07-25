@@ -166,10 +166,9 @@ PROCEDURE Close*(f: File);
 BEGIN IF f # NIL THEN Unbuffer(f) END END Close;
 
 
-(*
 PROCEDURE Delete*(name: ARRAY OF CHAR; VAR res: INTEGER);
 BEGIN IF H.FileDelete(name) THEN res := 0 ELSE res := 2 END END Delete;
-*)
+
 
 PROCEDURE Rename*(old, new: ARRAY OF CHAR; VAR res: INTEGER);
 BEGIN res := H.FileMove(old, new);
@@ -183,6 +182,8 @@ PROCEDURE Length*(f: File): INTEGER; RETURN f.len END Length;
 PROCEDURE Date*(f: File): INTEGER; (* In 100 nanosecond ticks since 2000-01-01 UTC *)
 RETURN H.FileTime(f^) END Date;
 
+
+(* --------------------------------- Riders --------------------------------- *)
 
 PROCEDURE Set*(VAR r: Rider; f: File; pos: INTEGER);
 BEGIN
@@ -203,7 +204,7 @@ PROCEDURE Pos* (VAR r: Rider): INTEGER; RETURN r.pos  END Pos;
 PROCEDURE Base*(VAR r: Rider): File;    RETURN r.file END Base;
 
 
-(*---------------------------Read---------------------------*)
+(* ---------------------------------- Read ---------------------------------- *)
 
 PROCEDURE ReadMem*(VAR r: Rider; adr, len: INTEGER);
 VAR buf: Buffer;  page, offs, copylen: INTEGER;
@@ -276,7 +277,7 @@ BEGIN n := 0;  y := 0;
 END ReadNum;
 
 
-(*---------------------------Write---------------------------*)
+(* --------------------------------- Write ---------------------------------- *)
 
 PROCEDURE WriteMem*(VAR r: Rider; adr, len: INTEGER);
 VAR f: File;  buf: Buffer;  page, offs, copylen: INTEGER;
@@ -299,15 +300,6 @@ BEGIN
       offs := r.pos MOD Bufsize;
       buf  := r.buf;
       IF page = buf.page THEN
-        IF offs > buf.lim THEN
-          H.wn;
-          H.ws("fn '");         H.ws(r.file.name);
-          H.ws("', page ");     H.wh(page);
-          H.ws("H, offs ");     H.wh(offs);
-          H.ws("H, buf.lim ");  H.wh(buf.lim);
-          H.ws("H, f.len ");    H.wh(r.file.len);
-          H.wsn("H.");
-        END;
         ASSERT(offs <= buf.lim);  (* r.pos must be within or at end of file *)
         copylen := Bufsize - offs;
         IF copylen > len THEN copylen := len END;

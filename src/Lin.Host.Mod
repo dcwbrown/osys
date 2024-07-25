@@ -838,7 +838,7 @@ END FileClose;
 PROCEDURE FileLength*(file: HostFile): INTEGER;
 VAR stat: StatDesc;  rv: INTEGER;
 BEGIN
-  stat.size := 0;
+  stat.size := -1;
   IF file.fd >= 0 THEN rv := sysfstat(file.fd, SYSTEM.ADR(stat)) END
 RETURN stat.size END FileLength;
 
@@ -997,6 +997,10 @@ BEGIN
   fn := prefix;
   FileEnum(fn, proc, cont)
 END FileEnumerate;
+
+
+PROCEDURE FileDelete*(name: ARRAY OF CHAR): BOOLEAN;
+RETURN sysunlink(SYSTEM.ADR(name)) = 0 END FileDelete;
 
 
 (* -------------------------------------------------------------------------- *)
