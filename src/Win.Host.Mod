@@ -88,8 +88,6 @@ TYPE
     registered*: BOOLEAN;
     handle:      INTEGER;
     unregname:   FileName;
-    pos*:        INTEGER;  (* A whole multiple of Bufsize except when at the end of file *)
-    len*:        INTEGER;
   END;
 
   FileInfo* = RECORD
@@ -803,8 +801,6 @@ VAR
   rv:      INTEGER;
   success: BOOLEAN;
 BEGIN
-  file.pos := 0;
-  file.len := 0;
   rv := Utf8ToUtf16(file.name, name16);
   file.handle := CreateFileW(SYSTEM.ADR(name16), 010000000H (* access: GenericAll *),
                              7 (* mode: FileShareRead, FileShareWrite, FileShareDelete *), 0,
@@ -817,11 +813,17 @@ BEGIN
   success := file.handle >= 0;
   IF success THEN
     file.registered := TRUE;
-    ASSERT(GetFileSizeEx(file.handle, SYSTEM.ADR(file.len)) # 0);
-    file.pos := 0;
     MakeUnregName(file);
   END
 RETURN success END FileOld;
+
+
+PROCEDURE FileLength*(file: HostFile): INTEGER;
+VAR length: INTEGER;
+BEGIN
+  ASSERT(file.handle >= 0);
+  ASSERT(GetFileSizeEx(file.handle, SYSTEM.ADR(length)) # 0);
+RETURN length END FileLength;
 
 
 PROCEDURE FileSetDisposition(handle, disposition: INTEGER);
@@ -830,7 +832,7 @@ END FileSetDisposition;
 
 
 PROCEDURE FileNew*(VAR file: HostFile);
-BEGIN file.registered := FALSE;  file.handle := -1; file.pos := 0; file.len := 0 END FileNew;
+BEGIN file.registered := FALSE;  file.handle := -1 END FileNew;
 
 
 PROCEDURE EnsureHandle(VAR file: HostFile);
@@ -877,10 +879,8 @@ END FileClose;
 PROCEDURE FileSetPos*(VAR file: HostFile; pos: INTEGER);
 BEGIN
   EnsureHandle(file);
-  IF pos # file.pos THEN
-    IF SetFilePointerEx(file.handle, pos, SYSTEM.ADR(file.pos), 0) = 0 THEN
-      Trap(0, "Host.FileSetPos: SetFilePointerEx failed")
-    END
+  IF SetFilePointerEx(file.handle, pos, 0, 0) = 0 THEN
+    Trap(0, "Host.FileSetPos: SetFilePointerEx failed")
   END
 END FileSetPos;
 
@@ -955,9 +955,7 @@ END FileTime;
 PROCEDURE FileRead*(VAR file: HostFile; adr, len: INTEGER): INTEGER;
 VAR bytesread: INTEGER;
 BEGIN ASSERT(len > 0);  ASSERT(file.handle >= 0);
-  IF ReadFile(file.handle, adr, len, SYSTEM.ADR(bytesread), 0) # 0 THEN
-    INC(file.pos, bytesread);  ASSERT(file.pos <= file.len)
-  ELSE (* read failed *)
+  IF ReadFile(file.handle, adr, len, SYSTEM.ADR(bytesread), 0) = 0 THEN
     bytesread := -1
   END;
 RETURN bytesread END FileRead;
@@ -970,8 +968,6 @@ BEGIN
     EnsureHandle(file);
     ASSERT(WriteFile(file.handle, adr, len, SYSTEM.ADR(byteswritten), 0) # 0);
     ASSERT(byteswritten = len);
-    INC(file.pos, byteswritten);
-    IF file.pos > file.len THEN file.len := file.pos END
   END
 END FileWrite;
 

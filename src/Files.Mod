@@ -20,6 +20,8 @@ TYPE
     next:     POINTER- TO FileDesc;  (* Non-collecting list of open files *)
     nofbufs:  INTEGER;
     firstbuf: Buffer;
+    pos:      INTEGER;  (* A whole multiple of Bufsize except when at the end of file *)
+    len:      INTEGER;
   END;
 
   BufferRecord = RECORD
@@ -50,6 +52,8 @@ BEGIN f := NIL;
         buf.lim    := H.FileRead(f^, SYSTEM.ADR(buf.data), Bufsize);  ASSERT(buf.lim >= 0);
         f.firstbuf := buf;
         f.nofbufs  := 1;
+        f.pos      := buf.lim;
+        f.len      := H.FileLength(f^);
         f.next     := first;
         first      := f;
       ELSE
@@ -79,18 +83,25 @@ RETURN f END New;
 
 
 PROCEDURE ReadBuf(f: File; buf: Buffer; page: INTEGER);  (* page = sector number *)
+VAR pos: INTEGER;
 BEGIN
-  H.FileSetPos(f^, page * Bufsize);
-  buf.lim  := H.FileRead(f^, SYSTEM.ADR(buf.data), Bufsize);
+  pos := page * Bufsize;
+  IF f.pos # pos THEN H.FileSetPos(f^, pos) END;
+  buf.lim  := H.FileRead(f^, SYSTEM.ADR(buf.data), Bufsize);  ASSERT(buf.lim >= 0);
+  f.pos    := pos + buf.lim;
+  IF f.pos > f.len THEN f.len := f.pos END;
   buf.page := page;
   buf.mod  := FALSE;
 END ReadBuf;
 
 
 PROCEDURE WriteBuf(f: File; buf: Buffer);
+VAR pos: INTEGER;
 BEGIN
-  H.FileSetPos(f^, buf.page * Bufsize);
+  pos := buf.page * Bufsize;
+  IF f.pos # pos THEN H.FileSetPos(f^, pos) END;
   H.FileWrite(f^, SYSTEM.ADR(buf.data), buf.lim);
+  f.pos := pos + buf.lim;
   buf.mod := FALSE
 END WriteBuf;
 
@@ -155,9 +166,10 @@ PROCEDURE Close*(f: File);
 BEGIN IF f # NIL THEN Unbuffer(f) END END Close;
 
 
+(*
 PROCEDURE Delete*(name: ARRAY OF CHAR; VAR res: INTEGER);
 BEGIN IF H.FileDelete(name) THEN res := 0 ELSE res := 2 END END Delete;
-
+*)
 
 PROCEDURE Rename*(old, new: ARRAY OF CHAR; VAR res: INTEGER);
 BEGIN res := H.FileMove(old, new);
