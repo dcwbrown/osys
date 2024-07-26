@@ -37,7 +37,7 @@ Windows calls are to KERNEL32, GDI32 and USER32.
 
 ## Linking, startup and Host.Mod (actually Lin.Host.Mod and Win.HostMod)
 
-In native Oberon V5, the inner core consists of Kernel, FieDir, Files and Modules. These are prelinked by 'ORL.Link Modules' and stored in the boot area by BootLoad.Mod.
+In Wirth's native Oberon V5, the inner core consists of Kernel, FileDir, Files and Modules. These are prelinked by '`ORL.Link Modules`' and stored in the boot area by `BootLoad.Mod`.
 
 In hosted Oberon, the inner core consists of Host, Kernel, Files and Modules. The Link command combines these and they form the text section of the ELF or PE executable binary.
 
