@@ -881,7 +881,7 @@ BEGIN
     ws("', '"); ws(file.unregname);
     ws("' -> -"); wi(-rv); wsn(".")
   END;
-  ASSERT(rv = 0);
+  (*ASSERT(rv = 0);*)
   file.registered := FALSE;
   (*Leave(UnregisterStat);*)
 END FileUnregister;

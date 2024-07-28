@@ -1243,12 +1243,15 @@ END ParseTarget;
 
 PROCEDURE Link(tgthost: INTEGER);
 VAR
+  start:   INTEGER;
   r:       Texts.Reader;
   ch:      CHAR;
   target:  ARRAY 64 OF CHAR;
   modname: ARRAY 64 OF CHAR;
   i:       INTEGER;
 BEGIN
+  start := H.Time();
+
   (* Parse argument modname[.commandname] from parameter as arg *)
   Texts.OpenReader(r, Texts.Par.text, Texts.Par.pos);
   Texts.Read(r, ch);
@@ -1256,7 +1259,7 @@ BEGIN
   ParseTarget(r, ch, target, modname);
   WHILE (target[0] # 0X) & (target # "~") DO
     ws("  linking "); ws(target);
-    IF tgthost = Win THEN wsn(" as Windows PE.") ELSE wsn(" as Linux ELF.") END;
+    IF tgthost = Win THEN ws(" PE ") ELSE ws(" ELF ") END;
 
     AddPreloadModule(modname, 0);
 
@@ -1275,7 +1278,7 @@ BEGIN
 
     IF tgthost = Win THEN GeneratePE(target) ELSE GenerateELF(target) END;
 
-    (*ws("Link of "); ws(target); ws(" complete.");*)
+    wi((H.Time() - start) DIV 10000);  wsn("ms");
 
     ParseTarget(r, ch, target, modname)
   END
@@ -1287,7 +1290,7 @@ PROCEDURE ELF*;  BEGIN Link(Lin) END ELF;
 
 
 BEGIN
-  Texts.OpenWriter(W); wsn("ELF+PE linker DCWB 2024-05-10");
+  Texts.OpenWriter(W); wsn("Linker DCWB 2024-05-10");
   FirstPreload := NIL;
   LastPreload  := NIL;
   PreloadSize  := 0;
