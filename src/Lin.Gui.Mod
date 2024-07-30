@@ -698,17 +698,6 @@ BEGIN
 END CreateWindow;
 
 
-PROCEDURE ChangeProperty(window, property, type, format, mode, len: INTEGER;
-                         data: ARRAY OF BYTE);
-(* mode:   0 - Replace, 1 - Prepend, 2 - Append *)
-(* format: 8, 16 or 32                          *)
-BEGIN
-  SendHeader(18, mode, 6 + (len+3) DIV 4);
-  SendDWord(window);  SendDWord(property);  SendDWord(type);  SendDWord(format MOD 256);
-  SendDWord(len DIV (format DIV 8));
-  SendBuf(data, 0, len);  SendPad(len)
-END ChangeProperty;
-
 PROCEDURE GetInternAtom(name: ARRAY OF CHAR): INTEGER;
 VAR len: INTEGER;
   result: RECORD
@@ -726,6 +715,61 @@ BEGIN len := H.Length(name);
   MustReceive(result);
 RETURN result.atom END GetInternAtom;
 
+PROCEDURE ChangeProperty(window, property, type, format, mode, len: INTEGER;
+                         data: ARRAY OF BYTE);
+(* mode:   0 - Replace, 1 - Prepend, 2 - Append *)
+(* format: 8, 16 or 32                          *)
+BEGIN
+  SendHeader(18, mode, 6 + (len+3) DIV 4);
+  SendDWord(window);  SendDWord(property);  SendDWord(type);  SendDWord(format MOD 256);
+  SendDWord(len DIV (format DIV 8));
+  SendBuf(data, 0, len);  SendPad(len)
+END ChangeProperty;
+
+PROCEDURE UnpackIcon(VAR buf: ARRAY OF SYSTEM.CARD32);
+VAR i, j, kind, length, level: INTEGER;  argb : SYSTEM.CARD32;
+BEGIN
+  i := 0; j := 0;
+  WHILE H.Icon[i] # 0C0H DO
+    kind   := H.Icon[i] DIV 64;
+    length := H.Icon[i] MOD 64;  IF length = 0 THEN length := 64 END;
+    INC(i);
+    IF kind < 3 THEN
+      IF    kind = 0 THEN argb := 000000000H
+      ELSIF kind = 1 THEN argb := 0FF000000H
+      ELSE                argb := 0FFFFFFFFH
+      END;
+      WHILE length > 0 DO buf[j] := argb;  INC(j);  DEC(length) END
+    ELSE
+      WHILE length > 0 DO
+        level := H.Icon[i] MOD 80H * 2;
+        IF H.Icon[i] < 80H THEN
+          buf[j] := 0FF000000H + level * 10000H + level * 100H + level
+        ELSE
+          buf[j] := level * 1000000H
+        END;
+        INC(j); INC(i);  DEC(length)
+      END
+    END
+  END;
+END UnpackIcon;
+
+PROCEDURE SetIcon;
+CONST size = 256;
+VAR netWmIcon: INTEGER;  img: ARRAY size*size OF SYSTEM.CARD32;  i, len: INTEGER;
+BEGIN
+  netWmIcon := GetInternAtom("_NET_WM_ICON");
+  IF netWmIcon # 0 THEN
+    FOR i := 0 TO size*size-1 DO img[i] := 0FFFF0000H END;
+    UnpackIcon(img);
+    SendHeader(18, 0, 0);  SendDWord(9 + size*size);  (* ChangeProperty *)
+    SendDWord(Window);  SendDWord(netWmIcon);  SendDWord(6 (*CARDINAL*));  SendDWord(32);
+    SendDWord(2 + size*size);
+    SendDWord(size);  SendDWord(size);
+    SendBuf(img, 0, 4*size*size);
+  END
+END SetIcon;
+
 PROCEDURE SetWindowProperties;
 VAR
   motifWmHints: INTEGER;
@@ -739,7 +783,7 @@ VAR
 BEGIN
   H.ZeroFill(hints);  hints.flags := 2;  hints.decorations := 0;
   motifWmHints := GetInternAtom("_MOTIF_WM_HINTS");
-  ChangeProperty(Window, motifWmHints, motifWmHints, 32, 0, (* PropModeReplace *) 40, hints);
+  ChangeProperty(Window, motifWmHints, motifWmHints, 32, 0 (*PropModeReplace*), 20, hints);
   ChangeProperty(Window, 39, 39 (* WM_NAME *), 8, 0, 6, "Oberon");
 END SetWindowProperties;
 
@@ -814,33 +858,6 @@ BEGIN
 END EnableBigRequests;
 
 
-(* ----
-Annoyingly, while HideCursor works fine on real Linux, it doesn't in WSLG.
-PROCEDURE HideCursor;
-VAR
-  opcode:   INTEGER;
-  eventnum: INTEGER;
-  errornum: INTEGER;
-  versionresult: RECORD
-    reply, pad1: BYTE;
-    seq:         SYSTEM.CARD16;
-    replylen:    SYSTEM.CARD32;
-    major:       SYSTEM.CARD32;
-    minor:       SYSTEM.CARD32;
-    pad2:        ARRAY 16 OF BYTE;
-  END;
-BEGIN
-  QueryExtension("XFIXES", opcode, eventnum, errornum);
-  IF opcode # 0 THEN
-    SendHeader(opcode, 0, 3);  SendDWord(4);  SendDWord(0);  (* Want V4.0 *)
-    MustReceive(versionresult);
-    IF versionresult.major >= 4 THEN
-      SendHeader(opcode, 29, 2);  SendDWord(Window)
-    END
-  END;
-END HideCursor;
----- *)
-
 BEGIN
   Texts.OpenWriter(W);
   KCtoScan := SYSTEM.ADR($   00 76 16 1E 26 25 2E 36
@@ -874,6 +891,7 @@ BEGIN
   Cursor := CreateCursor();
   CreateWindow;
   SetWindowProperties;
+  SetIcon;
   MapWindow;
   Context := CreateGraphicsContext(Window, 0FFFFFFH, 0);
   ProcessAllPendingEvents;

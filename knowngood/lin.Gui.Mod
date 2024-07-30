@@ -80,8 +80,9 @@ VAR
   ScreenHeight: INTEGER;
   RootWindow:   INTEGER;
   RootDepth:    INTEGER;
-  Window:       INTEGER;  (* Window id          *)
-  Context:      INTEGER;  (* Graphic context id *)
+  Window:       INTEGER;  (* Window id                *)
+  Context:      INTEGER;  (* Graphic context id       *)
+  Cursor:       INTEGER;  (* Transparent 1x1x1 cursor *)
 (*Bits:         ARRAY 8294400 OF SYSTEM.CARD32;  (* Up to 3840 x 2160 *) *)
   Bits:         ARRAY Width * Height DIV 8 OF BYTE;
   Background:   BYTE;
@@ -93,6 +94,8 @@ VAR
 
   KCtoScan:     INTEGER;  (* Address of table, index in [8..255] *)
 
+  ScreenMouseX: INTEGER;
+  ScreenMouseY: INTEGER;
   MouseState*:  INTEGER;  (* 1/in-window, 3/keys, 12/x, 12/y  *)
   Shutdown*:    BOOLEAN;
 
@@ -440,6 +443,19 @@ BEGIN
 RETURN scan END ScanCode;
 
 
+PROCEDURE HandleKey(ev: Event);
+VAR key: POINTER- TO KeyEvent;  scan: INTEGER;
+BEGIN
+  SYSTEM.PUT(SYSTEM.ADR(key), SYSTEM.ADR(ev));
+  IF key.keyCode = 9 THEN H.Exit END;  (* Debugging: exit on esc key *)
+  SYSTEM.GET(KCtoScan + key.keyCode - 8, scan);
+  IF scan # 0 THEN
+    IF key.eventcode = 3 THEN AddKey(0F0H) END;  (* key up *)
+    AddKey(scan)
+  END
+END HandleKey;
+
+
 (* -------------------------- Mouse event handling -------------------------- *)
 
 PROCEDURE HandleMouse(event: Event);
@@ -451,6 +467,9 @@ BEGIN
   SYSTEM.PUT(SYSTEM.ADR(ev), SYSTEM.ADR(event));
   x := ev.eventX;
   y := Height - 1 - ev.eventY;  (* Oberon Y values increase upward *)
+
+  ScreenMouseX := ev.rootX;
+  ScreenMouseY := ev.rootY;
 
   (* Handle tracking / capture for window dragging *)
 
@@ -488,13 +507,14 @@ BEGIN
     evcode := event.code MOD 80H;
     (*H.ws("Event "); H.wi(evcode); H.wsn(".");*)
     IF    evcode =  0 THEN ws("Error event, error: "); WriteError(event); wsn(".")
-    ELSIF evcode =  2 THEN scan := ScanCode(event); IF scan # 0 THEN AddKey(scan) END  (* KeyPress   *)
-    ELSIF evcode =  3 THEN scan := ScanCode(event); IF scan # 0 THEN AddKey(0F0H); AddKey(scan) END  (* KeyRelease *)
-    ELSIF evcode =  4 THEN HandleMouse(event)  (* ButtonPress   *)
-    ELSIF evcode =  5 THEN HandleMouse(event)  (* ButtonRelease *)
-    ELSIF evcode =  6 THEN HandleMouse(event)  (* MotionNotify  *)
-    ELSIF evcode =  7 THEN wsn("EnterNotify.")
-    ELSIF evcode = 12 THEN Dirtybottom := 0;  Dirtytop := Height;  PaintWindow (* Expose *)
+    ELSIF evcode =  2 THEN HandleKey(event);                       (* KeyPress      *)
+    ELSIF evcode =  3 THEN HandleKey(event);                       (* KeyRelease    *)
+    ELSIF evcode =  4 THEN HandleMouse(event)                      (* ButtonPress   *)
+    ELSIF evcode =  5 THEN HandleMouse(event)                      (* ButtonRelease *)
+    ELSIF evcode =  6 THEN HandleMouse(event)                      (* MotionNotify  *)
+    ELSIF evcode =  7 THEN                                         (* EnterNotify   *)
+    ELSIF evcode =  8 THEN MouseState := MouseState MOD 8000000H   (* LeaveNotify   *)
+    ELSIF evcode = 12 THEN Dirty(0, 0, Width, Height); PaintWindow (* Expose        *)
     ELSIF evcode = 19 THEN MapNotify(event)
     ELSIF evcode = 21 THEN ReparentNotify(event)
     ELSIF evcode = 22 THEN ConfigureNotify(event)
@@ -525,26 +545,26 @@ BEGIN
 RETURN syspoll(SYSTEM.ADR(pollfd), 1, timeout) # 0 END PollEvent;
 
 
-PROCEDURE ProcessOneMessage* (): INTEGER;  (* 0 - none available, 1 - processed *)
+PROCEDURE ProcessOneEvent* (): INTEGER;  (* 0 - none available, 1 - processed *)
 VAR res: INTEGER;
 BEGIN res := 0;
   IF    PollEvent(0)         THEN res := 1;  HandleEvent
   ELSIF Dirtybottom < Height THEN res := 1;  PaintWindow
   END
-RETURN res END ProcessOneMessage;
+RETURN res END ProcessOneEvent;
 
 
 PROCEDURE WaitMsgOrTime*(time: INTEGER);  (* Waits for time (ms) OR message in queue *)
 BEGIN IF Shutdown OR (Dirtybottom < Height) OR PollEvent(time) THEN END END WaitMsgOrTime;
 
-PROCEDURE Drain;
-BEGIN REPEAT UNTIL ProcessOneMessage() = 0 END Drain;
+PROCEDURE ProcessAllPendingEvents;
+BEGIN REPEAT UNTIL ProcessOneEvent() = 0 END ProcessAllPendingEvents;
 
 
 (* ----------------- keyboard and mouse hardware emulation ------------------ *)
 
 PROCEDURE KeyReady*(): BOOLEAN;
-BEGIN Drain;
+BEGIN ProcessAllPendingEvents;
 RETURN (KeyIn # KeyOut) OR KeyFull END KeyReady;
 
 PROCEDURE GetKey*(VAR key: BYTE);
@@ -555,24 +575,63 @@ BEGIN ASSERT(KeyReady());
 END GetKey;
 
 PROCEDURE Mouse*(): INTEGER;
-BEGIN Drain;  (*ws("Gui.Mouse -> "); wh(ORD(MouseState)); wsn("H.");*)
+BEGIN ProcessAllPendingEvents;  (*ws("Gui.Mouse -> "); wh(ORD(MouseState)); wsn("H.");*)
 RETURN MouseState END Mouse;
 
 PROCEDURE PositionWindow*(x, y: INTEGER);
-BEGIN (* TODO Move window *)
+BEGIN
+  SendHeader(12, 0, 5);  SendDWord(Window);  SendDWord(3);  (* Set x and y *)
+  SendDWord(x);  SendDWord(y);
 END PositionWindow;
 
-PROCEDURE Minimise*;
-BEGIN (* TODO Minimize *)
-END Minimise;
-
 PROCEDURE GetScreenMousePos*(VAR x, y: INTEGER);
-BEGIN
-  x := 0;  y :=0
-END GetScreenMousePos;
+BEGIN x := ScreenMouseX;  y := ScreenMouseY END GetScreenMousePos;
 
 
 (* ---------------------------- Window creation ----------------------------- *)
+
+
+PROCEDURE CreateGraphicsContext(drawable, foreground, background: INTEGER): INTEGER;
+VAR context: INTEGER;
+BEGIN
+  context := NextId;  INC(NextId, IdIncr);
+  SendHeader(55, 0, 6);
+  SendDWord(context);
+  SendDWord(drawable);
+  SendDWord(4 + 8);      (* Provide foreground and background colours *)
+  SendDWord(foreground);
+  SendDWord(background);
+RETURN context END CreateGraphicsContext;
+
+PROCEDURE CreateCursor(): INTEGER;
+(* Creates a cursor that's nearly transparent and works on wslg as well as native Linux *)
+VAR pixmap, context, mask, cursor: INTEGER;
+BEGIN
+  (* Create a pixmap for the cursor image *)
+  pixmap := NextId;  INC(NextId, IdIncr);
+  SendHeader(53, 1, 4);                        (* CreatePixmap *)
+  SendDWord(pixmap);  SendDWord(RootWindow);
+  SendWord(8);        SendWord(1);             (* width, height *)
+
+  context := CreateGraphicsContext(pixmap, 1, 0);
+
+  (* Set the pixel map *)
+  SendHeader(72, 0, 7);                     (* PutBitmap *)
+  SendDWord(pixmap);    SendDWord(context);
+  SendWord(8);          SendWord(1);        (* width, height *)
+  SendWord(0);          SendWord(0);        (* dest x, dest y *)
+  SendByte(0);          SendByte(1);        (* leftpad, depth *)
+  SendWord(0);                              (* padding *)
+  SendDWord(80H);                           (* bitmap - 8th bit set *)
+
+  (* Create the cursor using the 0 pixmap as both image and mask *)
+  cursor := NextId;  INC(NextId, IdIncr);
+  SendHeader(93, 0, 8); SendDWord(cursor);  (* CreateCursor *)
+  SendDWord(pixmap);    SendDWord(pixmap);
+  SendWord(0FFH);  SendWord(0FFH);  SendWord(0FFH);  (* Foreground R, G, B *)
+  SendWord(0);     SendWord(0);     SendWord(0);     (* Background R, G, B *)
+  SendWord(0);     SendWord(0);                      (* hotspot x, y *)
+RETURN cursor END CreateCursor;
 
 PROCEDURE CreateWindow;
 CONST
@@ -609,13 +668,13 @@ VAR
     winID, parentID:              SYSTEM.CARD32;
     x, y, w, h, borwidth, class:  SYSTEM.CARD16;
     visualID, valMask:            SYSTEM.CARD32;
-    ovrRedir, evntMask:           SYSTEM.CARD32;
+    ovrRedir, evntMask, cursor:   SYSTEM.CARD32;
   END;
 BEGIN
   Window           := NextId;  INC(NextId, IdIncr);
   request.opcode   := 1;
   request.depth    := RootDepth;
-  request.rlength  := 10;
+  request.rlength  := 11;
   request.winID    := Window;
   request.parentID := RootWindow;
   request.x        := 100;
@@ -625,7 +684,7 @@ BEGIN
   request.borwidth := 0;
   request.class    := 1;      (* InputOutput *)
   request.visualID := 0;      (* CopyFromParent, *)
-  request.valMask  := 0A00H;  (* override-redirect, event-mask *)
+  request.valMask  := 4A00H;  (* override-redirect, event-mask, cursor *)
   request.ovrRedir := 0;      (* off *)
   (* request.evntMask := 28015H; (* structure notify, exposure, enter window, button press, key press *) *)
   (* request.evntMask := 1FFFF7FH; (* ALl but PointerMotionHint (as we want all pointer motion) *) *)
@@ -634,20 +693,10 @@ BEGIN
                     + PointerMotion
                     + EnterWindow   + LeaveWindow
                     + Exposure;
+  request.cursor   := Cursor;
   Send(request)
 END CreateWindow;
 
-
-PROCEDURE ChangeProperty(window, property, type, format, mode, len: INTEGER;
-                         data: ARRAY OF BYTE);
-(* mode:   0 - Replace, 1 - Prepend, 2 - Append *)
-(* format: 8, 16 or 32                          *)
-BEGIN
-  SendHeader(18, mode, 6 + (len+3) DIV 4);
-  SendDWord(window);  SendDWord(property);  SendDWord(type);  SendDWord(format MOD 256);
-  SendDWord(len DIV (format DIV 8));
-  SendBuf(data, 0, len);  SendPad(len)
-END ChangeProperty;
 
 PROCEDURE GetInternAtom(name: ARRAY OF CHAR): INTEGER;
 VAR len: INTEGER;
@@ -666,9 +715,64 @@ BEGIN len := H.Length(name);
   MustReceive(result);
 RETURN result.atom END GetInternAtom;
 
+PROCEDURE ChangeProperty(window, property, type, format, mode, len: INTEGER;
+                         data: ARRAY OF BYTE);
+(* mode:   0 - Replace, 1 - Prepend, 2 - Append *)
+(* format: 8, 16 or 32                          *)
+BEGIN
+  SendHeader(18, mode, 6 + (len+3) DIV 4);
+  SendDWord(window);  SendDWord(property);  SendDWord(type);  SendDWord(format MOD 256);
+  SendDWord(len DIV (format DIV 8));
+  SendBuf(data, 0, len);  SendPad(len)
+END ChangeProperty;
+
+PROCEDURE UnpackIcon(VAR buf: ARRAY OF SYSTEM.CARD32);
+VAR i, j, kind, length, level: INTEGER;  argb : SYSTEM.CARD32;
+BEGIN
+  i := 0; j := 0;
+  WHILE H.Icon[i] # 0C0H DO
+    kind   := H.Icon[i] DIV 64;
+    length := H.Icon[i] MOD 64;  IF length = 0 THEN length := 64 END;
+    INC(i);
+    IF kind < 3 THEN
+      IF    kind = 0 THEN argb := 000000000H
+      ELSIF kind = 1 THEN argb := 0FF000000H
+      ELSE                argb := 0FFFFFFFFH
+      END;
+      WHILE length > 0 DO buf[j] := argb;  INC(j);  DEC(length) END
+    ELSE
+      WHILE length > 0 DO
+        level := H.Icon[i] MOD 80H * 2;
+        IF H.Icon[i] < 80H THEN
+          buf[j] := 0FF000000H + level * 10000H + level * 100H + level
+        ELSE
+          buf[j] := level * 1000000H
+        END;
+        INC(j); INC(i);  DEC(length)
+      END
+    END
+  END;
+END UnpackIcon;
+
+PROCEDURE SetIcon;
+CONST size = 256;
+VAR netWmIcon: INTEGER;  img: ARRAY size*size OF SYSTEM.CARD32;  i, len: INTEGER;
+BEGIN
+  netWmIcon := GetInternAtom("_NET_WM_ICON");
+  IF netWmIcon # 0 THEN
+    FOR i := 0 TO size*size-1 DO img[i] := 0FFFF0000H END;
+    UnpackIcon(img);
+    SendHeader(18, 0, 0);  SendDWord(9 + size*size);  (* ChangeProperty *)
+    SendDWord(Window);  SendDWord(netWmIcon);  SendDWord(6 (*CARDINAL*));  SendDWord(32);
+    SendDWord(2 + size*size);
+    SendDWord(size);  SendDWord(size);
+    SendBuf(img, 0, 4*size*size);
+  END
+END SetIcon;
+
 PROCEDURE SetWindowProperties;
 VAR
-  property: INTEGER;
+  motifWmHints: INTEGER;
   hints: RECORD
     flags:       SYSTEM.CARD32;
     functions:   SYSTEM.CARD32;
@@ -678,26 +782,31 @@ VAR
     END;
 BEGIN
   H.ZeroFill(hints);  hints.flags := 2;  hints.decorations := 0;
-  property := GetInternAtom("_MOTIF_WM_HINTS");
-  ChangeProperty(Window, property, property, 32, 0, (* PropModeReplace *) 40, hints);
+  motifWmHints := GetInternAtom("_MOTIF_WM_HINTS");
+  ChangeProperty(Window, motifWmHints, motifWmHints, 32, 0 (*PropModeReplace*), 20, hints);
   ChangeProperty(Window, 39, 39 (* WM_NAME *), 8, 0, 6, "Oberon");
 END SetWindowProperties;
+
+PROCEDURE Minimise*;
+VAR wmChangeState: INTEGER;
+BEGIN
+  wmChangeState := GetInternAtom("WM_CHANGE_STATE");
+  IF wmChangeState # 0 THEN
+    SendHeader(25, 0, 11);  (* SendEvent *)
+    SendDWord(RootWindow);
+    SendDWord(ORD({19, 20}));  (* Substructure notify and redirect mask *)
+    SendByte(33); SendByte(32); SendWord(0);  (* ClientMessage, Format, Sequence number *)
+    SendDWord(Window);
+    SendDWord(wmChangeState);
+    SendDWord(3);  (* IconicState *)
+    SendDWord(0);    SendDWord(0);
+    SendDWord(0);    SendDWord(0)
+  END
+END Minimise;
 
 
 PROCEDURE MapWindow;
 BEGIN SendHeader(8, 0, 2);  SendDWord(Window) END MapWindow;
-
-
-PROCEDURE CreateGraphicsContext;
-BEGIN
-  Context := NextId;  INC(NextId, IdIncr);
-  SendHeader(55, 0, 6);
-  SendDWord(Context);
-  SendDWord(Window);
-  SendDWord(4 + 8);     (* Provide foreground and background colours *)
-  SendDWord(0FFFFFFH);  (* Foreground *)
-  SendDWord(0);         (* Background *)
-END CreateGraphicsContext;
 
 
 PROCEDURE QueryExtension(name: ARRAY OF CHAR; VAR majorOpcode, firstEvent, firstError: INTEGER);
@@ -718,15 +827,10 @@ BEGIN
   SendHeader(98, 0, 2 + (l + 3) DIV 4);  SendWord(l);  SendWord(0);
   SendBuf(name, 0, l);
   SendPad(l);
-
   MustReceive(result);
   IF (result.reply = 1) & (result.present # 0) THEN
     majorOpcode := result.majoropcode;  firstEvent  := result.firstevent;
     firstError := result.firsterror;
-    (*
-    ws("QueryExtension('"); ws(name); ws("') -> major opcode "); wi(majorOpcode);
-    ws(", first event "); wi(firstEvent); ws(", first error "); wi(firstError); wsn(".");
-    *)
   ELSE
     majorOpcode := 0;  firstEvent  := 0;  firstError := 0
   END
@@ -735,7 +839,9 @@ END QueryExtension;
 
 PROCEDURE EnableBigRequests;
 VAR
-  opcode: INTEGER;
+  opcode:   INTEGER;
+  eventnum: INTEGER;
+  errornum: INTEGER;
   result: RECORD
     reply, pad1: BYTE;
     seq:         SYSTEM.CARD16;
@@ -743,8 +849,6 @@ VAR
     maxreqlen:   SYSTEM.CARD32;
     pad2:        ARRAY 20 OF BYTE;
   END;
-  eventnum: INTEGER;
-  errornum: INTEGER;
 BEGIN
   QueryExtension("BIG-REQUESTS", opcode, eventnum, errornum);
   IF opcode # 0 THEN
@@ -784,10 +888,12 @@ BEGIN
   ConnectToX11Server(Srv);
   X11ConnectionSetup;
   EnableBigRequests;
+  Cursor := CreateCursor();
   CreateWindow;
   SetWindowProperties;
+  SetIcon;
   MapWindow;
-  CreateGraphicsContext;
-  Drain;
+  Context := CreateGraphicsContext(Window, 0FFFFFFH, 0);
+  ProcessAllPendingEvents;
   wsn("Gui loaded.");
 END Gui.

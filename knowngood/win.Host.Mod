@@ -8,6 +8,9 @@ CONST
   Lin*  = 2;
   Host* = Win;
 
+  IconImgSize* = 0;  (* On Windows the icon image is in the PE resources. *)
+
+
   (* Platform independent file open kinds *)
   OpenRO* = 0;  (* Open r/o, fail if doesn't exist *)
   OpenRW* = 1;  (* Open r/w, fail if doesn't exist *)

@@ -27,7 +27,9 @@ echo
 ./ORP.Compile FileDir.Mod/s Lin.Gui.Mod/s Input.Mod/s Display.Mod/s
 ./ORP.Compile Viewers.Mod/s Oberon.Mod/s MenuViewers.Mod/s
 ./ORP.Compile TextFrames.Mod/s Edit.Mod/s System.Mod/s
-./Link.ELF Oberon+System+ORP+Link
+cp ../Oberon.bmp .
+#./Link.ELF Oberon+System+ORP+Link
+./Link.ELF Oberon+System
 #
 #
 # Run Oberon system

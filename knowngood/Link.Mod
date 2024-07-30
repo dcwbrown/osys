@@ -842,7 +842,7 @@ PROCEDURE LoadPngHeader*(f: Files.File; VAR hdr: IHDR);
 VAR
   r:   Files.Rider;
   i:   INTEGER;
-  len: SYSTEM.CARD32  ;
+  len: SYSTEM.CARD32;
   typ: ARRAY 5 OF CHAR;
   end: BOOLEAN;
 BEGIN
@@ -1025,9 +1025,103 @@ END GeneratePE;
 
 (* ---------------------- Generate ELF for one target ----------------------- *)
 
-PROCEDURE PresetLinHost(MadrPreload: INTEGER);
+PROCEDURE CompressIconImage(name: ARRAY OF CHAR;  VAR cmpbuf: ARRAY OF BYTE; VAR imglen: INTEGER);
+VAR
+  fn:    ARRAY 64 OF CHAR;
+  bmp:   Files.File;
+  rdr:   Files.Rider;
+  x, y:  INTEGER;
+  pos:   INTEGER;
+  len:   SYSTEM.CARD32;
+  type:  ARRAY 4 OF CHAR;
+  magic: SYSTEM.CARD16;
+  hdr:   RECORD
+           size:   SYSTEM.CARD32;
+           rsvd:   SYSTEM.CARD32;
+           imgadr: SYSTEM.CARD32;
+          END;
+  img:   ARRAY 256*256 OF SYSTEM.CARD32;
+  argb:  SYSTEM.CARD32;
+  i:     INTEGER;
+  a:     INTEGER;
+  r:     INTEGER;
+  g:     INTEGER;
+  b:     INTEGER;
+  kind,
+  runkind:   INTEGER;  (* 0: transparent, 1: black, 2: white, 3: greylevel *)
+  runlength: INTEGER;
+  cmpi:      INTEGER;
+  cmpx:      INTEGER;
+
+  PROCEDURE addrun(kind, length, cmpx: INTEGER; VAR cmpi: INTEGER; VAR buf: ARRAY OF BYTE);
+  BEGIN
+    IF kind < 3 THEN
+      WHILE length >= 64 DO buf[cmpi] := kind * 64;  INC(cmpi);  DEC(length, 64) END;
+      IF length > 0 THEN   buf[cmpi] := kind * 64 + length;  INC(cmpi) END;
+    ELSE
+      ASSERT(length # 0); ASSERT(length < 64);
+      buf[cmpx] := 0C0H + length
+    END
+  END addrun;
+
+  PROCEDURE EncodeGrey(grey: INTEGER): INTEGER;
+  VAR result: INTEGER;
+  BEGIN
+    IF grey MOD 1000000H = 0 THEN       (* edge between black and background *)
+      result := grey DIV 2000000H + 80H
+    ELSE                                (* edge between black and white *)
+      result := grey MOD 100H DIV 2
+    END;
+  RETURN result END EncodeGrey;
+
+BEGIN
+  fn := name;  H.Append(".bmp", fn);  bmp := Files.Old(fn);
+  IF bmp # NIL THEN
+    Files.Set(rdr, bmp, 0);  Files.ReadRaw(rdr, magic);
+    IF magic # 4D42H THEN bmp := NIL END
+  END;
+  IF bmp # NIL THEN
+    Files.ReadRaw(rdr, hdr);
+    IF hdr.imgadr + 256*256*4 > Files.Length(bmp) THEN
+      bmp := NIL
+    ELSE
+      Files.Set(rdr, bmp, hdr.imgadr);
+      FOR y := 0 TO 255 DO  (* Read image upside down *)
+        Files.ReadMem(rdr, SYSTEM.ADR(img[256 * (255 - y)]), 256*4);
+      END;
+    END
+  END;
+  IF bmp # NIL THEN
+    runkind := -1;  runlength := 0;  cmpi := 0;
+    FOR i := 0 TO 65535 DO
+      argb := img[i];
+      IF    argb = 000000000H THEN kind := 0  (* Transparent *)
+      ELSIF argb = 0FF000000H THEN kind := 1  (* Black       *)
+      ELSIF argb = 0FFFFFFFFH THEN kind := 2  (* White       *)
+      ELSE                         kind := 3  (* Intermediate grey or transparency level *)
+      END;
+      IF kind = runkind THEN INC(runlength);
+      ELSE
+        addrun(runkind, runlength, cmpx, cmpi, cmpbuf);
+        IF kind = 3 THEN cmpx := cmpi; INC(cmpi) END;
+        runkind := kind;  runlength := 1;
+      END;
+      IF kind = 3 THEN cmpbuf[cmpi] := EncodeGrey(argb);  INC(cmpi) END
+    END;
+    addrun(runkind, runlength, cmpx, cmpi, cmpbuf);
+    cmpbuf[cmpi] := 0C0H;  (* Terminator *)
+    (*H.ws("  Compressed length ");  H.wi(cmpi);  H.wsn(" bytes.");*)
+    imglen := cmpi+1
+  END
+END CompressIconImage;
+
+
+PROCEDURE PresetLinHost(name: ARRAY OF CHAR; MadrPreload: INTEGER);
 VAR
   preloadvars: H.PreLoadVars;
+  iconofs:     INTEGER;
+  iconimg:     ARRAY H.IconImgSize OF BYTE;
+  len:         INTEGER;
 BEGIN
   H.ZeroFill(preloadvars);
   preloadvars.Exeadr      := 0;
@@ -1035,6 +1129,9 @@ BEGIN
   preloadvars.CoreSize    := Core.Size;
   preloadvars.MadrPreload := MadrPreload;
   SYSTEM.COPY(SYSTEM.ADR(preloadvars), SYSTEM.ADR(Core.Mem[Core.HostVars]), SYSTEM.SIZE(H.PreLoadVars));
+  CompressIconImage(name, iconimg, len);
+  iconofs := Core.HostVars + SYSTEM.SIZE(H.PreLoadVars) + H.HandlerCount * 8;
+  SYSTEM.COPY(SYSTEM.ADR(iconimg), SYSTEM.ADR(Core.Mem[iconofs]), len);
 END PresetLinHost;
 
 
@@ -1074,7 +1171,7 @@ BEGIN
     madrpreload := 4000000H;
   END;
 
-  PresetLinHost(madrpreload);
+  PresetLinHost(name, madrpreload);
 
   entry := OberonCoreBase + Core.EntryPoint;
 
@@ -1243,12 +1340,15 @@ END ParseTarget;
 
 PROCEDURE Link(tgthost: INTEGER);
 VAR
+  start:   INTEGER;
   r:       Texts.Reader;
   ch:      CHAR;
   target:  ARRAY 64 OF CHAR;
   modname: ARRAY 64 OF CHAR;
   i:       INTEGER;
 BEGIN
+  start := H.Time();
+
   (* Parse argument modname[.commandname] from parameter as arg *)
   Texts.OpenReader(r, Texts.Par.text, Texts.Par.pos);
   Texts.Read(r, ch);
@@ -1256,7 +1356,7 @@ BEGIN
   ParseTarget(r, ch, target, modname);
   WHILE (target[0] # 0X) & (target # "~") DO
     ws("  linking "); ws(target);
-    IF tgthost = Win THEN wsn(" as Windows PE.") ELSE wsn(" as Linux ELF.") END;
+    IF tgthost = Win THEN ws(" PE ") ELSE ws(" ELF ") END;
 
     AddPreloadModule(modname, 0);
 
@@ -1275,7 +1375,7 @@ BEGIN
 
     IF tgthost = Win THEN GeneratePE(target) ELSE GenerateELF(target) END;
 
-    (*ws("Link of "); ws(target); ws(" complete.");*)
+    wi((H.Time() - start) DIV 10000);  wsn("ms");
 
     ParseTarget(r, ch, target, modname)
   END
@@ -1287,7 +1387,7 @@ PROCEDURE ELF*;  BEGIN Link(Lin) END ELF;
 
 
 BEGIN
-  Texts.OpenWriter(W); wsn("ELF+PE linker DCWB 2024-05-10");
+  Texts.OpenWriter(W); wsn("Linker DCWB 2024-05-10");
   FirstPreload := NIL;
   LastPreload  := NIL;
   PreloadSize  := 0;

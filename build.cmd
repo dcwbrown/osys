@@ -34,7 +34,6 @@ echo ----------- Build with known good compiler and updated linker ------------
 echo.
 ::
 copy /Y ..\src\*.mod >NUL
-::copy /Y ..\win\*.mod >NUL
 ::
 ORP.Compile Win.Host.Mod/s Kernel.Mod/s Files.Mod/s Modules.Mod/s ~  || goto end
 ORP.Compile Fonts.Mod/s Texts.Mod/s Link.Mod/s ORS.Mod/s ~           || goto end

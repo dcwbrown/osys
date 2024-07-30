@@ -24,5 +24,6 @@
 @copy build.win\*.exe knowngood >NUL
 @copy build.lin\ORP.Compile knowngood >NUL
 @copy build.lin\Link.ELF knowngood >NUL
+@copy build.lin\Oberon knowngood >NUL
 ::
 :end

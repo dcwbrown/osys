@@ -8,6 +8,8 @@ CONST
   Lin*  = 2;
   Host* = Lin;
 
+  IconImgSize* = 12000;
+
   (* Oberon system library procedure indices *)
   NewProc*                   = 0;
   (* error traps *)
@@ -225,6 +227,9 @@ VAR
 
   (* Linker expects handlers to follow immediately after pre-loaded vars *)
   Handlers*: ARRAY HandlerCount OF PROCEDURE;
+
+  (* For Linux Host.Mod, linker preloads the following compressed icon array *)
+  Icon*: ARRAY IconImgSize OF BYTE;
 
   Newline*:  ARRAY 3 OF CHAR;
 
@@ -881,7 +886,7 @@ BEGIN
     ws("', '"); ws(file.unregname);
     ws("' -> -"); wi(-rv); wsn(".")
   END;
-  ASSERT(rv = 0);
+  (*ASSERT(rv = 0);*)
   file.registered := FALSE;
   (*Leave(UnregisterStat);*)
 END FileUnregister;
