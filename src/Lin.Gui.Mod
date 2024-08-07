@@ -341,11 +341,19 @@ VAR
   END;
   vendor:  ARRAY 200 OF CHAR;
   i, j, k: INTEGER;
+  ch:      CHAR;
 BEGIN
   H.ZeroFill(initmsg);  initmsg.byteorder := ORD("l");  initmsg.majorver := 11;
   SendUnbuffered(initmsg, 0, 12);
   IF ~Receive(initinfo)  THEN H.Trap(-1, "X server dropped connection.") END;
-  IF initinfo.result # 1 THEN H.Trap(-1, "X server refused connection.") END;
+  IF initinfo.result # 1 THEN
+    H.ws("initinfo.result:   "); H.wh(initinfo.result);   H.wsn("H.");
+    H.ws("initinfo.majorver: "); H.wh(initinfo.majorVer); H.wsn("H.");
+    H.ws("initinfo.minorver: "); H.wh(initinfo.minorVer); H.wsn("H.");
+    i := SYSTEM.ADR(initinfo.releaseNo); SYSTEM.GET(i, ch);
+    WHILE ch # 0X DO H.wc(ch); INC(i);  SYSTEM.GET(i, ch) END; H.wn;
+    H.Trap(-1, "X server refused connection.")
+  END;
   NextId := initinfo.resIdBase;
   IdIncr := IAND(initinfo.resIdMask, -initinfo.resIdMask);
   MaxReqLen := initinfo.maxReqLen;
@@ -555,7 +563,10 @@ RETURN res END ProcessOneEvent;
 
 
 PROCEDURE WaitMsgOrTime*(time: INTEGER);  (* Waits for time (ms) OR message in queue *)
-BEGIN IF Shutdown OR (Dirtybottom < Height) OR PollEvent(time) THEN END END WaitMsgOrTime;
+BEGIN
+  SendFlush;
+  IF Shutdown OR (Dirtybottom < Height) OR PollEvent(time) THEN END
+END WaitMsgOrTime;
 
 PROCEDURE ProcessAllPendingEvents;
 BEGIN REPEAT UNTIL ProcessOneEvent() = 0 END ProcessAllPendingEvents;

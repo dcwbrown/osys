@@ -181,7 +181,7 @@ END Scan;
 (*-------- Miscellaneous procedures----------*)
 
 PROCEDURE Time*(): INTEGER;
-(* In milliseconds since system-dependent origin *)
+(* In milliseconds since 2000-01-01 UTC *)
 BEGIN RETURN H.Time() DIV 10000
 END Time;
 

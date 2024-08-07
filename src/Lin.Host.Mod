@@ -644,14 +644,14 @@ RETURN ch END GetChar;
 (* -------------------------------------------------------------------------- *)
 
 PROCEDURE Time*(): INTEGER;
-(* In 100 nanosecond ticks since 1970-01-01 00:00 UTC *)
+(* In 100 nanosecond ticks since 2000-01-01 00:00 UTC *)
 (* Sufficient to represent times between approx 27,250 BC and 31,000 AD. *)
 VAR tv: RECORD- sec, nsec: INTEGER END;
 BEGIN
-  ASSERT(sysclockgettime(0, SYSTEM.ADR(tv)) = 0);
+  ASSERT(sysclockgettime(0, SYSTEM.ADR(tv)) = 0);  (* 1ns ticks since 1970-01-01 *)
   ASSERT(tv.nsec < 40000000H);
 RETURN tv.sec * 10000000 + tv.nsec DIV 100       (* Scale to 100ns ticks   *)
-     - 10000000 * 24 * 60 * 60 * (30 * 365 + 7)  (* Bias to 2000-01-01 UTC *)
+     - (30 * 365 + 7) * 24 * 60 * 60 * 10000000  (* Bias to 2000-01-01 UTC *)
 END Time;
 
 PROCEDURE TimeAsClock*(time: INTEGER): INTEGER;
@@ -679,12 +679,12 @@ BEGIN
     DEC(day, MonthLen[month]);  INC(month)
   END;
   IF month >= 10 THEN DEC(month, 12);  INC(year) END;
-  RETURN (((((  year  + 2000)      * 10H
-              + month + 3)         * 20H
-              + day   + 1)         * 20H
-              + sec DIV 3600)      * 40H
-              + sec DIV 60 MOD 60) * 40H
-              + sec MOD 60
+  RETURN ((((  year               * 10H
+             + month + 3)         * 20H
+             + day   + 1)         * 20H
+             + sec DIV 3600)      * 40H
+             + sec DIV 60 MOD 60) * 40H
+             + sec MOD 60
 END TimeAsClock;
 
 
@@ -695,7 +695,7 @@ BEGIN RETURN TimeAsClock(Time()) END Clock;
 
 PROCEDURE WriteDate*(clock: INTEGER);
 VAR year: INTEGER;
-BEGIN year := clock DIV 4000000H;
+BEGIN year := clock DIV 4000000H + 2000;
   IF year < 0 THEN wir(-year, 2, "0"); ws("BC-") ELSE wir(year, 4, "0"); wc("-") END;
   wir(clock DIV 400000H MOD 10H, 2, "0");  (*month*)    wc("-");
   wir(clock DIV 20000H  MOD 20H, 2, "0");  (*day*)
@@ -900,7 +900,7 @@ BEGIN
     stat.mtimsec := 0;  stat.mtimnsec := 0;
   END;
 RETURN stat.mtimsec * 10000000 + stat.mtimnsec DIV 100  (* Scale to 100ns ticks   *)
-     - 10000000 * 24 * 60 * 60 * (30 * 365 + 7)         (* Bias to 2000-01-01 UTC *)
+     - (30 * 365 + 7) * 24 * 60 * 60 * 10000000         (* Bias to 2000-01-01 UTC *)
 END FileTime;
 
 

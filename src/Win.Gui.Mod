@@ -629,17 +629,17 @@ RETURN res END ProcessOneMessage;
 PROCEDURE WaitMsgOrTime*(time: INTEGER);  (* Waits for time (ms) OR message in queue *)
 BEGIN InvalidateDirty; H.MsgWaitForMultipleObjects(0, 0, 0, time, 01DFFH) END WaitMsgOrTime;
 
-PROCEDURE Drain;
+PROCEDURE ProcessAllPendingEvents;
 VAR res: INTEGER;
 BEGIN
   InvalidateDirty; REPEAT res := ProcessOneMessage() UNTIL res = 0;
-END Drain;
+END ProcessAllPendingEvents;
 
 
 (* ----------------- keyboard and mouse hardware emulation ------------------ *)
 
 PROCEDURE KeyReady*(): BOOLEAN;
-BEGIN Drain;
+BEGIN ProcessAllPendingEvents;
 RETURN (KeyIn # KeyOut) OR KeyFull END KeyReady;
 
 PROCEDURE GetKey*(VAR key: BYTE);
@@ -650,7 +650,7 @@ BEGIN ASSERT(KeyReady());
 END GetKey;
 
 PROCEDURE Mouse*(): INTEGER;
-BEGIN Drain;
+BEGIN ProcessAllPendingEvents;
 RETURN MouseState END Mouse;
 
 PROCEDURE PositionWindow*(x, y: INTEGER);

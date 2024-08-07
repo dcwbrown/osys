@@ -347,7 +347,7 @@ BEGIN WHILE n > 0 DO wc(" "); DEC(n) END END wb;
 PROCEDURE Time*(): INTEGER;  (* In 100 nanosecond ticks since 2000-01-01 UTC *)
 VAR tick: INTEGER;
 BEGIN GetSystemTimePreciseAsFileTime(SYSTEM.ADR(tick));
-RETURN tick - 10000000 * 24 * 60 * 60 * (399 * 365 + 96)  (* Bias to 2000-01-01 UTC *)
+RETURN tick - (399 * 365 + 96) * 24 * 60 * 60 * 10000000  (* Bias to 2000-01-01 UTC *)
 END Time;
 
 
@@ -376,46 +376,13 @@ BEGIN
     DEC(day, MonthLen[month]);  INC(month)
   END;
   IF month >= 10 THEN DEC(month, 12);  INC(year) END;
-  RETURN (((((  year  + 2000)      * 10H
-              + month + 3)         * 20H
-              + day   + 1)         * 20H
-              + sec DIV 3600)      * 40H
-              + sec DIV 60 MOD 60) * 40H
-              + sec MOD 60
+  RETURN ((((  year               * 10H
+             + month + 3)         * 20H
+             + day   + 1)         * 20H
+             + sec DIV 3600)      * 40H
+             + sec DIV 60 MOD 60) * 40H
+             + sec MOD 60
 END TimeAsClock;
-
-(*
-PROCEDURE TimeAsClock*(filetime: INTEGER): INTEGER;
-(* Returns local time in PO2013 format:               *)
-(* 23/0,15/year-2000,4/month,5/day,5/hour,6/min,6/sec *)
-VAR
-  local, res: INTEGER;
-  st: RECORD  (* Windows system time format *)
-    year:         SYSTEM.CARD16;
-    month:        SYSTEM.CARD16;
-    dayofweek:    SYSTEM.CARD16;
-    day:          SYSTEM.CARD16;
-    hour:         SYSTEM.CARD16;
-    minute:       SYSTEM.CARD16;
-    second:       SYSTEM.CARD16;
-    milliseconds: SYSTEM.CARD16;
-  END;
-  clock: INTEGER;
-BEGIN
-  res := FileTimeToLocalFileTime(SYSTEM.ADR(filetime), SYSTEM.ADR(local));
-  clock := 0;
-  IF FileTimeToSystemTime(SYSTEM.ADR(local), SYSTEM.ADR(st)) # 0 THEN
-    DEC(st.year, 2000);
-    clock := ((((  st.year    * 10H
-                 + st.month ) * 20H
-                 + st.day   ) * 20H
-                 + st.hour  ) * 40H
-                 + st.minute) * 40H
-                 + st.second;
-  END
-RETURN clock END TimeAsClock;
-*)
-
 
 PROCEDURE Clock*(): INTEGER;
 (* Returns local time as                         *)
@@ -424,20 +391,20 @@ BEGIN RETURN TimeAsClock(Time()) END Clock;
 
 PROCEDURE WriteDate(clock: INTEGER);
 VAR year: INTEGER;
-BEGIN year := clock DIV 4000000H;
+BEGIN year := clock DIV 4000000H + 2000;
   IF year < 0 THEN wir(-year, 2, "0"); ws("BC-") ELSE wir(year, 4, "0"); wc("-") END;
-  wir(clock DIV 400000H MOD 10H, 2, "0");  (*month*)    wc("-");
+  wir(clock DIV 400000H MOD 10H, 2, "0");  (*month*)  wc("-");
   wir(clock DIV 20000H  MOD 20H, 2, "0");  (*day*)
 END WriteDate;
 
 PROCEDURE WriteTime(clock: INTEGER);
 BEGIN
-  wir(clock DIV 1000H MOD 20H, 2, "0");  (*hour*)     wc(":");
-  wir(clock DIV 40H MOD 40H,   2, "0");  (*min*)      wc(":");
+  wir(clock DIV 1000H MOD 20H, 2, "0");  (*hour*)  wc(":");
+  wir(clock DIV 40H   MOD 40H, 2, "0");  (*min*)   wc(":");
   wir(clock MOD 40H,           2, "0");  (*sec*)
 END WriteTime;
 
-PROCEDURE WriteClock(clock: INTEGER);
+PROCEDURE WriteClock*(clock: INTEGER);
 BEGIN WriteDate(clock); wc(" "); WriteTime(clock)
 END WriteClock;
 
@@ -951,7 +918,7 @@ BEGIN
   ASSERT(file.handle >= 0);
   res := GetFileInformationByHandleEx(file.handle, 0, SYSTEM.ADR(info), SYSTEM.SIZE(infodesc));
   IF res = 0 THEN AssertWinError(GetLastError()) END;
-RETURN info.write - 10000000 * 24 * 60 * 60 * (399 * 365 + 96)  (* Bias to 2000-01-01 UTC *)
+RETURN info.write - (399 * 365 + 96) * 24 * 60 * 60 * 10000000  (* Bias to 2000-01-01 UTC *)
 END FileTime;
 
 
