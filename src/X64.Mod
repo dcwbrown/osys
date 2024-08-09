@@ -48,22 +48,27 @@ CONST
   (* Mode           Description         n                   offset                      *)
   (*                ------------------  ------------------  --------------------------- *)
   Cond*    = 20;  (* Condition          CF, CT, CO..CG      0                           *)
-  Const*   = 21;  (* Constant           value               0                           *)
   Reg*     = 22;  (* Register           register (0-15)     0                           *)
-  Strucp*  = 23;  (* Stack struc ptr    stack offset        0                           *)
-  Stkind*  = 24;  (* Stack indirect     stack offset        0                           *)
   Eadr*    = 25;  (* Effective address  base register       relative to base            *)
+  Stkind*  = 24;  (* Stack indirect     stack offset        0                           *)
+
+  Const*   = 21;  (* Constant           value               0                           *)
+  Strucp*  = 23;  (* Stack struc ptr    stack offset        0                           *)
   Code*    = 26;  (* Code offset        0                   code offset                 *)
   String*  = 27;  (* String offs & len  string length       current string block offset *)
   Global*  = 28;  (* VAR offset         0                   VAR block offset            *)
   Import*  = 29;  (* Import             16/modno, 16/impno  0                           *)
   Impcode* = 30;  (* Imported code var  16/modno, 16/impno  0                           *)
 
+  (* StkInd: x.n has stack offset that contains address of object to which x.offset will apply *)
+
   (* Note re imported procedures: An imported procedure has Mode Import, while an *)
   (* imported procedure address variable has mode ImpCode.                        *)
 
 TYPE
   Item* = RECORD
+    extclass*: INTEGER;
+    level*:    INTEGER;
     mode*:     INTEGER;
     type*:     ORB.Type;
     readonly*: BOOLEAN;
@@ -83,7 +88,9 @@ VAR
 
 PROCEDURE ClearMode*(VAR x: Item);
 BEGIN
+  x.extclass := ORB.Const;
   x.mode     := Const;
+  x.level    := 0;
   x.n        := -1;
   x.offset   := 0;
   x.index    := -1;
