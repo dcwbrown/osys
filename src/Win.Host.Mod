@@ -33,6 +33,8 @@ CONST
   MEMCOMMIT            = 1000H;
   PAGEEXECUTEREADWRITE = 40H;
 
+  HostName* = "Windows";
+
 
 TYPE
   (* -------------------- Windows exception structures -------------------- *)

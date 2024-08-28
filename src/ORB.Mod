@@ -137,6 +137,8 @@ VAR
   int16Type,  int32Type:  Type;
   card16Type, card32Type: Type;
 
+  procType*: Type;
+
   nofmod, Ref: INTEGER;
   typtab: ARRAY maxTypTab OF Type;
 
@@ -491,6 +493,7 @@ BEGIN
   nilType    := type(NilTyp, NilTyp,  8);
   noType     := type(NoTyp,  NoTyp,   8);
   strType    := type(String, String, 16);
+  procType   := type(Proc,   Proc,    8);
 
 (*initialize universe with data types and in-line procedures;
    LONGINT is synonym to INTEGER, LONGREAL to REAL.

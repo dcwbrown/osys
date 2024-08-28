@@ -1355,8 +1355,9 @@ BEGIN
 
   ParseTarget(r, ch, target, modname);
   WHILE (target[0] # 0X) & (target # "~") DO
-    ws("  linking "); ws(target);
-    IF tgthost = Win THEN ws(" PE ") ELSE ws(" ELF ") END;
+    IF tgthost = Win THEN ws(" linking PE ") ELSE ws(" linking ELF ") END;
+    ws(target);
+    IF tgthost = Win THEN ws(".exe  ") ELSE ws("  ") END;
 
     AddPreloadModule(modname, 0);
 
@@ -1387,7 +1388,7 @@ PROCEDURE ELF*;  BEGIN Link(Lin) END ELF;
 
 
 BEGIN
-  Texts.OpenWriter(W); wsn("Linker DCWB 2024-05-10");
+  Texts.OpenWriter(W); wsn("OX Linker  DCWB 2024-05-10");
   FirstPreload := NIL;
   LastPreload  := NIL;
   PreloadSize  := 0;

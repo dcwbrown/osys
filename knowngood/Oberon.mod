@@ -109,7 +109,7 @@ BEGIN Kernel.SetClock(d)
 END SetClock;
 *)
 
-PROCEDURE Time*(): LONGINT;
+PROCEDURE Time*(): LONGINT;  (* In 100 nanosecond ticks since 2000-01-01 UTC *)
 BEGIN RETURN Kernel.Time()
 END Time;
 

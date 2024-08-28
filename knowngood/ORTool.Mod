@@ -1,5 +1,5 @@
 MODULE ORTool;  (*NW 18.2.2013*)
-  IMPORT SYSTEM, Files, Texts, Oberon, ORB;
+  IMPORT SYSTEM, Files, Texts, ORB;
   VAR W: Texts.Writer;
     Form: INTEGER;  (*result of ReadType*)
     mnemo0, mnemo1: ARRAY 16, 4 OF CHAR;  (*mnemonics*)
@@ -38,10 +38,14 @@ MODULE ORTool;  (*NW 18.2.2013*)
         END ;
         Texts.Write(W, "}")
       ELSIF form = ORB.Proc THEN
-        ReadType(R); Texts.Write(W, "("); Read(R, class);
+        ReadType(R);
+        Files.ReadNum(R, len);   (* t.len *)
+        Files.ReadByte(R, len);  (* t.hosted flag *)
+        Texts.Write(W, "("); Read(R, class);
         WHILE class # 0 DO
           Texts.WriteString(W, " class = "); Texts.WriteInt(W, class, 1); Read(R, readonly);
           IF readonly = 1 THEN Texts.Write(W, "#") END ;
+          Files.ReadNum(R, len);  (* par.val *)
           ReadType(R); Read(R, class)
         END ;
         Texts.Write(W, ")")
@@ -61,10 +65,10 @@ MODULE ORTool;  (*NW 18.2.2013*)
       name: ARRAY 32 OF CHAR;
       F: Files.File; R: Files.Rider;
       S: Texts.Scanner;
-  BEGIN Texts.OpenScanner(S, Oberon.Par.text, Oberon.Par.pos); Texts.Scan(S);
+  BEGIN Texts.OpenScanner(S, Texts.Par.text, Texts.Par.pos); Texts.Scan(S);
     IF S.class = Texts.Name THEN
       Texts.WriteString(W, "OR-decode "); Texts.WriteString(W, S.s);
-      Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf);
+      Texts.WriteLn(W); Texts.Append(Texts.Log, W.buf);
       F := Files.Old(S.s);
       IF F # NIL THEN
         Files.Set(R, F, 0); Files.ReadInt(R, k); Files.ReadInt(R, k);
@@ -84,14 +88,14 @@ MODULE ORTool;  (*NW 18.2.2013*)
             ELSIF (class = ORB.Const) OR (class = ORB.Var) THEN
               Files.ReadNum(R, k); Texts.WriteInt(W, k, 5);  (*Reals, Strings!*)
             END ;
-            Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf);
+            Texts.WriteLn(W); Texts.Append(Texts.Log, W.buf);
             Read(R, class)
           END
         ELSE Texts.WriteString(W, " bad symfile version")
         END
       ELSE Texts.WriteString(W, " not found")
       END ;
-      Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf)
+      Texts.WriteLn(W); Texts.Append(Texts.Log, W.buf)
     END
   END DecSym;
   
@@ -157,7 +161,7 @@ MODULE ORTool;  (*NW 18.2.2013*)
       name: ARRAY 32 OF CHAR;
       F: Files.File; R: Files.Rider;
       S: Texts.Scanner;
-  BEGIN Texts.OpenScanner(S, Oberon.Par.text, Oberon.Par.pos); Texts.Scan(S);
+  BEGIN Texts.OpenScanner(S, Texts.Par.text, Texts.Par.pos); Texts.Scan(S);
     IF S.class = Texts.Name THEN
       Texts.WriteString(W, "decode "); Texts.WriteString(W, S.s); F := Files.Old(S.s);
       IF F # NIL THEN
@@ -215,12 +219,13 @@ MODULE ORTool;  (*NW 18.2.2013*)
       (* Sync(R); *)
       ELSE Texts.WriteString(W, " not found"); Texts.WriteLn(W)
       END ;
-      Texts.Append(Oberon.Log, W.buf)
+      Texts.Append(Texts.Log, W.buf)
     END
   END DecObj;
 
-BEGIN Texts.OpenWriter(W); Texts.WriteString(W, "ORTool 18.2.2013");
-  Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf);
+BEGIN
+  Texts.OpenWriter(W); Texts.WriteString(W, "ORTool 18.2.2013");
+  Texts.WriteLn(W); Texts.Append(Texts.Log, W.buf);
   mnemo0[0] := "MOV";
   mnemo0[1] := "LSL";
   mnemo0[2] := "ASR";

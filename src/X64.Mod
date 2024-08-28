@@ -48,17 +48,17 @@ CONST
   (* Mode           Description         n                   offset                      *)
   (*                ------------------  ------------------  --------------------------- *)
   Cond*    = 20;  (* Condition          CF, CT, CO..CG      0                           *)
-  Reg*     = 22;  (* Register           register (0-15)     0                           *)
-  Eadr*    = 25;  (* Effective address  base register       relative to base            *)
-  Stkind*  = 24;  (* Stack indirect     stack offset        0                           *)
+  Reg*     = 21;  (* Register           register (0-15)     0                           *)
+  Eadr*    = 22;  (* Effective address  base register       relative to base            *)
+  Stkind*  = 23;  (* Stack indirect     stack offset        0                           *)
 
-  Const*   = 21;  (* Constant           value               0                           *)
-  Strucp*  = 23;  (* Stack struc ptr    stack offset        0                           *)
-  Code*    = 26;  (* Code offset        0                   code offset                 *)
-  String*  = 27;  (* String offs & len  string length       current string block offset *)
-  Global*  = 28;  (* VAR offset         0                   VAR block offset            *)
-  Import*  = 29;  (* Import             16/modno, 16/impno  0                           *)
-  Impcode* = 30;  (* Imported code var  16/modno, 16/impno  0                           *)
+  (*ORB.Const        Constant           value               0                           *)
+  Strucp*  = 30;  (* Stack struc ptr    stack offset        0                           *)
+  Code*    = 31;  (* Code offset        0                   code offset                 *)
+  String*  = 32;  (* String offs & len  string length       current string block offset *)
+  Global*  = 33;  (* VAR offset         0                   VAR block offset            *)
+  Import*  = 34;  (* Import             16/modno, 16/impno  0                           *)
+  Impcode* = 35;  (* Imported code var  16/modno, 16/impno  0                           *)
 
   (* StkInd: x.n has stack offset that contains address of object to which x.offset will apply *)
 
@@ -69,7 +69,7 @@ TYPE
   Item* = RECORD
     extclass*: INTEGER;
     level*:    INTEGER;
-    mode*:     INTEGER;
+    (*mode*:     INTEGER;*)
     type*:     ORB.Type;
     readonly*: BOOLEAN;
     n*:        INTEGER;
@@ -86,10 +86,49 @@ VAR
 
 (* -------------------------------- Assembly -------------------------------- *)
 
+PROCEDURE Mode*(x: Item): INTEGER;
+VAR mode: INTEGER;
+BEGIN
+  (*IF x.mode IN {Cond, Reg, Eadr, Stkind} THEN mode := x.mode*)
+  IF x.extclass IN {Cond, Reg, Eadr, Stkind, ORB.SProc, ORB.Typ} THEN mode := x.extclass
+  ELSE
+    IF x.extclass = 0 THEN H.Trap(8, "Mode(): x.extclass = 0.") END;
+    ASSERT(x.extclass # 0);
+    mode := -1;
+    IF x.extclass = ORB.Const THEN
+      IF x.type.form = ORB.Proc THEN
+        IF x.level < 0 THEN               mode := Import
+        ELSE                              mode := Code
+        END
+      ELSIF x.type.form = ORB.String THEN mode := String
+      ELSE                                mode := ORB.Const
+      END
+    ELSIF x.extclass = ORB.Var THEN
+      IF x.level > 0 THEN                 mode := Eadr
+      ELSIF x.level = 0 THEN              mode := Global
+      ELSE
+        IF x.type.form = ORB.Proc THEN    mode := Impcode
+        ELSE                              mode := Import
+        END
+      END
+    ELSIF x.extclass = ORB.Par THEN
+      IF   (x.type.form = ORB.Array)
+         & (x.type.len < 0)
+      OR (x.type.form = ORB.Record) THEN  mode := Strucp
+      ELSE                                mode := Stkind
+      END
+    ELSE                                  mode := x.extclass;
+      ASSERT(mode IN {Cond, Reg, Eadr});
+    END
+  END;
+  ASSERT(mode > 0);
+RETURN mode END Mode;
+
+
 PROCEDURE ClearMode*(VAR x: Item);
 BEGIN
   x.extclass := ORB.Const;
-  x.mode     := Const;
+  (*x.mode     := ORB.Const;*)
   x.level    := 0;
   x.n        := -1;
   x.offset   := 0;

@@ -518,7 +518,7 @@ BEGIN
 
   opcode := X64.Text[pc];  INC(pc);  AddHex(1, opcode);
 
-  IF (opcode < 64) & (opcode MOD 8 < 6) THEN (* alu op *)
+  IF (opcode < 40H) & (opcode MOD 8 < 6) THEN (* alu op *)
 
     AluOp(opcode DIV 8, Inst);
     IF ~ODD(opcode) THEN regsize := 1 END;
@@ -1187,7 +1187,7 @@ BEGIN
   ELSIF mode = ORB.SProc   THEN s("SProc",   buf)
   ELSIF mode = ORB.Typ     THEN s("Typ",     buf)
   ELSIF mode = X64.Cond    THEN s("Cond",    buf)
-  ELSIF mode = X64.Const   THEN s("Const",   buf)
+  ELSIF mode = ORB.Const   THEN s("Const",   buf)
   ELSIF mode = X64.Reg     THEN s("Reg",     buf)
   ELSIF mode = X64.Strucp  THEN s("Strucp",  buf)
   ELSIF mode = X64.Stkind  THEN s("Stkind",  buf)
@@ -1246,12 +1246,15 @@ BEGIN
 END Object;
 
 PROCEDURE Item*(x: X64.Item; VAR buf: Buffer);
+VAR mode: INTEGER;
 BEGIN
-  c("(", buf);  Mode(x.mode, buf);  c(" ",   buf);
-  IF    x.mode = X64.Const  THEN i(x.n, buf)
-  ELSIF x.mode = X64.Reg    THEN Reg(8, x.n, buf)
-  ELSIF x.mode = X64.Cond   THEN Cond(x.n, buf)
-  ELSIF x.mode IN {X64.Eadr..X64.Import} THEN
+  mode := x.extclass;
+  IF mode # 0 THEN mode := X64.Mode(x) END;
+  c("(", buf);  Mode(mode, buf);  c(" ",   buf);
+  IF    mode = ORB.Const  THEN i(x.n, buf)
+  ELSIF mode = X64.Reg    THEN Reg(8, x.n, buf)
+  ELSIF mode = X64.Cond   THEN Cond(x.n, buf)
+  ELSIF mode IN {X64.Eadr..X64.Import} THEN
     IF x.type.size # 8 THEN
       IF X64.IsSigned(x.type) THEN c("s", buf) ELSE c("u", buf) END;
       IF    x.type.size = 1  THEN s("byte",  buf)
@@ -1261,13 +1264,13 @@ BEGIN
       END
     END;
     s(" [",  buf);
-    IF     x.mode = X64.Eadr    THEN Reg(8, x.n, buf)
-    ELSIF (x.mode = X64.Strucp)
-       OR (x.mode = X64.Stkind) THEN s("[rsp", buf); i(x.n, buf); c("]", buf)
-    ELSIF  x.mode = X64.Code    THEN s("text", buf); ASSERT(x.n = 0)
-    ELSIF  x.mode = X64.String  THEN s("string l", buf); i(x.n, buf)
-    ELSIF  x.mode = X64.Global  THEN s("VAR",  buf);
-    ELSIF  x.mode = X64.Import  THEN s("import(",  buf); i(x.n DIV 10000H, buf);
+    IF     mode = X64.Eadr    THEN Reg(8, x.n, buf)
+    ELSIF (mode = X64.Strucp)
+       OR (mode = X64.Stkind) THEN s("[rsp", buf); i(x.n, buf); c("]", buf)
+    ELSIF  mode = X64.Code    THEN s("text", buf); ASSERT(x.n = 0)
+    ELSIF  mode = X64.String  THEN s("string l", buf); i(x.n, buf)
+    ELSIF  mode = X64.Global  THEN s("VAR",  buf);
+    ELSIF  mode = X64.Import  THEN s("import(",  buf); i(x.n DIV 10000H, buf);
                                      c(",", buf); i(x.n MOD 10000H, buf); c(")", buf)
     END;
     IF (x.index >= 0) OR (x.offset # 0) THEN
@@ -1277,7 +1280,7 @@ BEGIN
       END
     END;
     c("]", buf);
-    IF (x.mode = X64.Stkind) OR ((x.mode = X64.Eadr) & (x.n = RSP)) THEN
+    IF (mode = X64.Stkind) OR ((mode = X64.Eadr) & (x.n = RSP)) THEN
       s(" SPO ", buf); i(X64.SPO, buf)
     END
   END;
