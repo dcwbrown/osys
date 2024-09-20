@@ -20,20 +20,22 @@ IMPORT SYSTEM, H := Host, Files, ORS;
 CONST
   WordSize*   = 8;
   versionkey* = 1;
-  maxTypTab   = 64;
+  maxTypTab   = 100;
 
   (* class values *)
-  Head*   = 0;
-  Const*  = 1;
-  Local*  = 2;  (* Procedure local variable or evaluation temporary *)
-  Var*    = 3;  (* Module global / imported VAR *)
-  Par*    = 4;  (* Value parameter *)
-  ParInd* = 5;  (* VAR parameter or structured value parameter *)
-  Fld*    = 6;
-  Typ*    = 7;
-  SProc*  = 8;
-  SFunc*  = 9;
-  Mod*    = 10;
+  Head*    = 0;
+  Const*   = 1;  (* Atomic constant value *)
+  String*  = 2;  (* String constant *)
+  Proc*    = 3;  (* Procedure body address constant *)
+  ProcVar* = 4;  (* Procedure local variable *)
+  ModVar*  = 5;  (* Module global / imported VAR *)
+  ValPar*  = 6;  (* Value parameter *)
+  RefPar*  = 7;  (* VAR parameter or structured value parameter *)
+  Field*   = 8;
+  Typ*     = 9;
+  StdProc* = 10;
+  StdFunc* = 11;
+  Mod*     = 12;
 
   (* form values *)
   Byte*    = 1;
@@ -50,8 +52,8 @@ CONST
   Pointer* = 12;
   NilTyp*  = 13;
   NoTyp*   = 14;
-  Proc*    = 15;
-  String*  = 16;
+  ProcAdr* = 15;
+  StrAdr*  = 16;
   Array*   = 17;
   Record*  = 18;
 
@@ -68,36 +70,40 @@ TYPE
   Module* = POINTER TO ModDesc;
   Type*   = POINTER TO TypeDesc;
 
-  (* Object classes and the meaning of "val" *)
-  (* (item.a initialised from obj.val)       *)
-  (*                                         *)
-  (* class    val                            *)
-  (* -------------------------------------   *)
-  (* Var      global or imported address     *)
-  (* Local    address (stack relative)       *)
-  (* Par      address (stack relative)       *)
-  (* ParInd   address (stack relative)       *)
-  (* Const    value                          *)
-  (* Fld      offset                         *)
-  (* Typ      type descriptor (TD) address   *)
-  (* SProc    inline code number             *)
-  (* SFunc    inline code number             *)
-  (* Mod      key                            *)
+  (* Object classes                                   *)
+  (*                                                  *)
+  (*  class    val                           modno    *)
+  (*  -------  ----------------------------  -----    *)
+  (*  Const    value                                  *)
+  (*  String   address                       len      *)
+  (*  Proc     address                       modno^1  *)
+  (*  ProcVar  index                                  *)
+  (*  ModVar   global or imported address    modno    *)
+  (*  ValPar   index                                  *)
+  (*  RefPar   index                                  *)
+  (*  Field    offset                                 *)
+  (*  Typ      type descriptor (TD) address  modno    *)
+  (*  StdProc  inline code number                     *)
+  (*  StdFunc  inline code number                     *)
+  (*  Mod      key                                    *)
 
-  ObjDesc* = RECORD
+  ObjCore* = RECORD
     class*:  BYTE;
-    exno*:   BYTE;      (* export number in object file              *)
-    expo*:   BOOLEAN;   (* whether exported as a symbol              *)
-    rdo*:    BOOLEAN;   (* exported / read-only                      *)
-    lev*:    INTEGER;   (* >0: local stack frame, lev = proc nesting *)
-                        (*  0: module globals                        *)
-                        (* <0: -imported module num (-1 .. -16)      *)
-                        (* For type.form=String: length              *)
-    next*:    Object;
-    dsc*:     Object;
+    rdo*:    BOOLEAN;   (* read-only                             *)
+    val*:    INTEGER;   (* see above                             *)
+    modno*:  INTEGER;   (* <0: local stack frame, = proc nesting *)
+                        (*  0: module globals                    *)
+                        (* >0: -imported module num (-1 .. -16)  *)
+                        (* For class String = string length      *)
     type*:    Type;
     name*:    ORS.Ident;
-    val*:     INTEGER
+  END;
+
+  ObjDesc* = RECORD (ObjCore)
+    expo*: BOOLEAN;   (* whether exported as a symbol *)
+    exno*: BYTE;      (* export number in object file *)
+    next*: Object;
+    dsc*:  Object
   END;
 
   ModDesc* = RECORD (ObjDesc) orgname*: ORS.Ident END;
@@ -108,7 +114,7 @@ TYPE
   (* form     dsc      base                         *)
   (* ---------------------------------------------  *)
   (* Pointer  -        type of dereferenced object  *)
-  (* Proc     params   result type                  *)
+  (* ProcAdr     params   result type                  *)
   (* Array    -        type of elements             *)
   (* Record   fields   extension                    *)
 
@@ -147,14 +153,49 @@ VAR
   typtab: ARRAY maxTypTab OF Type;
 
 
+  SnapAdr: INTEGER;
+  SnapMem: ARRAY 512 OF BYTE;
+
+PROCEDURE Snap*(adr: INTEGER);
+BEGIN
+  SnapAdr := adr;
+  SYSTEM.COPY(adr, SYSTEM.ADR(SnapMem), LEN(SnapMem));
+  H.wsn("Snapped memory:");
+  H.DumpMem(2, SYSTEM.ADR(SnapMem), SnapAdr, LEN(SnapMem));
+END Snap;
+
+PROCEDURE CheckSnap*;
+VAR i, adr, len: INTEGER; b: BYTE;
+BEGIN i := 0;
+  REPEAT
+    SYSTEM.GET(SnapAdr+i, b); INC(i)
+  UNTIL (i > LEN(SnapMem)) OR (b # SnapMem[i-1]);
+  IF i < LEN(SnapMem) THEN
+    H.wsn("Memory snap does not match memory.");
+    H.ws("Snapped memory starts at "); H.wh(SnapAdr); H.wsn("H.");
+    H.ws("Mismatch starts at "); H.wh(SnapAdr + i); H.wsn("H.");
+    adr := i DIV 16 * 16;  len := LEN(SnapMem) - i;
+    H.ws("(adr: "); H.wi(adr); H.wsn(")");
+    IF len > 64 THEN len := 64 END;
+    H.wsn("Snapped memory:");
+    H.DumpMem(2, SYSTEM.ADR(SnapMem) + adr, SnapAdr + adr, len);
+    H.wsn("Modified memory:");
+    H.DumpMem(2, SnapAdr + adr, SnapAdr + adr, len);
+    H.Trap(16, "Memory snap does not match memory");
+  END
+END CheckSnap;
+
+
 PROCEDURE NewObj*(VAR obj: Object; id: ORS.Ident; class: INTEGER);
-(*insert new Object with name id*)
+(* insert new Object with name id *)
 VAR new, x: Object;
 BEGIN x := topScope;
   WHILE (x.next # NIL) & (x.next.name # id) DO x := x.next END;
-  IF x.next = NIL THEN
-    NEW(new); new.name := id; new.class := class; new.next := NIL; new.rdo := FALSE; new.dsc := NIL;
-    new.exno  := 0; new.expo := FALSE; new.lev := 0; new.type  := NIL; new.val := 0;
+  IF x.next = NIL THEN NEW(new);
+    new.name := id;     new.class := class;  new.next := NIL;
+    new.rdo  := FALSE;  new.dsc   := NIL;    new.exno := 0;
+    new.expo := FALSE;  new.modno := 0;      new.type := NIL;
+    new.val  := 0;
     x.next := new;  obj := new
   ELSE obj := x.next; ORS.Mark("mult def")
   END
@@ -231,7 +272,7 @@ BEGIN obj1 := topScope; obj := obj1.next;  (*search for module*)
     IF obj = NIL THEN (*insert new module*)
       NEW(mod); mod.class := Mod; mod.rdo := FALSE;
       mod.name := name; mod.orgname := orgname; mod.val := key;
-      mod.lev := nofmod; INC(nofmod); mod.dsc := NIL; mod.next := NIL;
+      mod.modno := nofmod; INC(nofmod); mod.dsc := NIL; mod.next := NIL;
       IF decl THEN mod.type := noType ELSE mod.type := nilType END;
       obj1.next := mod; obj := mod
     ELSIF decl THEN
@@ -259,7 +300,7 @@ VAR key: INTEGER;
     b: BYTE;
 BEGIN Read(R, ref);
   IF ref < 0 THEN T := typtab[-ref]  (*already read*)
-  ELSE NEW(t); T := t; typtab[ref] := t; t.mno := thismod.lev;
+  ELSE NEW(t); T := t; typtab[ref] := t; t.mno := thismod.modno;
     Read(R, form); t.form := form;
     IF form = Pointer THEN InType(R, thismod, t.base); t.size := WordSize
     ELSIF form = Array THEN
@@ -279,7 +320,7 @@ BEGIN Read(R, ref);
         Files.ReadNum(R, fld.val);  Read(R, class)
       END;
       IF last = NIL THEN t.dsc := obj ELSE last.next := obj END
-    ELSIF form = Proc THEN
+    ELSIF form = ProcAdr THEN
       InType(R, thismod, t.base);
       Files.ReadNum(R, t.len);  Files.ReadByte(R, t.hosted);
       obj := NIL; np := 0; Read(R, class);
@@ -299,7 +340,7 @@ BEGIN Read(R, ref);
       IF obj # NIL THEN T := obj.type   (*type object found in object list of mod*)
       ELSE (*insert new type object in object list of mod*)
         NEW(obj); obj.name := name; obj.class := Typ; obj.next := mod.dsc; mod.dsc := obj; obj.type := t;
-        t.mno := mod.lev; t.typobj := obj; T := t
+        t.mno := mod.modno; t.typobj := obj; T := t
       END;
       typtab[ref] := T
     END
@@ -315,7 +356,7 @@ VAR key: INTEGER; class, k: INTEGER;
 BEGIN
   IF modid1 = "SYSTEM" THEN
     thismod := ThisModule(modid, modid1, TRUE,  key); DEC(nofmod);
-    thismod.lev := 0; thismod.dsc := system; thismod.rdo := TRUE
+    thismod.modno := 0; thismod.dsc := system; thismod.rdo := TRUE
   ELSE MakeFileName(fname, modid1, ".smb"); F := Files.Old(fname);
     IF F # NIL THEN
       Files.Set(R, F, 0); Files.ReadInt(R, key); Files.ReadInt(R, key); Files.ReadString(R, modname);
@@ -329,14 +370,14 @@ BEGIN
       Read(R, class);
       WHILE class # 0 DO
         NEW(obj); obj.class := class; Files.ReadString(R, obj.name);
-        InType(R, thismod, obj.type); obj.lev := -thismod.lev;
+        InType(R, thismod, obj.type); obj.modno := -thismod.modno;
         IF class = Typ THEN
           t := obj.type; t.typobj := obj; Read(R, k);  (*fixup bases of previously declared pointer types*)
           WHILE k # 0 DO typtab[k].base := t; Read(R, k) END
         ELSE
           IF class = Const THEN
             IF obj.type.form = Real THEN Files.ReadInt(R, obj.val) ELSE Files.ReadNum(R, obj.val) END
-          ELSIF class = Var THEN Files.ReadNum(R, obj.val); obj.rdo := TRUE
+          ELSIF class = ModVar THEN Files.ReadNum(R, obj.val); obj.rdo := TRUE
           END
         END;
         obj.next := thismod.dsc; thismod.dsc := obj; Read(R, class)
@@ -370,7 +411,7 @@ VAR obj, mod, fld, bot: Object;
   PROCEDURE FindHiddenPointers(VAR R: Files.Rider; typ: Type; offset: INTEGER);
     VAR fld: Object; i, n: INTEGER;
   BEGIN
-    IF (typ.form = Pointer) OR (typ.form = NilTyp) THEN Write(R, Fld); Write(R, 0); Files.WriteNum(R, offset)
+    IF (typ.form = Pointer) OR (typ.form = NilTyp) THEN Write(R, Field); Write(R, 0); Files.WriteNum(R, offset)
     ELSIF typ.form = Record THEN fld := typ.dsc;
       WHILE fld # NIL DO FindHiddenPointers(R, fld.type, fld.val + offset); fld := fld.next END
     ELSIF typ.form = Array THEN i := 0; n := typ.len;
@@ -392,19 +433,19 @@ BEGIN
       fld := t.dsc;
       WHILE fld # bot DO  (*fields*)
         IF fld.expo THEN
-          Write(R, Fld); Files.WriteString(R, fld.name); OutType(R, fld.type); Files.WriteNum(R, fld.val)  (*offset*)
+          Write(R, Field); Files.WriteString(R, fld.name); OutType(R, fld.type); Files.WriteNum(R, fld.val)  (*offset*)
         ELSE FindHiddenPointers(R, fld.type, fld.val)
         END;
         fld := fld.next
       END;
       Write(R, 0)
-    ELSIF t.form = Proc THEN OutType(R, t.base);
+    ELSIF t.form = ProcAdr THEN OutType(R, t.base);
       Files.WriteNum(R, t.len);  Files.WriteByte(R, t.hosted);
       OutPar(R, t.dsc, t.nofpar); Write(R, 0)
     END;
     IF (t.mno > 0) & (obj # NIL) THEN  (*re-export, output name*)
       mod := topScope.next;
-      WHILE (mod # NIL) & (mod.lev # t.mno) DO mod := mod.next END;
+      WHILE (mod # NIL) & (mod.modno # t.mno) DO mod := mod.next END;
       IF mod # NIL THEN Files.WriteString(R, mod(Module).orgname); Files.WriteInt(R, mod.val); Files.WriteString(R, obj.name)
       ELSE ORS.Mark("re-export not found"); Write(R, 0)
       END
@@ -438,11 +479,11 @@ BEGIN Ref := Record + 1; MakeFileName(filename, modid, ".smb");
         END;
         Write(R, 0)
       ELSIF obj.class = Const THEN
-        IF obj.type.form = Proc THEN Files.WriteNum(R, obj.exno)
+        IF obj.type.form = ProcAdr THEN Files.WriteNum(R, obj.exno)
         ELSIF obj.type.form = Real THEN Files.WriteInt(R, obj.val)
         ELSE Files.WriteNum(R, obj.val)
         END
-      ELSIF obj.class = Var THEN Files.WriteNum(R, obj.exno)
+      ELSIF obj.class = ModVar THEN Files.WriteNum(R, obj.exno)
       END
     END;
     obj := obj.next
@@ -496,60 +537,60 @@ BEGIN
   setType    := type(Set,    Set,     8);
   nilType    := type(NilTyp, NilTyp,  8);
   noType     := type(NoTyp,  NoTyp,   8);
-  strType    := type(String, String, 16);
-  procType   := type(Proc,   Proc,    8);
+  strType    := type(StrAdr, StrAdr, 16);
+  procType   := type(ProcAdr,   ProcAdr,    8);
 
 (*initialize universe with data types and in-line procedures;
    LONGINT is synonym to INTEGER, LONGREAL to REAL.
    LED, ADC, SBC; LDPSR, LDREG, REG, COND are not in language definition*)
   system := NIL;  (*n = procno*10 + nofpar*)
-  enter("UML",      SFunc, intType,  132);  (*functions*)
-  enter("SBC",      SFunc, intType,  122);
-  enter("ADC",      SFunc, intType,  112);
-  enter("ROR",      SFunc, intType,  92);
-  enter("ASR",      SFunc, intType,  82);
-  enter("LSL",      SFunc, intType,  72);
-  enter("LEN",      SFunc, intType,  61);
-  enter("CHR",      SFunc, charType, 51);
-  enter("ORD",      SFunc, intType,  41);
-  enter("FLT",      SFunc, realType, 31);
-  enter("FLOOR",    SFunc, intType,  21);
-  enter("ODD",      SFunc, boolType, 11);
-  enter("ABS",      SFunc, intType,  1);
-  enter("LED",      SProc, noType,   81);   (*procedures*)
-  enter("UNPK",     SProc, noType,   72);
-  enter("PACK",     SProc, noType,   62);
-  enter("NEW",      SProc, noType,   51);
-  enter("ASSERT",   SProc, noType,   41);
-  enter("EXCL",     SProc, noType,   32);
-  enter("INCL",     SProc, noType,   22);
-  enter("DEC",      SProc, noType,   11);
-  enter("INC",      SProc, noType,   1);
-  enter("SET",      Typ,   setType,  0);    (*types*)
-  enter("BOOLEAN",  Typ,   boolType, 0);
-  enter("BYTE",     Typ,   byteType, 0);
-  enter("CHAR",     Typ,   charType, 0);
-  enter("LONGREAL", Typ,   realType, 0);
-  enter("REAL",     Typ,   realType, 0);
-  enter("LONGINT",  Typ,   intType,  0);
-  enter("INTEGER",  Typ,   intType,  0);
+  enter("UML",      StdFunc, intType,  132);  (*functions*)
+  enter("SBC",      StdFunc, intType,  122);
+  enter("ADC",      StdFunc, intType,  112);
+  enter("ROR",      StdFunc, intType,  92);
+  enter("ASR",      StdFunc, intType,  82);
+  enter("LSL",      StdFunc, intType,  72);
+  enter("LEN",      StdFunc, intType,  61);
+  enter("CHR",      StdFunc, charType, 51);
+  enter("ORD",      StdFunc, intType,  41);
+  enter("FLT",      StdFunc, realType, 31);
+  enter("FLOOR",    StdFunc, intType,  21);
+  enter("ODD",      StdFunc, boolType, 11);
+  enter("ABS",      StdFunc, intType,  1);
+  enter("LED",      StdProc, noType,   81);   (*procedures*)
+  enter("UNPK",     StdProc, noType,   72);
+  enter("PACK",     StdProc, noType,   62);
+  enter("NEW",      StdProc, noType,   51);
+  enter("ASSERT",   StdProc, noType,   41);
+  enter("EXCL",     StdProc, noType,   32);
+  enter("INCL",     StdProc, noType,   22);
+  enter("DEC",      StdProc, noType,   11);
+  enter("INC",      StdProc, noType,   1);
+  enter("SET",      Typ,     setType,  0);    (*types*)
+  enter("BOOLEAN",  Typ,     boolType, 0);
+  enter("BYTE",     Typ,     byteType, 0);
+  enter("CHAR",     Typ,     charType, 0);
+  enter("LONGREAL", Typ,     realType, 0);
+  enter("REAL",     Typ,     realType, 0);
+  enter("LONGINT",  Typ,     intType,  0);
+  enter("INTEGER",  Typ,     intType,  0);
   topScope := NIL; OpenScope; topScope.next := system; universe := topScope;
 
   system   := NIL;  (* initialize "unsafe" pseudo-module SYSTEM*)
-  enter("COND",   SFunc, boolType,   191);  (*functions*)
-  enter("SIZE",   SFunc, intType,    181);
-  enter("ADR",    SFunc, intType,    171);
-  enter("VAL",    SFunc, intType,    162);
-  enter("REG",    SFunc, intType,    151);
-  enter("BIT",    SFunc, boolType,   142);
-  enter("LDREG",  SProc, noType,     142);  (*procedures*)
-  enter("LDPSR",  SProc, noType,     131);
-  enter("COPY",   SProc, noType,     123);
-  enter("PUT",    SProc, noType,     112);
-  enter("GET",    SProc, noType,     102);
-  enter("INT8",   Typ,   int8Type,   0);    (*types*)
-  enter("INT16",  Typ,   int16Type,  0);
-  enter("INT32",  Typ,   int32Type,  0);
-  enter("CARD16", Typ,   card16Type, 0);
-  enter("CARD32", Typ,   card32Type, 0)
+  enter("COND",   StdFunc, boolType,   191);  (*functions*)
+  enter("SIZE",   StdFunc, intType,    181);
+  enter("ADR",    StdFunc, intType,    171);
+  enter("VAL",    StdFunc, intType,    162);
+  enter("REG",    StdFunc, intType,    151);
+  enter("BIT",    StdFunc, boolType,   142);
+  enter("LDREG",  StdProc, noType,     142);  (*procedures*)
+  enter("LDPSR",  StdProc, noType,     131);
+  enter("COPY",   StdProc, noType,     123);
+  enter("PUT",    StdProc, noType,     112);
+  enter("GET",    StdProc, noType,     102);
+  enter("INT8",   Typ,     int8Type,   0);    (*types*)
+  enter("INT16",  Typ,     int16Type,  0);
+  enter("INT32",  Typ,     int32Type,  0);
+  enter("CARD16", Typ,     card16Type, 0);
+  enter("CARD32", Typ,     card32Type, 0)
 END OXB.

@@ -505,7 +505,7 @@ END Exit;
 (* ---------------------- Exception and trap handling ----------------------- *)
 
 PROCEDURE\ ExceptionHandler(p: ExceptionPointers);  (* Called by Windows *)
-VAR excpcode: INTEGER;  desc, hex: ARRAY 32 OF CHAR;
+VAR excpcode, adr: INTEGER;  desc, hex: ARRAY 32 OF CHAR;
 BEGIN
   INC(TrapDepth);
   IF TrapDepth > 1 THEN
@@ -532,7 +532,7 @@ BEGIN
       TrapHandler(p.exception.ExceptionAddress, desc)
     END;
     IF p # NIL THEN
-      wsn("Dump:");
+      wsn("Registers:");
       ws("  rax "); whr(p.context.rax, 16, "0");  ws("  rbx "); whr(p.context.rbx, 16, "0");
       ws("  rcx "); whr(p.context.rcx, 16, "0");  ws("  rdx "); whr(p.context.rdx, 16, "0");  wn;
       ws("  rsp "); whr(p.context.rsp, 16, "0");  ws("  rbp "); whr(p.context.rbp, 16, "0");
@@ -541,8 +541,12 @@ BEGIN
       ws("  r10 "); whr(p.context.r10, 16, "0");  ws("  r11 "); whr(p.context.r11, 16, "0");  wn;
       ws("  r12 "); whr(p.context.r12, 16, "0");  ws("  r13 "); whr(p.context.r13, 16, "0");
       ws("  r14 "); whr(p.context.r14, 16, "0");  ws("  r15 "); whr(p.context.r15, 16, "0");  wn;
-      wsn("  Top of stack:");
-      DumpMem(2, p.context.rsp, p.context.rsp, 128)
+      wsn("Top of stack:");
+      DumpMem(2, p.context.rsp, p.context.rsp, 128);
+      ws("Exception address "); wh(p.exception.ExceptionAddress);
+      ws("H, rip: "); wh(p.context.rip); wsn("H:");
+      adr := (p.exception.ExceptionAddress DIV 16 - 2) * 16;
+      DumpMem(2, adr, adr, 128);
     END
   END;
   ExitProcess(99)
@@ -609,7 +613,7 @@ BEGIN Trap(0, "Type guard failure")      END TypeGuardFailureHandler;
 
 PROCEDURE GetUtf8*(src: ARRAY OF CHAR; VAR i: INTEGER): INTEGER;
 VAR n, result: INTEGER;
-BEGIN ASSERT(i < LEN(src)); result := ORD(src[i]);  INC(i);
+BEGIN result := ORD(src[i]);  INC(i);
   IF result >= 0C0H THEN
     IF    result >= 0FCH THEN result := result MOD 2;  n := 5
     ELSIF result >= 0F8H THEN result := result MOD 4;  n := 4
@@ -629,7 +633,6 @@ RETURN result END GetUtf8;
 PROCEDURE PutUtf8*(c: INTEGER; VAR dst: ARRAY OF CHAR; VAR i: INTEGER);
 VAR n: INTEGER;
 BEGIN
-  ASSERT(i < LEN(dst));
   ASSERT(c >= 0);  ASSERT(c < 80000000H);
   IF i < LEN(dst) THEN
     IF c < 80H THEN dst[i] := CHR(c);  INC(i)

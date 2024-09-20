@@ -20,7 +20,7 @@ IMPORT SYSTEM, H := Host, Files, ORS;
 CONST
   WordSize*   = 8;
   versionkey* = 1;
-  maxTypTab   = 64;
+  maxTypTab   = 100;
 
   (* class values *)
   Head*  = 0;
@@ -141,7 +141,6 @@ VAR
 
   nofmod, Ref: INTEGER;
   typtab: ARRAY maxTypTab OF Type;
-
 
 PROCEDURE NewObj*(VAR obj: Object; id: ORS.Ident; class: INTEGER);
 (*insert new Object with name id*)
