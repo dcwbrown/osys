@@ -70,33 +70,34 @@ TYPE
   Module* = POINTER TO ModDesc;
   Type*   = POINTER TO TypeDesc;
 
-  (* Object classes                                   *)
-  (*                                                  *)
-  (*  class    val                           modno    *)
-  (*  -------  ----------------------------  -----    *)
-  (*  Const    value                                  *)
-  (*  String   address                       len      *)
-  (*  Proc     address                       modno^1  *)
-  (*  ProcVar  index                                  *)
-  (*  ModVar   global or imported address    modno    *)
-  (*  ValPar   index                                  *)
-  (*  RefPar   index                                  *)
-  (*  Field    offset                                 *)
-  (*  Typ      type descriptor (TD) address  modno    *)
-  (*  StdProc  inline code number                     *)
-  (*  StdFunc  inline code number                     *)
-  (*  Mod      key                                    *)
+  (* Object classes                                 *)
+  (*                                                *)
+  (*  class    val                           modno  *)
+  (*  -------  ----------------------------  -----  *)
+  (*  Const    value                                *)
+  (*  String   address                       len    *)
+  (*  Proc     address                       modno  *)
+  (*  ProcVar  index                                *)
+  (*  ModVar   global or imported address    modno  *)
+  (*  ValPar   index                                *)
+  (*  RefPar   index                                *)
+  (*  Field    offset                               *)
+  (*  Typ      type descriptor (TD) address  modno  *)
+  (*  StdProc  inline code number                   *)
+  (*  StdFunc  inline code number                   *)
+  (*  Mod      key                                  *)
 
   ObjCore* = RECORD
     class*:  BYTE;
     rdo*:    BOOLEAN;   (* read-only                             *)
     val*:    INTEGER;   (* see above                             *)
+    ext*:    INTEGER;
     modno*:  INTEGER;   (* <0: local stack frame, = proc nesting *)
                         (*  0: module globals                    *)
                         (* >0: -imported module num (-1 .. -16)  *)
                         (* For class String = string length      *)
-    type*:    Type;
-    name*:    ORS.Ident;
+    type*:   Type;
+    name*:   ORS.Ident;
   END;
 
   ObjDesc* = RECORD (ObjCore)
@@ -114,7 +115,7 @@ TYPE
   (* form     dsc      base                         *)
   (* ---------------------------------------------  *)
   (* Pointer  -        type of dereferenced object  *)
-  (* ProcAdr     params   result type                  *)
+  (* ProcAdr  params   result type                  *)
   (* Array    -        type of elements             *)
   (* Record   fields   extension                    *)
 
@@ -153,39 +154,6 @@ VAR
   typtab: ARRAY maxTypTab OF Type;
 
 
-  SnapAdr: INTEGER;
-  SnapMem: ARRAY 512 OF BYTE;
-
-PROCEDURE Snap*(adr: INTEGER);
-BEGIN
-  SnapAdr := adr;
-  SYSTEM.COPY(adr, SYSTEM.ADR(SnapMem), LEN(SnapMem));
-  H.wsn("Snapped memory:");
-  H.DumpMem(2, SYSTEM.ADR(SnapMem), SnapAdr, LEN(SnapMem));
-END Snap;
-
-PROCEDURE CheckSnap*;
-VAR i, adr, len: INTEGER; b: BYTE;
-BEGIN i := 0;
-  REPEAT
-    SYSTEM.GET(SnapAdr+i, b); INC(i)
-  UNTIL (i > LEN(SnapMem)) OR (b # SnapMem[i-1]);
-  IF i < LEN(SnapMem) THEN
-    H.wsn("Memory snap does not match memory.");
-    H.ws("Snapped memory starts at "); H.wh(SnapAdr); H.wsn("H.");
-    H.ws("Mismatch starts at "); H.wh(SnapAdr + i); H.wsn("H.");
-    adr := i DIV 16 * 16;  len := LEN(SnapMem) - i;
-    H.ws("(adr: "); H.wi(adr); H.wsn(")");
-    IF len > 64 THEN len := 64 END;
-    H.wsn("Snapped memory:");
-    H.DumpMem(2, SYSTEM.ADR(SnapMem) + adr, SnapAdr + adr, len);
-    H.wsn("Modified memory:");
-    H.DumpMem(2, SnapAdr + adr, SnapAdr + adr, len);
-    H.Trap(16, "Memory snap does not match memory");
-  END
-END CheckSnap;
-
-
 PROCEDURE NewObj*(VAR obj: Object; id: ORS.Ident; class: INTEGER);
 (* insert new Object with name id *)
 VAR new, x: Object;
@@ -195,7 +163,7 @@ BEGIN x := topScope;
     new.name := id;     new.class := class;  new.next := NIL;
     new.rdo  := FALSE;  new.dsc   := NIL;    new.exno := 0;
     new.expo := FALSE;  new.modno := 0;      new.type := NIL;
-    new.val  := 0;
+    new.val  := 0;      new.ext   := 0;
     x.next := new;  obj := new
   ELSE obj := x.next; ORS.Mark("mult def")
   END
