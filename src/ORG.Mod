@@ -2361,6 +2361,7 @@ PROCEDURE MulImmediate(VAR x: Item; y: INTEGER);  (* x := x * y *)
 VAR reg: INTEGER;
 BEGIN
   ASSERT(Mode(x) # Cond);
+  IF x.type.size < 8 THEN Load(x) END;
   IF (y < -80000000H) OR (y >= 80000000H) THEN
     reg := Reserve(-1, {});
     LoadImmediate(reg, y);

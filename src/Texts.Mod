@@ -547,14 +547,19 @@ BEGIN Write(W, ch);
   Write(W, CHR(x DIV 10 + 30H)); Write(W, CHR(x MOD 10 + 30H))
 END WritePair;
 
-PROCEDURE WriteClock* (VAR W: Writer; d: LONGINT);
-BEGIN
-  WritePair(W, " ", d DIV 20000H   MOD 20H);  (*day*)
-  WritePair(W, ".", d DIV 400000H  MOD 10H);  (*month*)
-  WritePair(W, ".", d DIV 4000000H MOD 40H);  (*year*)
-  WritePair(W, " ", d DIV 1000H    MOD 20H);  (*hour*)
-  WritePair(W, ":", d DIV 40H      MOD 40H);  (*min*)
-  WritePair(W, ":", d MOD 40H)                (*sec*)
+PROCEDURE WriteClock* (VAR W: Writer; clock: LONGINT);
+VAR year: INTEGER;
+BEGIN year := clock DIV 4000000H + 2000;
+  IF year < 0 THEN
+    WriteInt(W, -year, 1); WriteString(W, "BC")
+  ELSE
+    WriteInt(W, year, 1)
+  END;
+  WritePair(W, "-", clock DIV 400000H  MOD 10H);  (*month*)
+  WritePair(W, "-", clock DIV 20000H   MOD 20H);  (*day*)
+  WritePair(W, " ", clock DIV 1000H    MOD 20H);  (*hour*)
+  WritePair(W, ":", clock DIV 40H      MOD 40H);  (*min*)
+  WritePair(W, ":", clock MOD 40H)                (*sec*)
 END WriteClock;
 
 

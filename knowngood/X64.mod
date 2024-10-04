@@ -69,7 +69,6 @@ TYPE
   Item* = RECORD
     extclass*: INTEGER;
     level*:    INTEGER;
-    (*mode*:     INTEGER;*)
     type*:     ORB.Type;
     readonly*: BOOLEAN;
     n*:        INTEGER;

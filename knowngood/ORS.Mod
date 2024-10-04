@@ -159,7 +159,7 @@ END Ten;
 ---*)
 
 PROCEDURE Number(VAR sym: INTEGER);
-  CONST max = 2147483647 (*2^31 - 1*);
+  CONST max = 7FFFFFFFFFFFFFFFH  (* 2^63 - 1 *)  (* was 2147483647 (*2^31 - 1*)*);
   VAR i, k, e, n, s, h: LONGINT; (*--- x: REAL; ---*)
     d: ARRAY 32 OF INTEGER;
     negE: BOOLEAN;

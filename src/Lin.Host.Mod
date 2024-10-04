@@ -136,27 +136,6 @@ TYPE
     ctimnsec: INTEGER;       (* Time of last status change       *)
     unused:   ARRAY 3 OF INTEGER;
   END;
-(*
-struct stat {
-  dev_t st_dev;
-  ino_t st_ino;
-  nlink_t st_nlink;
-
-  mode_t st_mode;
-  uid_t st_uid;
-  gid_t st_gid;
-  unsigned int    __pad0;
-  dev_t st_rdev;
-  off_t st_size;
-  blksize_t st_blksize;
-  blkcnt_t st_blocks;
-
-  struct timespec st_atim;
-  struct timespec st_mtim;
-  struct timespec st_ctim;
-  long __unused[3];
-};
-*)
 
   SignalAction = RECORD-  (* Corresponds to MUSL's struct k_sigaction *)
     action:   PROCEDURE/(signal, info, context: INTEGER);
@@ -219,6 +198,17 @@ struct stat {
     name:   FileName;
   END;
 
+  TZHeader = RECORD
+    TZif:       ARRAY 20 OF CHAR;
+    ttisutcnt:  SYSTEM.CARD32;
+    ttisstdcnt: SYSTEM.CARD32;
+    leapcnt:    SYSTEM.CARD32;
+    timecnt:    SYSTEM.CARD32;
+    typecnt:    SYSTEM.CARD32;
+    charcnt:    SYSTEM.CARD32;
+  END;
+
+
   (*Statistic = RECORD time, count, lastentry: INTEGER END;*)
 
 
@@ -230,6 +220,8 @@ VAR
 
   (* For Linux Host.Mod, linker preloads the following compressed icon array *)
   Icon*: ARRAY IconImgSize OF BYTE;
+
+  Hostname*: ARRAY 8 OF CHAR;
 
   Newline*:  ARRAY 3 OF CHAR;
 
@@ -298,6 +290,12 @@ BEGIN IF a < b THEN b := a END;  RETURN b END Min;
 
 PROCEDURE Max*(a, b: INTEGER): INTEGER;
 BEGIN IF a > b THEN b := a END;  RETURN b END Max;
+
+PROCEDURE ByteReverse*(VAR x: ARRAY OF BYTE);
+VAR i, j: INTEGER;  t: BYTE;
+BEGIN i := 0;  j := LEN(x) - 1;
+  WHILE i < j DO t := x[i];  x[i] := x[j];  x[j] := t;  INC(i);  DEC(j) END
+END ByteReverse;
 
 
 (* -------------------------------------------------------------------------- *)
@@ -639,89 +637,6 @@ BEGIN
 RETURN ch END GetChar;
 
 
-(* -------------------------------------------------------------------------- *)
-(* ----------------------------- Time functions ----------------------------- *)
-(* -------------------------------------------------------------------------- *)
-
-PROCEDURE Time*(): INTEGER;
-(* In 100 nanosecond ticks since 2000-01-01 00:00 UTC *)
-(* Sufficient to represent times between approx 27,250 BC and 31,000 AD. *)
-VAR tv: RECORD- sec, nsec: INTEGER END;
-BEGIN
-  ASSERT(sysclockgettime(0, SYSTEM.ADR(tv)) = 0);  (* 1ns ticks since 1970-01-01 *)
-  ASSERT(tv.nsec < 40000000H);
-RETURN tv.sec * 10000000 + tv.nsec DIV 100       (* Scale to 100ns ticks   *)
-     - (30 * 365 + 7) * 24 * 60 * 60 * 10000000  (* Bias to 2000-01-01 UTC *)
-END Time;
-
-PROCEDURE TimeAsClock*(time: INTEGER): INTEGER;
-(* Returns UTC time in PO2013 format:               *)
-(* 38/year-2000,4/month,5/day,5/hour,6/min,6/sec *)
-CONST
-  DaysperYear     = 365;
-  Daysper4years   = DaysperYear     * 4  + 1;
-  Daysper100years = Daysper4years   * 25 - 1;
-  Daysper400years = Daysper100years * 4  + 1;
-VAR year, month, day, sec, qccycles, ccycles, qcycles: INTEGER;
-BEGIN
-  sec      := time DIV 10000000 - 86400 * (31+29);  (* seconds relative to 1st March 2000 (leap century) *)
-  day      := sec DIV 86400;            sec  := sec MOD 86400;
-  qccycles := day DIV Daysper400years;  day  := day MOD Daysper400years;
-  ccycles  := day DIV Daysper100years;  IF ccycles =  4 THEN DEC(ccycles)  END;
-  DEC(day, ccycles * Daysper100years);
-  qcycles  := day DIV Daysper4years;    IF qcycles = 25 THEN DEC(qcycles)  END;
-  DEC(day, qcycles * Daysper4years);
-  year := day DIV DaysperYear;          IF year = 4 THEN DEC(year) END;
-  DEC(day, year * DaysperYear);
-  year := year + 4 * qcycles + 100 * ccycles + 400 * qccycles;
-  month := 0;
-  WHILE (month < 11) & (day >= MonthLen[month]) DO
-    DEC(day, MonthLen[month]);  INC(month)
-  END;
-  IF month >= 10 THEN DEC(month, 12);  INC(year) END;
-  RETURN ((((  year               * 10H
-             + month + 3)         * 20H
-             + day   + 1)         * 20H
-             + sec DIV 3600)      * 40H
-             + sec DIV 60 MOD 60) * 40H
-             + sec MOD 60
-END TimeAsClock;
-
-
-PROCEDURE Clock*(): INTEGER;
-(* Returns local time as                         *)
-(* 38/year-2000,4/month,5/day,5/hour,6/min,6/sec *)
-BEGIN RETURN TimeAsClock(Time()) END Clock;
-
-PROCEDURE WriteDate*(clock: INTEGER);
-VAR year: INTEGER;
-BEGIN year := clock DIV 4000000H + 2000;
-  IF year < 0 THEN wir(-year, 2, "0"); ws("BC-") ELSE wir(year, 4, "0"); wc("-") END;
-  wir(clock DIV 400000H MOD 10H, 2, "0");  (*month*)    wc("-");
-  wir(clock DIV 20000H  MOD 20H, 2, "0");  (*day*)
-END WriteDate;
-
-PROCEDURE WriteTime*(clock: INTEGER);
-BEGIN
-  wir(clock DIV 1000H MOD 20H, 2, "0");  (*hour*)     wc(":");
-  wir(clock DIV 40H MOD 40H,   2, "0");  (*min*)      wc(":");
-  wir(clock MOD 40H,           2, "0");  (*sec*)
-END WriteTime;
-
-PROCEDURE WriteClock*(clock: INTEGER);
-BEGIN WriteDate(clock); wc(" "); WriteTime(clock)
-END WriteClock;
-
-PROCEDURE WriteTimestamp;
-VAR now, clock, ms: INTEGER;
-BEGIN
-  now   := Time();
-  clock := TimeAsClock(now);
-  ms    := now DIV 10000 MOD 1000;
-  WriteTime(clock);  wc(".");  wir(ms, 3, "0"); ws(". ");
-END WriteTimestamp;
-
-
 (*
 PROCEDURE InitStatistic(VAR s: Statistic);
 BEGIN ZeroFill(s) END InitStatistic;
@@ -770,6 +685,23 @@ BEGIN
   ws("Run time ");  wi((Time() - StartTime) DIV 10000); wsn("ms.");
 END ReportStats;
 *)
+
+
+(* -------------------------------------------------------------------------- *)
+(* ---------------------------------- Time ---------------------------------- *)
+(* -------------------------------------------------------------------------- *)
+
+PROCEDURE Time*(): INTEGER;
+(* In 100 nanosecond ticks since 2000-01-01 00:00 UTC *)
+(* Sufficient to represent times between approx 27,250 BC and 31,000 AD. *)
+VAR tv: RECORD- sec, nsec: INTEGER END;
+BEGIN
+  ASSERT(sysclockgettime(0, SYSTEM.ADR(tv)) = 0);  (* 1ns ticks since 1970-01-01 *)
+  ASSERT(tv.nsec < 40000000H);
+RETURN tv.sec * 10000000 + tv.nsec DIV 100       (* Scale to 100ns ticks   *)
+     - (30 * 365 + 7) * 24 * 60 * 60 * 10000000  (* Bias to 2000-01-01 UTC *)
+END Time;
+
 
 
 (* -------------------------------------------------------------------------- *)
@@ -931,6 +863,153 @@ PROCEDURE SetDeleteUnregisteredFilesAtExit*(delete: PROCEDURE);
 BEGIN DeleteUnregisteredFilesAtExit := delete END SetDeleteUnregisteredFilesAtExit;
 
 
+PROCEDURE FileDelete*(name: ARRAY OF CHAR): BOOLEAN;
+RETURN sysunlink(SYSTEM.ADR(name)) = 0 END FileDelete;
+
+
+(* -------------------------------------------------------------------------- *)
+(* -------------------------- Local time and clock -------------------------- *)
+(* -------------------------------------------------------------------------- *)
+
+PROCEDURE ReadTZHeader(VAR f: HostFile;  VAR h: TZHeader);
+VAR l: INTEGER;
+BEGIN
+  l := FileRead(f, SYSTEM.ADR(h), SYSTEM.SIZE(TZHeader));
+  ASSERT(l = SYSTEM.SIZE(TZHeader));
+  ByteReverse(h.ttisutcnt);     ByteReverse(h.ttisstdcnt);
+  ByteReverse(h.leapcnt);       ByteReverse(h.timecnt);
+  ByteReverse(h.typecnt);       ByteReverse(h.charcnt);
+END ReadTZHeader;
+
+PROCEDURE LocalTime(oberontime: INTEGER): INTEGER;
+VAR
+  localtime:  INTEGER;
+  f:          HostFile;
+  header:     TZHeader;
+  v1size:     INTEGER;
+  transoff:   INTEGER;
+  typeoff:    INTEGER;
+  infooff:    INTEGER;
+  l:          INTEGER;
+  transition: INTEGER;
+  i:          INTEGER;
+  seconds:    INTEGER;
+  b:          BYTE;
+  offset:     SYSTEM.CARD32;
+BEGIN
+  localtime := oberontime;
+  ZeroFill(f);  f.name := "/etc/localtime";
+  IF FileOld(f) THEN
+    ReadTZHeader(f, header);
+    IF header.TZif[4] >= "2" THEN
+      v1size := SYSTEM.SIZE(TZHeader)
+             +  header.ttisutcnt    +  header.ttisstdcnt
+             +  header.leapcnt * 8  +  header.timecnt * 5
+             +  header.typecnt * 6  +  header.charcnt;
+      FileSetPos(f, v1size);  ReadTZHeader(f, header);
+      IF header.timecnt > 0 THEN
+        transoff := v1size   + SYSTEM.SIZE(TZHeader);
+        typeoff  := transoff + header.timecnt * 8;
+        infooff  := typeoff  + header.timecnt;
+
+        (* Identify applicable ttinfo *)
+        seconds := oberontime DIV 10000000        (* Scale to whole seconds *)
+                +  (30 * 365 + 7) * 24 * 60 * 60; (* Bias to 1970-01-01 *)
+        FileSetPos(f, transoff);
+        i := 0;
+        REPEAT
+          l := FileRead(f, SYSTEM.ADR(transition), 8); ByteReverse(transition);
+          INC(i)
+        UNTIL (i >= header.timecnt) OR (seconds < transition);
+        DEC(i);  IF seconds < transition THEN DEC(i) END;
+        ASSERT(i < header.timecnt);
+        IF i < 0 THEN i := 0 END;
+
+        (* Apply offset for info #i *)
+        FileSetPos(f, typeoff + i);      l := FileRead(f, SYSTEM.ADR(b), 1);
+        FileSetPos(f, infooff + b * 6);  l := FileRead(f, SYSTEM.ADR(offset), 4);
+        ByteReverse(offset);
+        localtime := oberontime + offset * 10000000
+      END
+    END;
+    FileClose(f)
+  END
+RETURN localtime END LocalTime;
+
+
+PROCEDURE TimeAsClock*(time: INTEGER): INTEGER;
+(* Returns provided UTC time As local time in expanded PO2013 format: *)
+(* 38/year-2000,4/month,5/day,5/hour,6/min,6/sec                      *)
+CONST
+  DaysperYear     = 365;
+  Daysper4years   = DaysperYear     * 4  + 1;
+  Daysper100years = Daysper4years   * 25 - 1;
+  Daysper400years = Daysper100years * 4  + 1;
+VAR year, month, day, sec, qccycles, ccycles, qcycles: INTEGER;
+BEGIN
+  sec      := LocalTime(time) DIV 10000000 - 86400 * (31+29);  (* seconds relative to 1st March 2000 (leap century) *)
+  day      := sec DIV 86400;            sec  := sec MOD 86400;
+  qccycles := day DIV Daysper400years;  day  := day MOD Daysper400years;
+  ccycles  := day DIV Daysper100years;  IF ccycles = 4  THEN DEC(ccycles) END;
+  DEC(day, ccycles * Daysper100years);
+  qcycles  := day DIV Daysper4years;    IF qcycles = 25 THEN DEC(qcycles) END;
+  DEC(day, qcycles * Daysper4years);
+  year := day DIV DaysperYear;          IF year    = 4  THEN DEC(year)    END;
+  DEC(day, year * DaysperYear);
+  year := year + 4 * qcycles + 100 * ccycles + 400 * qccycles;
+  month := 0;
+  WHILE (month < 11) & (day >= MonthLen[month]) DO
+    DEC(day, MonthLen[month]);  INC(month)
+  END;
+  IF month >= 10 THEN DEC(month, 12);  INC(year) END;
+  RETURN ((((  year               * 10H
+             + month + 3)         * 20H
+             + day   + 1)         * 20H
+             + sec DIV 3600)      * 40H
+             + sec DIV 60 MOD 60) * 40H
+             + sec MOD 60
+END TimeAsClock;
+
+
+PROCEDURE Clock*(): INTEGER;
+(* Returns local time as                         *)
+(* 38/year-2000,4/month,5/day,5/hour,6/min,6/sec *)
+BEGIN RETURN TimeAsClock(Time()) END Clock;
+
+
+PROCEDURE WriteDate*(clock: INTEGER);
+VAR year: INTEGER;
+BEGIN year := clock DIV 4000000H + 2000;
+  IF year < 0 THEN wir(-year, 2, "0"); ws("BC-") ELSE wir(year, 4, "0"); wc("-") END;
+  wir(clock DIV 400000H MOD 10H, 2, "0");  (*month*)    wc("-");
+  wir(clock DIV 20000H  MOD 20H, 2, "0");  (*day*)
+END WriteDate;
+
+PROCEDURE WriteTime*(clock: INTEGER);
+BEGIN
+  wir(clock DIV 1000H MOD 20H, 2, "0");  (*hour*)     wc(":");
+  wir(clock DIV 40H MOD 40H,   2, "0");  (*min*)      wc(":");
+  wir(clock MOD 40H,           2, "0");  (*sec*)
+END WriteTime;
+
+PROCEDURE WriteClock*(clock: INTEGER);
+BEGIN WriteDate(clock); wc(" "); WriteTime(clock)
+END WriteClock;
+
+PROCEDURE WriteTimestamp;
+VAR now, clock, ms: INTEGER;
+BEGIN
+  now   := LocalTime(Time());
+  clock := TimeAsClock(now);
+  ms    := now DIV 10000 MOD 1000;
+  WriteTime(clock);  wc(".");  wir(ms, 3, "0"); ws(". ");
+END WriteTimestamp;
+
+
+(* -------------------------------------------------------------------------- *)
+(* ---------------------------- File enumeration ---------------------------- *)
+(* -------------------------------------------------------------------------- *)
+
 PROCEDURE IsSelfOrParent(dir: FileName): BOOLEAN;
 (* TRUE iff /^(.*\/|)\.\.?$/ - if ., .. or path ending in . or .. *)
 VAR i, j: INTEGER;  result: BOOLEAN;
@@ -945,7 +1024,6 @@ BEGIN
     END
   END
 RETURN result END IsSelfOrParent;
-
 
 PROCEDURE FileEnum(name: FileName; proc: FileEntryHandler; VAR cont: BOOLEAN);
 CONST DTDIR = 4;  DTREG = 8;
@@ -1002,10 +1080,6 @@ BEGIN
   fn := prefix;
   FileEnum(fn, proc, cont)
 END FileEnumerate;
-
-
-PROCEDURE FileDelete*(name: ARRAY OF CHAR): BOOLEAN;
-RETURN sysunlink(SYSTEM.ADR(name)) = 0 END FileDelete;
 
 
 (* -------------------------------------------------------------------------- *)
@@ -1140,7 +1214,8 @@ VAR
   reserveadr: INTEGER;
   reservelen: INTEGER;
 BEGIN
-  Newline := $0A 00$;
+  Hostname := "Linux";
+  Newline  := $0A 00$;
   (*
   AtNL := TRUE;
   TimeStamp := WriteTimestamp;

@@ -1037,6 +1037,7 @@ BEGIN
       ELSE               (*x.mode := Import*); x.n := LSL(-y.lev, 16) + y.val;
       END
     ELSIF y.type.form = ORB.String THEN
+      IF y.lev < 0 THEN ORS.Mark("String import not implemented") END;
       (*x.mode := String*);  x.readonly := TRUE;  x.n := y.lev;  x.offset := y.val;
     ELSE
       (*x.mode := Const*);  x.n := y.val
@@ -2360,6 +2361,7 @@ PROCEDURE MulImmediate(VAR x: Item; y: INTEGER);  (* x := x * y *)
 VAR reg: INTEGER;
 BEGIN
   ASSERT(Mode(x) # Cond);
+  IF x.type.size < 8 THEN Load(x) END;
   IF (y < -80000000H) OR (y >= 80000000H) THEN
     reg := Reserve(-1, {});
     LoadImmediate(reg, y);

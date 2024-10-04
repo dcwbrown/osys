@@ -572,10 +572,12 @@ BEGIN (* StatSequence *)
           ELSIF (x.type.form = ORB.Char) & (y.type.form = ORB.String) & (y.n = 2) THEN ASSERT(X64.Mode(y) = X64.String);
             ORG.StrToChar(y);  ORG.Store(x, y)
           ELSE
+            (*
             l.s("StatSequence - illegal assignment: x.type ", Tr); l.Type(x.type, Tr);
             l.s(", y.type ", Tr);      l.Type(y.type, Tr);                    l.n(Tr);
             l.s("x.type at ", Tr);     l.h(ORD(x.type), Tr);
             l.s("H, y.type at ", Tr);  l.h(ORD(y.type), Tr);  l.sn("H.", Tr);
+            *)
             ORS.Mark("illegal assignment")
           END
         ELSIF sym = ORS.eql THEN ORS.Mark("should be :=");  ORS.Get(sym);  expression(y)
@@ -1189,11 +1191,12 @@ END Import;
 
 PROCEDURE Module*(VAR newsymbols: BOOLEAN);
 VAR
-  key:  INTEGER;
-  exno: INTEGER;
-  obj:  ORB.Object;
-  ann:  ORG.BodyAnnotation;
+  key:   INTEGER;
+  exno:  INTEGER;
+  obj:   ORB.Object;
+  ann:   ORG.BodyAnnotation;
   start: INTEGER;
+  ms:    INTEGER;
 BEGIN
   start := H.Time();
   Texts.WriteString(W, "  compiling ");
@@ -1261,7 +1264,11 @@ BEGIN
       IF newsymbols THEN Texts.WriteString(W, " new symbol file") END;
       ORG.Close(modid, key, exno);
       Texts.WriteInt(W, X64.PC, 6);  Texts.WriteInt(W, dc, 6);  Texts.WriteHex(W, key);
-      Texts.WriteInt(W, (H.Time() - start) DIV 10000, 4); Texts.WriteString(W, "ms")
+      ms := (H.Time() - start) DIV 10;
+      (*Texts.WriteInt(W, (H.Time() - start) DIV 10000, 4); *)
+      Texts.WriteInt(W, ms DIV 1000, 4); Texts.Write(W, ".");
+      Texts.WriteInt(W, ms MOD 1000 DIV 100, 1);
+      Texts.WriteString(W, " ms")
     ELSE
       Texts.WriteLn(W);  Texts.WriteString(W, "compilation FAILED");
       H.SetExitCode(1)
@@ -1284,6 +1291,7 @@ VAR
   beg, end, time: INTEGER;
   T: Texts.Text;
   S: Texts.Scanner;
+  start, ms: INTEGER;
 BEGIN Texts.OpenScanner(S, Texts.Par.text, Texts.Par.pos); Texts.Scan(S);
   IF S.class = Texts.Char THEN
     IF S.c = "@" THEN
@@ -1300,6 +1308,7 @@ BEGIN Texts.OpenScanner(S, Texts.Par.text, Texts.Par.pos); Texts.Scan(S);
       END
     END
   ELSE
+    start := H.Time();
     WHILE S.class = Texts.Name DO
       NEW(T); Texts.Open(T, S.s);
       IF T.len > 0 THEN Option(S); ORS.Init(T, 0); Module(newSF)
@@ -1307,8 +1316,14 @@ BEGIN Texts.OpenScanner(S, Texts.Par.text, Texts.Par.pos); Texts.Scan(S);
         Texts.WriteLn(W); Texts.Append(Texts.Log, W.buf)
       END ;
       IF (T.len # 0) & (ORS.errcnt = 0) THEN Texts.Scan(S) ELSE S.class := 0 END
-    END
-  END ;
+    END;
+    Texts.WriteString(W, "  total ");
+    ms := (H.Time() - start) DIV 10;
+    Texts.WriteInt(W, ms DIV 1000, 1); Texts.Write(W, ".");
+    Texts.WriteInt(W, ms MOD 1000 DIV 100, 1);
+    Texts.WriteString(W, " ms");
+    Texts.WriteLn(W); Texts.Append(Texts.Log, W.buf)
+  END;
   Modules.Collect(0)  (* Trigger immediate garbage collection when ORP exits *)
 END Compile;
 

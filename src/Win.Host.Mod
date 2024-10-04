@@ -149,6 +149,8 @@ VAR
   SetFileInformationByHandle*:     PROCEDURE\(hFile, infoClass, info, bufsize: INTEGER): INTEGER;
   SetFilePointerEx*:               PROCEDURE\(hFile, liDistanceToMove, lpNewFilePointer, dwMoveMethod: INTEGER): INTEGER;
   Sleep*:                          PROCEDURE\(ms: INTEGER);
+  SystemTimeToFileTime*:           PROCEDURE\(systemtime, filetime: INTEGER): INTEGER;
+  SystemTimeToTzSpecificLocalTime: PROCEDURE\(tzinfo, univeraltime, localtime: INTEGER): INTEGER;
   UnmapViewOfFile:                 PROCEDURE\(adr: INTEGER): INTEGER;
   VirtualAlloc*:                   PROCEDURE\(address, size, type, protection: INTEGER): INTEGER;
   VirtualQuery*:                   PROCEDURE\(address, buffer, length: INTEGER): INTEGER;
@@ -219,6 +221,8 @@ VAR
 
   (* Linker expects handlers to follow immediately after pre-loaded vars *)
   Handlers*: ARRAY HandlerCount OF PROCEDURE;
+
+  Hostname*: ARRAY 8 OF CHAR;
 
   Stdin:    INTEGER;
   Stdout:   INTEGER;
@@ -340,76 +344,6 @@ BEGIN IntToDecimal(n, dec); wsr(dec, w, c) END wir;
 
 PROCEDURE wb*(n: INTEGER);
 BEGIN WHILE n > 0 DO wc(" "); DEC(n) END END wb;
-
-
-(* -------------------------------------------------------------------------- *)
-(* ----------------------------- Time functions ----------------------------- *)
-(* -------------------------------------------------------------------------- *)
-
-PROCEDURE Time*(): INTEGER;  (* In 100 nanosecond ticks since 2000-01-01 UTC *)
-VAR tick: INTEGER;
-BEGIN GetSystemTimePreciseAsFileTime(SYSTEM.ADR(tick));
-RETURN tick - (399 * 365 + 96) * 24 * 60 * 60 * 10000000  (* Bias to 2000-01-01 UTC *)
-END Time;
-
-
-PROCEDURE TimeAsClock*(time: INTEGER): INTEGER;
-(* Returns UTC time in PO2013 format:            *)
-(* 38/year-2000,4/month,5/day,5/hour,6/min,6/sec *)
-CONST
-  DaysperYear     = 365;
-  Daysper4years   = DaysperYear     * 4  + 1;
-  Daysper100years = Daysper4years   * 25 - 1;
-  Daysper400years = Daysper100years * 4  + 1;
-VAR year, month, day, sec, qccycles, ccycles, qcycles: INTEGER;
-BEGIN
-  sec      := time DIV 10000000 - 86400 * (31+29);  (* seconds relative to 1st March 2000 (leap century) *)
-  day      := sec DIV 86400;            sec  := sec MOD 86400;
-  qccycles := day DIV Daysper400years;  day  := day MOD Daysper400years;
-  ccycles  := day DIV Daysper100years;  IF ccycles =  4 THEN DEC(ccycles)  END;
-  DEC(day, ccycles * Daysper100years);
-  qcycles  := day DIV Daysper4years;    IF qcycles = 25 THEN DEC(qcycles)  END;
-  DEC(day, qcycles * Daysper4years);
-  year := day DIV DaysperYear;          IF year = 4 THEN DEC(year) END;
-  DEC(day, year * DaysperYear);
-  year := year + 4 * qcycles + 100 * ccycles + 400 * qccycles;
-  month := 0;
-  WHILE (month < 11) & (day >= MonthLen[month]) DO
-    DEC(day, MonthLen[month]);  INC(month)
-  END;
-  IF month >= 10 THEN DEC(month, 12);  INC(year) END;
-  RETURN ((((  year               * 10H
-             + month + 3)         * 20H
-             + day   + 1)         * 20H
-             + sec DIV 3600)      * 40H
-             + sec DIV 60 MOD 60) * 40H
-             + sec MOD 60
-END TimeAsClock;
-
-PROCEDURE Clock*(): INTEGER;
-(* Returns local time as                         *)
-(* 38/year-2000,4/month,5/day,5/hour,6/min,6/sec *)
-BEGIN RETURN TimeAsClock(Time()) END Clock;
-
-PROCEDURE WriteDate(clock: INTEGER);
-VAR year: INTEGER;
-BEGIN year := clock DIV 4000000H + 2000;
-  IF year < 0 THEN wir(-year, 2, "0"); ws("BC-") ELSE wir(year, 4, "0"); wc("-") END;
-  wir(clock DIV 400000H MOD 10H, 2, "0");  (*month*)  wc("-");
-  wir(clock DIV 20000H  MOD 20H, 2, "0");  (*day*)
-END WriteDate;
-
-PROCEDURE WriteTime(clock: INTEGER);
-BEGIN
-  wir(clock DIV 1000H MOD 20H, 2, "0");  (*hour*)  wc(":");
-  wir(clock DIV 40H   MOD 40H, 2, "0");  (*min*)   wc(":");
-  wir(clock MOD 40H,           2, "0");  (*sec*)
-END WriteTime;
-
-PROCEDURE WriteClock*(clock: INTEGER);
-BEGIN WriteDate(clock); wc(" "); WriteTime(clock)
-END WriteClock;
-
 
 
 (* -------------------------------------------------------------------------- *)
@@ -757,6 +691,17 @@ END MessageBox;
 
 
 (* -------------------------------------------------------------------------- *)
+(* ---------------------------------- Time ---------------------------------- *)
+(* -------------------------------------------------------------------------- *)
+
+PROCEDURE Time*(): INTEGER;  (* In 100 nanosecond ticks since 2000-01-01 UTC *)
+VAR tick: INTEGER;
+BEGIN GetSystemTimePreciseAsFileTime(SYSTEM.ADR(tick));
+RETURN tick - (399 * 365 + 96) * 24 * 60 * 60 * 10000000  (* Bias to 2000-01-01 UTC *)
+END Time;
+
+
+(* -------------------------------------------------------------------------- *)
 (* ------------- Platform independent low level file operations ------------- *)
 (* -------------------------------------------------------------------------- *)
 
@@ -953,6 +898,110 @@ PROCEDURE SetDeleteUnregisteredFilesAtExit*(delete: PROCEDURE);
 BEGIN DeleteUnregisteredFilesAtExit := delete END SetDeleteUnregisteredFilesAtExit;
 
 
+PROCEDURE FileDelete*(name: ARRAY OF CHAR): BOOLEAN;
+VAR name16: ARRAY MaxPath OF SYSTEM.CARD16;  rv: INTEGER;
+BEGIN
+  rv := Utf8ToUtf16(name, name16);
+  RETURN DeleteFileW(SYSTEM.ADR(name16)) # 0
+END FileDelete;
+
+
+(* -------------------------------------------------------------------------- *)
+(* -------------------------- Local time and clock -------------------------- *)
+(* -------------------------------------------------------------------------- *)
+
+PROCEDURE LocalTime*(oberontime: INTEGER): INTEGER;
+TYPE
+  SystemTime = RECORD
+    year:         SYSTEM.CARD16;
+    month:        SYSTEM.CARD16;
+    dayofweek:    SYSTEM.CARD16;
+    day:          SYSTEM.CARD16;
+    hour:         SYSTEM.CARD16;
+    minute:       SYSTEM.CARD16;
+    second:       SYSTEM.CARD16;
+    milliseconds: SYSTEM.CARD16;
+  END;
+VAR
+  universaltime: INTEGER;
+  systemtime:    SystemTime;
+  localtime:     INTEGER;
+  res:           INTEGER;
+BEGIN
+  universaltime := oberontime + (399 * 365 + 96) * 24 * 60 * 60 * 10000000;
+  IF (FileTimeToSystemTime(SYSTEM.ADR(universaltime), SYSTEM.ADR(systemtime)) # 0)
+   & (SystemTimeToTzSpecificLocalTime (0, SYSTEM.ADR(systemtime), SYSTEM.ADR(systemtime)) # 0)
+   & (SystemTimeToFileTime(SYSTEM.ADR(systemtime), SYSTEM.ADR(localtime)) # 0) THEN
+    localtime := localtime - (399 * 365 + 96) * 24 * 60 * 60 * 10000000;
+  ELSE
+    localtime := oberontime;
+  END
+RETURN localtime END LocalTime;
+
+
+PROCEDURE TimeAsClock*(time: INTEGER): INTEGER;
+(* Returns UTC time in PO2013 format:            *)
+(* 38/year-2000,4/month,5/day,5/hour,6/min,6/sec *)
+CONST
+  DaysperYear     = 365;
+  Daysper4years   = DaysperYear     * 4  + 1;
+  Daysper100years = Daysper4years   * 25 - 1;
+  Daysper400years = Daysper100years * 4  + 1;
+VAR year, month, day, sec, qccycles, ccycles, qcycles: INTEGER;
+BEGIN
+  sec      := LocalTime(time) DIV 10000000 - 86400 * (31+29);  (* seconds relative to 1st March 2000 (leap century) *)
+  day      := sec DIV 86400;            sec  := sec MOD 86400;
+  qccycles := day DIV Daysper400years;  day  := day MOD Daysper400years;
+  ccycles  := day DIV Daysper100years;  IF ccycles =  4 THEN DEC(ccycles)  END;
+  DEC(day, ccycles * Daysper100years);
+  qcycles  := day DIV Daysper4years;    IF qcycles = 25 THEN DEC(qcycles)  END;
+  DEC(day, qcycles * Daysper4years);
+  year := day DIV DaysperYear;          IF year = 4 THEN DEC(year) END;
+  DEC(day, year * DaysperYear);
+  year := year + 4 * qcycles + 100 * ccycles + 400 * qccycles;
+  month := 0;
+  WHILE (month < 11) & (day >= MonthLen[month]) DO
+    DEC(day, MonthLen[month]);  INC(month)
+  END;
+  IF month >= 10 THEN DEC(month, 12);  INC(year) END;
+  RETURN ((((  year               * 10H
+             + month + 3)         * 20H
+             + day   + 1)         * 20H
+             + sec DIV 3600)      * 40H
+             + sec DIV 60 MOD 60) * 40H
+             + sec MOD 60
+END TimeAsClock;
+
+PROCEDURE Clock*(): INTEGER;
+(* Returns local time as                         *)
+(* 38/year-2000,4/month,5/day,5/hour,6/min,6/sec *)
+BEGIN RETURN TimeAsClock(Time()) END Clock;
+
+PROCEDURE WriteDate(clock: INTEGER);
+VAR year: INTEGER;
+BEGIN year := clock DIV 4000000H + 2000;
+  IF year < 0 THEN wir(-year, 2, "0"); ws("BC-") ELSE wir(year, 4, "0"); wc("-") END;
+  wir(clock DIV 400000H MOD 10H, 2, "0");  (*month*)  wc("-");
+  wir(clock DIV 20000H  MOD 20H, 2, "0");  (*day*)
+END WriteDate;
+
+PROCEDURE WriteTime(clock: INTEGER);
+BEGIN
+  wir(clock DIV 1000H MOD 20H, 2, "0");  (*hour*)  wc(":");
+  wir(clock DIV 40H   MOD 40H, 2, "0");  (*min*)   wc(":");
+  wir(clock MOD 40H,           2, "0");  (*sec*)
+END WriteTime;
+
+PROCEDURE WriteClock*(clock: INTEGER);
+BEGIN WriteDate(clock); wc(" "); WriteTime(clock)
+END WriteClock;
+
+
+(* -------------------------------------------------------------------------- *)
+(* ---------------------------- File enumeration ---------------------------- *)
+(* -------------------------------------------------------------------------- *)
+
+
 PROCEDURE IsSelfOrParent(dir: ARRAY OF SYSTEM.CARD16): BOOLEAN;
 (* TRUE iff /^(.*[/\]|)\.\.?$/ - if ., .. or path ending in . or .. *)
 VAR i, j: INTEGER;  result: BOOLEAN;
@@ -1043,14 +1092,6 @@ BEGIN
   len  := Utf8ToUtf16("", wfn);
   FileEnum(wfn, proc, cont)
 END FileEnumerate;
-
-
-PROCEDURE FileDelete*(name: ARRAY OF CHAR): BOOLEAN;
-VAR name16: ARRAY MaxPath OF SYSTEM.CARD16;  rv: INTEGER;
-BEGIN
-  rv := Utf8ToUtf16(name, name16);
-  RETURN DeleteFileW(SYSTEM.ADR(name16)) # 0
-END FileDelete;
 
 
 (* -------------------------------------------------------------------------- *)
@@ -1197,6 +1238,7 @@ BEGIN
   HWnd      := 0;
   TrapDepth := 0;
   ExitCode  := 0;
+  Hostname  := "Windows";
 
   (* Initialise console input/output *)
   Stdin  := GetStdHandle(-10);  (* -10:   StdInputHandle *)

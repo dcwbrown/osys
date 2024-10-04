@@ -20,7 +20,7 @@ IMPORT SYSTEM, H := Host, Files, ORS;
 CONST
   WordSize*   = 8;
   versionkey* = 1;
-  maxTypTab   = 64;
+  maxTypTab   = 100;
 
   (* class values *)
   Head*  = 0;
@@ -137,9 +137,10 @@ VAR
   int16Type,  int32Type:  Type;
   card16Type, card32Type: Type;
 
+  procType*: Type;
+
   nofmod, Ref: INTEGER;
   typtab: ARRAY maxTypTab OF Type;
-
 
 PROCEDURE NewObj*(VAR obj: Object; id: ORS.Ident; class: INTEGER);
 (*insert new Object with name id*)
@@ -491,6 +492,7 @@ BEGIN
   nilType    := type(NilTyp, NilTyp,  8);
   noType     := type(NoTyp,  NoTyp,   8);
   strType    := type(String, String, 16);
+  procType   := type(Proc,   Proc,    8);
 
 (*initialize universe with data types and in-line procedures;
    LONGINT is synonym to INTEGER, LONGREAL to REAL.

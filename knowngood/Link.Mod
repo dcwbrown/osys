@@ -12,7 +12,7 @@ CONST
 
   OberonCoreBase = 100000000H;  (* All linking is arranged to place the Oberon core at 1,0000,0000H *)
 
-  Kernel32ImportCount = 41;
+  Kernel32ImportCount = 43;
   Gdi32ImportCount    = 18;
   User32ImportCount   = 35;
 
@@ -613,11 +613,14 @@ BEGIN
   AddImport(Idt.Kernel32Lookups, s, "SetFileInformationByHandle");
   AddImport(Idt.Kernel32Lookups, s, "SetFilePointerEx");
   AddImport(Idt.Kernel32Lookups, s, "Sleep");
+  AddImport(Idt.Kernel32Lookups, s, "SystemTimeToFileTime");
+  AddImport(Idt.Kernel32Lookups, s, "SystemTimeToTzSpecificLocalTime");
   AddImport(Idt.Kernel32Lookups, s, "UnmapViewOfFile");
   AddImport(Idt.Kernel32Lookups, s, "VirtualAlloc");
   AddImport(Idt.Kernel32Lookups, s, "VirtualQuery");
   AddImport(Idt.Kernel32Lookups, s, "WriteFile");
   ASSERT(s.n = Kernel32ImportCount);
+
 
   Idt.Gdi32LookupTable := RvaImport + FieldRVA(Idt.Gdi32Lookups);
   Idt.Gdi32Dllnameadr  := RvaImport + FieldRVA(Idt.Gdi32Dllname);

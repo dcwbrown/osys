@@ -11,8 +11,8 @@ copy ..\knowngood\Link.PE.exe >NUL 2>NUL
 ::
 ::
 ::  goto outercorebuild
-::  fc ..\src\Link.Mod ..\knowngood\Link.Mod >NUL && goto noprebuild
-goto noprebuild
+fc ..\src\Link.Mod ..\knowngood\Link.Mod >NUL && goto noprebuild
+:: goto noprebuild
 ::
 ::
 echo.
