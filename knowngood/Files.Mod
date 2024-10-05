@@ -180,8 +180,10 @@ END Rename;
 PROCEDURE Length*(f: File): INTEGER; RETURN f.len END Length;
 
 
-PROCEDURE Date*(f: File): INTEGER; (* In 100 nanosecond ticks since 2000-01-01 UTC *)
-RETURN H.FileTime(f^) END Date;
+PROCEDURE Date*(f: File): INTEGER;
+(* File change time as local time 38/year-2000,4/month,5/day,5/hour,6/min,6/sec *)
+RETURN H.TicksAsClock(H.FileTime(f^)) END Date;
+
 
 
 (* --------------------------------- Riders --------------------------------- *)

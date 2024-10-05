@@ -44,9 +44,10 @@ TYPE Painter* = PROCEDURE (x, y: INTEGER);
   Handler* = PROCEDURE;
 
   TaskDesc* = RECORD
-    state, nextTime, period*: INTEGER;
-    next: Task;
-    handle: Handler
+    state:             INTEGER;
+    nextTime, period*: INTEGER;  (* In milliseconds *)
+    next:              Task;
+    handle:            Handler
   END;
 
   Params = POINTER TO ParamsDesc;
@@ -100,8 +101,7 @@ BEGIN User := user; Password := Code(password)
 END SetUser;
 
 PROCEDURE Clock*(): LONGINT;
-BEGIN RETURN Kernel.Clock()
-END Clock;
+BEGIN RETURN H.Clock() END Clock;
 
 (*
 PROCEDURE SetClock* (d: LONGINT);
@@ -109,9 +109,9 @@ BEGIN Kernel.SetClock(d)
 END SetClock;
 *)
 
-PROCEDURE Time*(): LONGINT;  (* In 100 nanosecond ticks since 2000-01-01 UTC *)
-BEGIN RETURN Kernel.Time()
-END Time;
+PROCEDURE Time*(): LONGINT;  (* In milliseconds since 2000-01-01 UTC *)
+BEGIN RETURN H.Ticks() DIV 10000 END Time;
+
 
 (*cursor handling*)
 
@@ -328,7 +328,7 @@ BEGIN
   IF (Modules.ActCnt <= 0)
   OR (Kernel.allocated >= Kernel.heapLim - Kernel.heapOrg - 10000H) THEN
     mod := Modules.Root;
-    start := H.Time();
+    start := H.Ticks();
     WHILE mod # NIL DO
       IF mod.name[0] # 0X THEN
         Kernel.Mark(ORD(mod) + mod.ptr)
@@ -336,11 +336,11 @@ BEGIN
       mod := mod.next
     END;
     (*LED(23H);*)
-    mark := H.Time();
+    mark := H.Ticks();
     Files.CloseCollectableFiles; (*LED(27H);*)
-    files := H.Time();
+    files := H.Ticks();
     Kernel.Scan; (*LED(20H);*)
-    scan := H.Time();
+    scan := H.Ticks();
 
     (*
     ws("GC timing: mark ");    wi((mark - start) DIV 10);
@@ -429,7 +429,8 @@ BEGIN
         M.Y := Y;  M.keys := keys;  V := Viewers.This(X, Y);  V.handle(V, M);  prevX := X;  prevY := Y
       END;
       IF ~Gui.Shutdown & (CurTask # NIL) THEN
-        CurTask := CurTask.next; t := Kernel.Time();
+        CurTask := CurTask.next;
+        t := Time();  (* milliseconds *)
         IF t >= CurTask.nextTime THEN
           CurTask.nextTime := t + CurTask.period; CurTask.state := active; CurTask.handle; CurTask.state := idle
         ELSE

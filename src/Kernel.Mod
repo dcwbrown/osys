@@ -182,18 +182,17 @@ END Scan;
 
 PROCEDURE Time*(): INTEGER;
 (* In milliseconds since 2000-01-01 UTC *)
-BEGIN RETURN H.Time() DIV 10000
-END Time;
+BEGIN RETURN H.Ticks() DIV 10000 END Time;
+
 
 PROCEDURE Clock*(): INTEGER;
-(* 32 bit packed date and time *)
-BEGIN RETURN H.Clock()
-END Clock;
+(* Returns local time as 38/year-2000,4/month,5/day,5/hour,6/min,6/sec *)
+BEGIN RETURN H.Clock() END Clock;
 
+(*
 PROCEDURE SetClock*(dt: INTEGER);
-BEGIN
-END SetClock;
-
+BEGIN END SetClock;
+*)
 
 (* -------------------------------------------------------------------------- *)
 

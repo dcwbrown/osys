@@ -7,8 +7,8 @@ set -e
 rm -rf build.lin
 mkdir build.lin
 cd build.lin
-cp ../src/*.Mod .
-cp ../knowngood/ORP.Compile ../knowngood/Link.ELF .
+cp -p ../src/*.Mod .
+cp -p ../knowngood/ORP.Compile ../knowngood/Link.ELF .
 #
 echo
 echo ----------------------- Build Linux Oberon compiler -----------------------
@@ -27,7 +27,7 @@ echo
 ./ORP.Compile FileDir.Mod/s Lin.Gui.Mod/s Input.Mod/s Display.Mod/s
 ./ORP.Compile Viewers.Mod/s Oberon.Mod/s MenuViewers.Mod/s
 ./ORP.Compile TextFrames.Mod/s Edit.Mod/s System.Mod/s
-cp ../Oberon.bmp .
+cp -p ../Oberon.bmp .
 #./Link.ELF Oberon+System+ORP+Link
 ./Link.ELF Oberon+System
 #
@@ -35,8 +35,8 @@ cp ../Oberon.bmp .
 # Run Oberon system
 #
 #
-cp ../fnt/*.Fnt .
-cp ../Lin.System.Tool System.Tool
+cp -p ../fnt/*.Fnt .
+cp -p ../Lin.System.Tool System.Tool
 #
 echo
 echo --------------------------- Start Linux Oberon ----------------------------

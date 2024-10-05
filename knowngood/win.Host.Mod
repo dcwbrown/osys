@@ -8,6 +8,8 @@ CONST
   Lin*  = 2;
   Host* = Win;
 
+  TickBias = (399 * 365 + 96) * 24 * 60 * 60 * 10000000;  (* From 1970-01-01 to 2000-01-01 *)
+
   IconImgSize* = 0;  (* On Windows the icon image is in the PE resources. *)
 
 
@@ -694,11 +696,11 @@ END MessageBox;
 (* ---------------------------------- Time ---------------------------------- *)
 (* -------------------------------------------------------------------------- *)
 
-PROCEDURE Time*(): INTEGER;  (* In 100 nanosecond ticks since 2000-01-01 UTC *)
+PROCEDURE Ticks*(): INTEGER;  (* 100 nanosecond ticks since 2000-01-01 UTC *)
 VAR tick: INTEGER;
 BEGIN GetSystemTimePreciseAsFileTime(SYSTEM.ADR(tick));
-RETURN tick - (399 * 365 + 96) * 24 * 60 * 60 * 10000000  (* Bias to 2000-01-01 UTC *)
-END Time;
+RETURN tick - TickBias  (* Bias to 2000-01-01 UTC *)
+END Ticks;
 
 
 (* -------------------------------------------------------------------------- *)
@@ -710,7 +712,7 @@ VAR stamp: ARRAY 20 OF CHAR;
 BEGIN
   file.unregname := file.name;
   Append(".unreg-", file.unregname);
-  IntToDecimal(Time() MOD 20000000H, stamp);
+  IntToDecimal(Ticks() MOD 20000000H, stamp);
   Append(stamp, file.unregname)
 END MakeUnregName;
 
@@ -868,8 +870,7 @@ BEGIN
   ASSERT(file.handle >= 0);
   res := GetFileInformationByHandleEx(file.handle, 0, SYSTEM.ADR(info), SYSTEM.SIZE(infodesc));
   IF res = 0 THEN AssertWinError(GetLastError()) END;
-RETURN info.write - (399 * 365 + 96) * 24 * 60 * 60 * 10000000  (* Bias to 2000-01-01 UTC *)
-END FileTime;
+RETURN info.write - TickBias (* Bias to 2000-01-01 UTC *) END FileTime;
 
 
 PROCEDURE FileRead*(VAR file: HostFile; adr, len: INTEGER): INTEGER;
@@ -939,7 +940,7 @@ BEGIN
 RETURN localtime END LocalTime;
 
 
-PROCEDURE TimeAsClock*(time: INTEGER): INTEGER;
+PROCEDURE TicksAsClock*(time: INTEGER): INTEGER;
 (* Returns UTC time in PO2013 format:            *)
 (* 38/year-2000,4/month,5/day,5/hour,6/min,6/sec *)
 CONST
@@ -970,12 +971,11 @@ BEGIN
              + sec DIV 3600)      * 40H
              + sec DIV 60 MOD 60) * 40H
              + sec MOD 60
-END TimeAsClock;
+END TicksAsClock;
 
 PROCEDURE Clock*(): INTEGER;
-(* Returns local time as                         *)
-(* 38/year-2000,4/month,5/day,5/hour,6/min,6/sec *)
-BEGIN RETURN TimeAsClock(Time()) END Clock;
+(* Returns local time as 38/year-2000,4/month,5/day,5/hour,6/min,6/sec *)
+BEGIN RETURN TicksAsClock(Ticks()) END Clock;
 
 PROCEDURE WriteDate(clock: INTEGER);
 VAR year: INTEGER;
@@ -1071,8 +1071,8 @@ BEGIN
         i := 0;
         WHILE data.name[i] # 0 DO PutUtf8(data.name[i], inf.name, j);  INC(i) END;
         inf.name[j] := 0X;
-        inf.date   := TimeAsClock(LSL(data.writeh, 32) + data.writel);
-        inf.length := LSL(data.sizeh,  32) + data.sizel;
+        inf.date    := TicksAsClock(LSL(data.writeh, 32) + data.writel - TickBias);
+        inf.length  := LSL(data.sizeh,  32) + data.sizel;
         proc(inf, cont)
       END;
       IF FindNextFileW(hfind, SYSTEM.ADR(data)) = 0 THEN
@@ -1258,11 +1258,6 @@ BEGIN
   MonthLen[ 8] := 30;  (* November  *)
   MonthLen[ 9] := 31;  (* December  *)
   MonthLen[10] := 31;  (* January   *)
-
-  (*
-  ws("Oberon Host.Mod starting at "); WriteClock(TimeAsClock(Time())); wsn(" UTC.");
-  ws("Time 0: "); WriteClock(TimeAsClock(0)); wsn(".");
-  *)
 
   Handlers[NewProc]                   := NewPointerHandler;
   Handlers[AssertionFailureProc]      := AssertionFailureHandler;

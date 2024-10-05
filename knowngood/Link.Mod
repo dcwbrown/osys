@@ -1350,7 +1350,7 @@ VAR
   modname: ARRAY 64 OF CHAR;
   i:       INTEGER;
 BEGIN
-  start := H.Time();
+  start := H.Ticks();
 
   (* Parse argument modname[.commandname] from parameter as arg *)
   Texts.OpenReader(r, Texts.Par.text, Texts.Par.pos);
@@ -1379,7 +1379,7 @@ BEGIN
 
     IF tgthost = Win THEN GeneratePE(target) ELSE GenerateELF(target) END;
 
-    wi((H.Time() - start) DIV 10000);  wsn("ms");
+    wi((H.Ticks() - start) DIV 10000);  wsn("ms");
 
     ParseTarget(r, ch, target, modname)
   END

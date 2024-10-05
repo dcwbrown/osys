@@ -1198,7 +1198,7 @@ VAR
   start: INTEGER;
   ms:    INTEGER;
 BEGIN
-  start := H.Time();
+  start := H.Ticks();
   Texts.WriteString(W, "  compiling ");
   ORS.Get(sym);
   IF sym # ORS.module THEN
@@ -1264,8 +1264,8 @@ BEGIN
       IF newsymbols THEN Texts.WriteString(W, " new symbol file") END;
       ORG.Close(modid, key, exno);
       Texts.WriteInt(W, X64.PC, 6);  Texts.WriteInt(W, dc, 6);  Texts.WriteHex(W, key);
-      ms := (H.Time() - start) DIV 10;
-      (*Texts.WriteInt(W, (H.Time() - start) DIV 10000, 4); *)
+      ms := (H.Ticks() - start) DIV 10;
+      (*Texts.WriteInt(W, (H.Ticks() - start) DIV 10000, 4); *)
       Texts.WriteInt(W, ms DIV 1000, 4); Texts.Write(W, ".");
       Texts.WriteInt(W, ms MOD 1000 DIV 100, 1);
       Texts.WriteString(W, " ms")
@@ -1308,7 +1308,7 @@ BEGIN Texts.OpenScanner(S, Texts.Par.text, Texts.Par.pos); Texts.Scan(S);
       END
     END
   ELSE
-    start := H.Time();
+    start := H.Ticks();
     WHILE S.class = Texts.Name DO
       NEW(T); Texts.Open(T, S.s);
       IF T.len > 0 THEN Option(S); ORS.Init(T, 0); Module(newSF)
@@ -1318,7 +1318,7 @@ BEGIN Texts.OpenScanner(S, Texts.Par.text, Texts.Par.pos); Texts.Scan(S);
       IF (T.len # 0) & (ORS.errcnt = 0) THEN Texts.Scan(S) ELSE S.class := 0 END
     END;
     Texts.WriteString(W, "  total ");
-    ms := (H.Time() - start) DIV 10;
+    ms := (H.Ticks() - start) DIV 10;
     Texts.WriteInt(W, ms DIV 1000, 1); Texts.Write(W, ".");
     Texts.WriteInt(W, ms MOD 1000 DIV 100, 1);
     Texts.WriteString(W, " ms");

@@ -120,10 +120,10 @@ TYPE
     dev:      INTEGER;       (* ID of device containing file     *)
     ino:      INTEGER;       (* Inode number                     *)
     nlink:    SYSTEM.CARD32; (* Number of hard links             *)
+    unknown:  SYSTEM.CARD32;
     mode:     SYSTEM.CARD32; (* File type and mode               *)
     uid:      SYSTEM.CARD32; (* User ID of owner                 *)
     gid:      SYSTEM.CARD32; (* Group ID of owner                *)
-    pad0:     SYSTEM.CARD32;
     rdev:     INTEGER;       (* Device ID (if special file)      *)
     size:     INTEGER;       (* Total size, in bytes             *)
     blksize:  INTEGER;       (* Block size for filesystem I/O    *)
@@ -242,7 +242,6 @@ VAR
   DeleteUnregisteredFilesAtExit: PROCEDURE;
 
   MonthLen:    ARRAY 11 OF INTEGER;
-  Anonfnum:    INTEGER;
 
   (*
   AtNL:      BOOLEAN;
@@ -691,8 +690,8 @@ END ReportStats;
 (* ---------------------------------- Time ---------------------------------- *)
 (* -------------------------------------------------------------------------- *)
 
-PROCEDURE Time*(): INTEGER;
-(* In 100 nanosecond ticks since 2000-01-01 00:00 UTC *)
+PROCEDURE Ticks*(): INTEGER;
+(* 100 nanosecond ticks since 2000-01-01 00:00 UTC *)
 (* Sufficient to represent times between approx 27,250 BC and 31,000 AD. *)
 VAR tv: RECORD- sec, nsec: INTEGER END;
 BEGIN
@@ -700,7 +699,7 @@ BEGIN
   ASSERT(tv.nsec < 40000000H);
 RETURN tv.sec * 10000000 + tv.nsec DIV 100       (* Scale to 100ns ticks   *)
      - (30 * 365 + 7) * 24 * 60 * 60 * 10000000  (* Bias to 2000-01-01 UTC *)
-END Time;
+END Ticks;
 
 
 
@@ -708,12 +707,38 @@ END Time;
 (* ------------- Platform independent low level file operations ------------- *)
 (* -------------------------------------------------------------------------- *)
 
+(*
+PROCEDURE WriteStat(s: StatDesc);
+BEGIN
+  ws("dev:       "); wir(s.dev,       12, " ");  wsn(" -  ID of device containing file.");
+  ws("ino:       "); wir(s.ino,       12, " ");  wsn(" -  Inode number.");
+  ws("nlink:     "); wir(s.nlink,     12, " ");  wsn(" -  Number of hard links.");
+  ws("unknown:   "); wir(s.unknown,   12, " ");  wsn(".");
+  ws("mode:      "); whr(s.mode,      11, " ");  wsn("H -  File type and mode.");
+  ws("uid:       "); wir(s.uid,       12, " ");  wsn(" -  User ID of owner.");
+  ws("gid:       "); wir(s.gid,       12, " ");  wsn(" -  Group ID of owner.");
+  ws("rdev:      "); wir(s.rdev,      12, " ");  wsn(" -  Device ID (if special file.");
+  ws("size:      "); wir(s.size,      12, " ");  wsn(" -  Total size, in bytes.");
+  ws("blksize:   "); wir(s.blksize,   12, " ");  wsn(" -  Block size for filesystem I/O.");
+  ws("blocks:    "); wir(s.blocks,    12, " ");  wsn(" -  Number of 512 B blocks allocated.");
+  ws("atimsec:   "); wir(s.atimsec,   12, " ");  wsn(" -  Time of last access.");
+  ws("atimnsec:  "); wir(s.atimnsec,  12, " ");  wsn(" -  Time of last access.");
+  ws("mtimsec:   "); wir(s.mtimsec,   12, " ");  wsn(" -  Time of last modification.");
+  ws("mtimnsec:  "); wir(s.mtimnsec,  12, " ");  wsn(" -  Time of last modification.");
+  ws("ctimsec:   "); wir(s.ctimsec,   12, " ");  wsn(" -  Time of last status change.");
+  ws("ctimnsec:  "); wir(s.ctimnsec,  12, " ");  wsn(" -  Time of last status change.");
+  ws("unused[0]: "); wir(s.unused[0], 12, " ");  wsn(".");
+  ws("unused[1]: "); wir(s.unused[1], 12, " ");  wsn(".");
+  ws("unused[2]: "); wir(s.unused[2], 12, " ");  wsn(".")
+END WriteStat;
+*)
+
 PROCEDURE MakeUnregName(VAR file: HostFile);
 VAR stamp: ARRAY 20 OF CHAR;
 BEGIN
   file.unregname := file.name;
   Append(".unreg-", file.unregname);
-  IntToDecimal(Time() MOD 20000000H, stamp);
+  IntToDecimal(Ticks() MOD 20000000H, stamp);
   Append(stamp, file.unregname)
 END MakeUnregName;
 
@@ -830,7 +855,12 @@ VAR stat: StatDesc;
 BEGIN
   IF sysfstat(file.fd, SYSTEM.ADR(stat)) < 0 THEN
     stat.mtimsec := 0;  stat.mtimnsec := 0;
+  (*
+  ELSE
+    wsn("FileTime stat:");  WriteStat(stat)
+  *)
   END;
+
 RETURN stat.mtimsec * 10000000 + stat.mtimnsec DIV 100  (* Scale to 100ns ticks   *)
      - (30 * 365 + 7) * 24 * 60 * 60 * 10000000         (* Bias to 2000-01-01 UTC *)
 END FileTime;
@@ -937,7 +967,7 @@ BEGIN
 RETURN localtime END LocalTime;
 
 
-PROCEDURE TimeAsClock*(time: INTEGER): INTEGER;
+PROCEDURE TicksAsClock*(time: INTEGER): INTEGER;
 (* Returns provided UTC time As local time in expanded PO2013 format: *)
 (* 38/year-2000,4/month,5/day,5/hour,6/min,6/sec                      *)
 CONST
@@ -968,13 +998,13 @@ BEGIN
              + sec DIV 3600)      * 40H
              + sec DIV 60 MOD 60) * 40H
              + sec MOD 60
-END TimeAsClock;
+END TicksAsClock;
 
 
 PROCEDURE Clock*(): INTEGER;
 (* Returns local time as                         *)
 (* 38/year-2000,4/month,5/day,5/hour,6/min,6/sec *)
-BEGIN RETURN TimeAsClock(Time()) END Clock;
+BEGIN RETURN TicksAsClock(Ticks()) END Clock;
 
 
 PROCEDURE WriteDate*(clock: INTEGER);
@@ -996,14 +1026,16 @@ PROCEDURE WriteClock*(clock: INTEGER);
 BEGIN WriteDate(clock); wc(" "); WriteTime(clock)
 END WriteClock;
 
+(*
 PROCEDURE WriteTimestamp;
 VAR now, clock, ms: INTEGER;
 BEGIN
-  now   := LocalTime(Time());
-  clock := TimeAsClock(now);
+  now   := LocalTime(Ticks());
+  clock := TicksAsClock(now);
   ms    := now DIV 10000 MOD 1000;
   WriteTime(clock);  wc(".");  wir(ms, 3, "0"); ws(". ");
 END WriteTimestamp;
+*)
 
 
 (* -------------------------------------------------------------------------- *)
@@ -1057,9 +1089,13 @@ BEGIN
             inf.date   := 0;
             inf.length := 0;
             IF sysstat(SYSTEM.ADR(inf.name), SYSTEM.ADR(stat)) = 0 THEN
+              (*
+              wsn("FileEnum stat for ");  ws(inf.name);  wsn(".");
+              WriteStat(stat);
+              *)
               inf.length := stat.size;
-              inf.date := TimeAsClock(stat.mtimsec * 10000000 + stat.mtimnsec DIV 100  (* Scale to 100ns ticks   *)
-                                    - 10000000 * 24 * 60 * 60 * (30 * 365 + 7))        (* Bias to 2000-01-01 UTC *)
+              inf.date := TicksAsClock(stat.mtimsec * 10000000 + stat.mtimnsec DIV 100  (* Scale to 100ns ticks   *)
+                                     - 10000000 * 24 * 60 * 60 * (30 * 365 + 7))        (* Bias to 2000-01-01 UTC *)
             END;
             proc(inf, cont)
           ELSIF p.type = DTDIR THEN  (* subdirectory *)
@@ -1252,8 +1288,6 @@ BEGIN
   reservelen := 80000000H - CommitLen;
   res := sysmmap(reserveadr, reservelen, PROTNONE, MAPPRIVATE + MAPFIXED + MAPANON, -1, 0);
   ASSERT(res = reserveadr);
-
-  Anonfnum := Time();
 
   (*
   InitStatistic(OldStat);

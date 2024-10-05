@@ -54,19 +54,12 @@ BEGIN GetArg(S);
   IF S.class = Texts.Int THEN Oberon.SetOffset(S.i) END
 END SetOffset;
 
-PROCEDURE Date*;
-VAR S: Texts.Scanner;
-    dt, hr, min, sec, yr, mo, day: LONGINT;
-BEGIN Texts.OpenScanner(S, Oberon.Par.text, Oberon.Par.pos); Texts.Scan(S);
-  IF S.class = Texts.Int THEN (*set clock*)
-    day := S.i; Texts.Scan(S); mo := S.i; Texts.Scan(S); yr := S.i; Texts.Scan(S);
-    hr := S.i; Texts.Scan(S); min := S.i; Texts.Scan(S); sec := S.i;
-    dt := ((((yr*16 + mo)*32 + day)*32 + hr)*64 + min)*64 + sec;
-    Kernel.SetClock(dt)
-  ELSE (*read clock*) Texts.WriteString(W, "System.Clock ");
-    dt := Oberon.Clock(); Texts.WriteClock(W, dt); EndLine
-  END
+PROCEDURE Date*;  (* Hosted Oberon only displays date, cannot set it. *)
+BEGIN
+  Texts.WriteString(W, "System.Date ");  Texts.WriteClock(W, Oberon.Clock());
+  EndLine
 END Date;
+
 
 PROCEDURE Collect*;  BEGIN Modules.Collect(0) END Collect;
 PROCEDURE Quit*;     BEGIN Gui.Quit        END Quit;
@@ -413,7 +406,7 @@ BEGIN
   main := TextFrames.NewText(TextFrames.Text("System.Tool"), 0);
   toolV := MenuViewers.New(menu, main, TextFrames.menuH, X, Y);
   Texts.WriteString(W, "Oberon V5 on ");  Texts.WriteString(W, H.Hostname);
-  Texts.Write(W, " ");  Texts.WriteClock(W, H.Clock());  Texts.Write(W, ".");
+  Texts.Write(W, " ");  Texts.WriteClock(W, Oberon.Clock());  Texts.Write(W, ".");
   EndLine;
   Texts.WriteString(W, "To exit, middle click (press scroll wheel) on 'System.Quit' in the topmost menu bar.");
   EndLine;
