@@ -1,5 +1,5 @@
 MODULE Gui;
-IMPORT SYSTEM, H := Host, Texts;
+IMPORT SYSTEM, H := Host, Files, Texts;
 
 CONST
   Width*      = 1536;
@@ -277,6 +277,65 @@ BEGIN
 END MustReceive;
 
 
+(* ------------------------ X authority file reader ------------------------- *)
+
+(*  01 00                                                                              family
+    00 0b 73 75 72 66 61 63 65 62 6f 6f 6b                       'surfacebook'         address
+    00 01 31                                                     '1'                   number
+    00 12 4d 49 54 2d 4d 41 47 49 43 2d 43 4f  4f 4b 49 45 2d 31 'MIT-MAGIC-COOKIE-1'  name
+    00 10 c9 81 0e 0d 82 f4 0a 5b af 37 61 d0 d1 49 d5 d1                              data
+    ff ff                                                                              family
+    00 00                                                                              address
+    00 01 31                                                                           number
+    00 12 4d 49 54 2d 4d 41 47  49 43 2d 43 4f 4f 4b 49 45 2d 31 'MIT-MAGIC-COOKIE-1'  name
+    00 10 c9 81 0e 0d 82 f4 0a 5b af 37 61 d0 d1 49 d5 d1                              data
+*)
+
+PROCEDURE ReadAuthWord(VAR r: Files.Rider): INTEGER;
+VAR w: SYSTEM.CARD16;
+BEGIN Files.ReadRaw(r, w);  H.ByteReverse(w)  RETURN w END ReadAuthWord;
+
+PROCEDURE ReadAuthString(VAR r: Files.Rider; VAR s: ARRAY OF CHAR);
+VAR i, len: INTEGER;
+BEGIN len := ReadAuthWord(r);  ASSERT(len < LEN(s));
+  FOR i := 0 TO len - 1 DO Files.Read(r, s[i]) END;
+  s[len] := 0X
+END ReadAuthString;
+
+PROCEDURE ParseEnvVar(adr: INTEGER; VAR key, value: ARRAY OF CHAR);
+VAR ch: CHAR;  i: INTEGER;
+BEGIN key[0] := 0X; value[0] := 0X;
+  IF adr # 0 THEN
+    SYSTEM.GET(adr, ch);  WHILE ch = " " DO SYSTEM.GET(adr, ch) END;
+    i := 0;
+    WHILE (i < LEN(key)-1) & (ch > " ") & (ch # "=") DO
+      key[i] := ch;  INC(i);  SYSTEM.GET(adr, ch)
+    END;
+    key[i] := 0X;
+    i := 0;  IF ch = "=" THEN SYSTEM.GET(adr, ch) END;
+    WHILE (i < LEN(value)-1) & (ch > " ") DO
+      value[i] := ch;  INC(i);  SYSTEM.GET(adr, ch)
+    END;
+    value[i] := 0X;
+  END;
+  H.ws("Parsed env var '"); H.ws(key); H.ws("' = '"); H.ws(value); H.wsn("'.")
+END ParseEnvVar;
+
+(*
+PROCEDURE GetAuthFileName(VAR fn: ARRAY OF CHAR);
+VAR env, varadr: INTEGER;  key: ARRAY 20 OF CHAR;  found: BOOLEAN;
+BEGIN
+  found := FALSE;  fn[0] := 0X;
+  env := H.Environment;  SYSTEM.GET(env, vardadr);
+  WHILE (varadr # 0) & ~found DO
+    ParseEnvVar(varadr, key, fn);
+    found := key = "XAUTHORITY";
+    INC(env, 8);  SYSTEM.GET(env, vardadr);
+  END
+END GetAuthFileName;
+*)
+
+
 (* ------------------------ Server connection setup ------------------------- *)
 
 PROCEDURE ConnectToX11Server(VAR fd: INTEGER);
@@ -297,6 +356,8 @@ RETURN SYSTEM.VAL(INTEGER, SYSTEM.VAL(SET, a) * SYSTEM.VAL(SET, b)) END IAND;
 
 PROCEDURE IXOR(a, b: INTEGER): INTEGER;
 RETURN SYSTEM.VAL(INTEGER, SYSTEM.VAL(SET, a) / SYSTEM.VAL(SET, b)) END IXOR;
+
+
 
 
 PROCEDURE X11ConnectionSetup;

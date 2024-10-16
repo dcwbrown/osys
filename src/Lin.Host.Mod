@@ -234,6 +234,7 @@ VAR
   CmdModule*:   ARRAY 32 OF CHAR;
   CmdCommand*:  ARRAY 32 OF CHAR;
   ArgStart*:    INTEGER;
+  Environment*: INTEGER;  (* Address of first env var ptr *)
 
   ExitCode:    INTEGER;
   TrapDepth:   INTEGER;
@@ -1234,6 +1235,7 @@ BEGIN
 
   CommandLine[i] := 0X;
   IF CommandLine[ArgStart] = " " THEN INC(ArgStart) END;
+  Environment := pargs;
 
   (*
   ws("CommandLine: '"); ws(CommandLine); wsn("'.");
