@@ -13,16 +13,20 @@ cd build.orx >NUL
 ::  ORP.Compile Fonts.Mod/s Texts.Mod/s Link.Mod/s ORS.Mod/s ORB.Mod/s ~ || goto end
 ::
 ::
-robocopy ..\build.win . *.smb *.x64 *.exe /xx /njh /njs /np /nfl /ndl                >NUL
-robocopy ..\src       . OXB.Mod OXG.Mod OXP.Mod win.Host.Mod /xx /njh /njs /np /nfl /ndl >NUL
+robocopy ..\build.win . *.smb *.x64 *.exe       /xx /njh /njs /np /nfl /ndl >NUL
+robocopy ..\src       . OXB.Mod OXG.Mod OXP.Mod /xx /njh /njs /np /nfl /ndl >NUL
 ::
 ::
 ORP.Compile OXB.Mod/s OXG.Mod/s OXP.Mod/s ~ || goto end
 Link.PE OXP.Compile                         || goto end
 ::
 ::
-robocopy ..\src . ORG.Mod /xx /njh /njs /np /nfl /ndl   >NUL
-OXP.Compile win.Host.Mod/s ~
+:: robocopy ..\src . ORG.Mod win.Host.Mod /xx /njh /njs /np /nfl /ndl   >NUL
+:: OXP.Compile win.Host.Mod/s ~
+::
+::
+robocopy ..\src . ORG.Mod testregalloc.Mod /xx /njh /njs /np /nfl /ndl   >NUL
+OXP.Compile testregalloc.Mod/s ~
 ::
 ::
 :end

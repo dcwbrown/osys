@@ -26,13 +26,13 @@ CONST
   Head*    = 0;
   Const*   = 1;  (* Atomic constant value *)
   String*  = 2;  (* String constant *)
-  Proc*    = 3;  (* Procedure body address constant *)
-  ProcVar* = 4;  (* Procedure local variable *)
-  ModVar*  = 5;  (* Module global / imported VAR *)
-  ValPar*  = 6;  (* Value parameter *)
-  RefPar*  = 7;  (* VAR parameter or structured value parameter *)
-  Field*   = 8;
-  Typ*     = 9;
+  Typ*     = 3;  (* Type descriptor *)
+  Proc*    = 4;  (* Procedure body address constant *)
+  GlobVar* = 5;  (* Module global / imported VAR *)
+  ProcVar* = 6;  (* Procedure local variable *)
+  ValPar*  = 7;  (* Atomic value parameter *)
+  RefPar*  = 8;  (* VAR parameter or structured value parameter *)
+  Field*   = 9;
   StdProc* = 10;
   StdFunc* = 11;
   Mod*     = 12;
@@ -66,28 +66,29 @@ CONST
 
 
 TYPE
-  Object* = POINTER TO ObjDesc;
-  Module* = POINTER TO ModDesc;
-  Type*   = POINTER TO TypeDesc;
+  Object*  = POINTER TO ObjDesc;
+  ObjCore* = POINTER TO ObjCoreDesc;
+  Module*  = POINTER TO ModDesc;
+  Type*    = POINTER TO TypeDesc;
 
-  (* Object classes                                 *)
-  (*                                                *)
-  (*  class    val                           modno  *)
-  (*  -------  ----------------------------  -----  *)
-  (*  Const    value                                *)
-  (*  String   address                       len    *)
-  (*  Proc     address                       modno  *)
-  (*  ProcVar  index                                *)
-  (*  ModVar   global or imported address    modno  *)
-  (*  ValPar   index                                *)
-  (*  RefPar   index                                *)
-  (*  Field    offset                               *)
-  (*  Typ      type descriptor (TD) address  modno  *)
-  (*  StdProc  inline code number                   *)
-  (*  StdFunc  inline code number                   *)
-  (*  Mod      key                                  *)
+  (* Object classes                                        *)
+  (*                                                       *)
+  (*  class    val                       ext        modno  *)
+  (*  -------  ------------------------  ---------  -----  *)
+  (*  Const    value                                       *)
+  (*  String   code address              len               *)
+  (*  Typ      descriptor address/impno             modno  *)
+  (*  Proc     code address/impno                   modno  *)
+  (*  GlobVar  data address/impno                   modno  *)
+  (*  ProcVar  index                                       *)
+  (*  ValPar   index                                       *)
+  (*  RefPar   index                                       *)
+  (*  Field    offset                                      *)
+  (*  StdProc  inline code number                          *)
+  (*  StdFunc  inline code number                          *)
+  (*  Mod      key                                         *)
 
-  ObjCore* = RECORD
+  ObjCoreDesc* = RECORD
     class*:  BYTE;
     rdo*:    BOOLEAN;   (* read-only                             *)
     val*:    INTEGER;   (* see above                             *)
@@ -100,7 +101,7 @@ TYPE
     name*:   ORS.Ident;
   END;
 
-  ObjDesc* = RECORD (ObjCore)
+  ObjDesc* = RECORD (ObjCoreDesc)
     expo*: BOOLEAN;   (* whether exported as a symbol *)
     exno*: BYTE;      (* export number in object file *)
     next*: Object;
@@ -345,7 +346,7 @@ BEGIN
         ELSE
           IF class = Const THEN
             IF obj.type.form = Real THEN Files.ReadInt(R, obj.val) ELSE Files.ReadNum(R, obj.val) END
-          ELSIF class = ModVar THEN Files.ReadNum(R, obj.val); obj.rdo := TRUE
+          ELSIF class = GlobVar THEN Files.ReadNum(R, obj.val); obj.rdo := TRUE
           END
         END;
         obj.next := thismod.dsc; thismod.dsc := obj; Read(R, class)
@@ -451,7 +452,7 @@ BEGIN Ref := Record + 1; MakeFileName(filename, modid, ".smb");
         ELSIF obj.type.form = Real THEN Files.WriteInt(R, obj.val)
         ELSE Files.WriteNum(R, obj.val)
         END
-      ELSIF obj.class = ModVar THEN Files.WriteNum(R, obj.exno)
+      ELSIF obj.class = GlobVar THEN Files.WriteNum(R, obj.exno)
       END
     END;
     obj := obj.next

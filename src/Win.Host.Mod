@@ -332,7 +332,7 @@ PROCEDURE wh*(n: INTEGER);
 VAR hex: ARRAY 32 OF CHAR;
 BEGIN IntToHex(n, hex); Log(hex) END wh;
 
-PROCEDURE whr*(n, w: INTEGER; c: CHAR);  (* Right justified with leading zeroes *)
+PROCEDURE whr*(n, w: INTEGER; c: CHAR);  (* Right justified with leading c *)
 VAR hex: ARRAY 32 OF CHAR;
 BEGIN IntToHex(n, hex); wsr(hex, w, c) END whr;
 
@@ -437,6 +437,7 @@ BEGIN
   IF DeleteUnregisteredFilesAtExit # NIL THEN DeleteUnregisteredFilesAtExit END;
   ExitProcess(ExitCode)
 END Exit;
+
 
 (* ---------------------- Exception and trap handling ----------------------- *)
 

@@ -7,29 +7,29 @@ IMPORT SYSTEM, H := Host, K := Kernel, Files, Modules, Texts, ORS, OXB;
 
 CONST
   WordSize* = OXB.WordSize;
-  MaxImpMod = 32;      (* Max no. imported modules *)
-  TextSize  = 20000H;  (* Code, string and type descriptor buffer size (128KB) *)
+  MaxImpMod = 32;         (* Max no. imported modules *)
+  TextSize  = 20000H;     (* Code, string and type descriptor buffer size (128KB) *)
 
 
   (* Classes from OXB *)
   Head    = OXB.Head;
   Const   = OXB.Const;
-  String  = OXB.String;  (* String constant *)
-  Proc    = OXB.Proc;    (* Procedure body address constant *)
-  ProcVar = OXB.ProcVar; (* Procedure local variable *)
-  ModVar  = OXB.ModVar;  (* Module global / imported VAR *)
-  ValPar  = OXB.ValPar;  (* Value parameter *)
-  RefPar  = OXB.RefPar;  (* VAR parameter or structured value parameter *)
-  Field   = OXB.Field;
+  String  = OXB.String;   (* String constant *)
   Typ     = OXB.Typ;
+  Proc    = OXB.Proc;     (* Procedure body address constant *)
+  GlobVar = OXB.GlobVar;  (* Module global / imported VAR *)
+  ProcVar = OXB.ProcVar;  (* Procedure local variable *)
+  ValPar  = OXB.ValPar;   (* Value parameter *)
+  RefPar  = OXB.RefPar;   (* VAR parameter or structured value parameter *)
+  Field   = OXB.Field;
   StdProc = OXB.StdProc;
   StdFunc = OXB.StdFunc;
   Mod     = OXB.Mod;
 
   (* Additional classes *)
   Cond    = 20;
-  ItmdVal = 21;
-  ItmdRef = 22;
+  RegVal  = 21;
+  RegRef  = 22;
 
 
   (* Niladic operations *)
@@ -145,6 +145,13 @@ CONST
   CNG* = 0EH;   (* Not greater than, Less than or equal   (signed leq) *)
   CG*  = 0FH;   (* Greater than, Not less than or equal   (signed gtr) *)
 
+  (* Named registers *)
+  RAX = 0;
+  RCX = 1;
+  RDX = 2;
+  RSP = 4;
+  RSI = 6;
+  RDI = 7;
 
 TYPE
   Pseudocode*    = POINTER TO PseudoDesc;
@@ -155,39 +162,59 @@ TYPE
   Argument*     = POINTER TO ArgumentDesc;
   ConditionArg* = POINTER TO ConditionArgDesc;
 
+  (* Object classes                                             *)
+  (*                                                            *)
+  (*  class    val                            ext        modno  *)
+  (*  -------  -----------------------------  ---------  -----  *)
+  (*  Const    value                                            *)
+  (*  String   code address                   len               *)
+  (*  Typ      type descriptor address/impno             modno  *)
+  (*  Proc     code address/impno                        modno  *)
+  (*  GlobVar  data address/impno                        modno  *)
+  (*  ProcVar  index                                            *)
+  (*  ValPar   index                                            *)
+  (*  RefPar   index                                            *)
+  (*  Field    offset                                           *)
+  (*  StdProc  inline code number                               *)
+  (*  StdFunc  inline code number                               *)
+  (*  Mod      module key                                       *)
+  (*  Cond     condition code                                   *)
+  (*  RegVal   regno                                            *)
+  (*  RegRef   regno                          2nd-reg^          *)
+  (*                                                            *)
+  (* ^2nd-reg: for record and open array parameters             *)
+
+  ArgumentDesc* = RECORD (OXB.ObjCoreDesc)
+    op:  Op;       (* op which generated this argument, if any *)
+  END;
+
+  ConditionArgDesc = RECORD (ArgumentDesc)  (* Condition code in .val *)
+    falsechain*: Jump;
+    truechain*:  Jump
+  END;
+
   PseudoDesc = RECORD
+    addr: INTEGER;
+    prev: Pseudocode;
     next: Pseudocode
   END;
 
   OpDesc = RECORD (PseudoDesc)
     opnum:  INTEGER;
-    x:      Argument;      (* operand and result (if any)      *)
-    y:      Argument;      (* second operand (dyadic ops only) *)
-    result: INTEGER;       (* result local number              *)
+    x:      Argument;  (* operand and result (if any)      *)
+    y:      Argument;  (* second operand (dyadic ops only) *)
+    result: Argument;
   END;
 
   LabelDesc = RECORD (PseudoDesc)
-    label: INTEGER
+    (*label: INTEGER*)
   END;
 
   JumpDesc = RECORD (PseudoDesc)
     condition: INTEGER;     (* -1 iff unconditional *)
     target:    Pseudocode;
-    prev:      Jump;        (* Previous jump to be assigned the same target as this one *)
+    also:      Jump;        (* Previous jump to be assigned the same target as this one *)
   END;
-
-  ArgumentDesc* = RECORD (OXB.ObjCore) unique: INTEGER END;
-
-  ConditionArgDesc = RECORD (ArgumentDesc)  (* val = condition code *)
-    falsechain*, truechain*: Jump
-  END;
-
-(*
-  ObjArgDesc = RECORD (ArgumentDesc) obj: OXB.ObjCore END;
-
-  OpArgDesc = RECORD (ArgumentDesc) op: Op END;
-*)
-
 
 VAR
   W:     Texts.Writer;
@@ -213,12 +240,11 @@ VAR
   ImpFix:   ARRAY 2048 OF RECORD offset, fix: SYSTEM.CARD32 END;
   ImpFInx:  INTEGER;
 
-  Unique:   INTEGER;
-  Internum: INTEGER;
   Labelnum: INTEGER;
 
   Ops:      Pseudocode;     (* List of operations implementing procedure *)
   Body:     Pseudocode;     (* Start of most recently compiled body *)
+  OpAddr:   INTEGER;
 
 
 (* -------------------------------- Tracing --------------------------------- *)
@@ -302,9 +328,24 @@ BEGIN
   END
 END wCond;
 
+PROCEDURE wReg(r: INTEGER);
+BEGIN
+  IF    r < 0 THEN ws("r?")
+  ELSIF r = 0 THEN ws("rax")
+  ELSIF r = 1 THEN ws("rcx")
+  ELSIF r = 2 THEN ws("rdx")
+  ELSIF r = 3 THEN ws("rbx")
+  ELSIF r = 4 THEN ws("rsp")
+  ELSIF r = 5 THEN ws("rbp")
+  ELSIF r = 6 THEN ws("rsi")
+  ELSIF r = 7 THEN ws("rdi")
+  ELSE ws("r");  wi(r)
+  END
+END wReg;
+
 PROCEDURE wAdr(x: Argument);
 BEGIN
-  ASSERT(x.class IN {ModVar, Proc, String});
+  ASSERT(x.class IN {GlobVar, Proc, String});
   IF x.modno > 0 THEN
     ws("["); wi(x.modno); ws("]."); wi(x.val)
   ELSE
@@ -325,30 +366,6 @@ BEGIN
                               THEN wi(x.val)
                               ELSE wh(x.val); ws("H ") END  END
 END wConst;
-
-PROCEDURE wArgument*(x: Argument);
-BEGIN
-  wi(x.unique);
-  IF x.name # "" THEN wc(" ");  ws(x.name) END;
-  ws(": ");
-  IF    x.class = Head     THEN ws("Head ")
-  ELSIF x.class = Const    THEN ws("Const ");     wConst(x)
-  ELSIF x.class = String   THEN ws("String ");    wAdr(x)
-  ELSIF x.class = Proc     THEN ws("Proc ");      wAdr(x)
-  ELSIF x.class = ModVar   THEN ws("ModVar ");    wAdr(x)
-  ELSIF x.class = ProcVar  THEN ws("ProcVar ");   wi(x.val)
-  ELSIF x.class = ValPar   THEN ws("ValPar ");    wi(x.val)
-  ELSIF x.class = RefPar   THEN ws("RefPar ");    wi(x.val)
-  ELSIF x.class = Field    THEN ws("Field ");     wi(x.val)
-  ELSIF x.class = Typ      THEN ws("Typ ");       ws(x.type.typobj.name)
-  ELSIF x.class = StdProc  THEN ws("StdProc ");   wi(x.val)
-  ELSIF x.class = StdFunc  THEN ws("StdFunc ");   wi(x.val)
-  ELSIF x.class = Mod      THEN ws("Mod ");       ws(x.name)
-  ELSIF x.class = Cond     THEN ws("Cond ");      wCond(x.val)
-  ELSIF x.class = ItmdVal  THEN ws("ItmdVal ");   wi(x.val)
-  ELSIF x.class = ItmdRef  THEN ws("ItmdRef ");   wi(x.val)
-  END
-END wArgument;
 
 PROCEDURE wOp(op, w: INTEGER);
 BEGIN
@@ -438,6 +455,53 @@ BEGIN
   END
 END wOp;
 
+PROCEDURE wRegSet(reg: SET);
+VAR i, s, e: INTEGER; sep: BOOLEAN;
+  PROCEDURE wRange(VAR sep: BOOLEAN; s, e: INTEGER);
+  BEGIN
+    IF s >= 0 THEN
+      IF sep THEN wc(",") END;  sep := TRUE;
+      wi(s);
+      IF e > s THEN
+        IF e = s+1 THEN wc(",") ELSE ws("..") END;
+        wi(e);
+      END
+    END
+  END wRange;
+BEGIN ws("{");  sep:= FALSE;  s := -1;
+  FOR i := 0 TO 15 DO IF i IN reg THEN
+    IF s < 0 THEN s := i;  e := i
+    ELSIF i = e + 1 THEN e := i
+    ELSE wRange(sep, s, e);  s := i;  e := i
+    END
+  END END;
+  wRange(sep, s, e);
+  ws("}")
+END wRegSet;
+
+PROCEDURE wArgument*(x: Argument);
+BEGIN
+  IF x.name # "" THEN wc("'");  ws(x.name);  ws("' ") END;
+  IF x.op # NIL THEN wc("[");  wi(x.op.addr);  ws("] ") END;
+  IF    x.class = Head     THEN ws("Head ")
+  ELSIF x.class = Const    THEN ws("Const ");     wConst(x)
+  ELSIF x.class = String   THEN ws("String ");    wAdr(x)
+  ELSIF x.class = Proc     THEN ws("Proc ");      wAdr(x)
+  ELSIF x.class = GlobVar  THEN ws("GlobVar ");   wAdr(x)
+  ELSIF x.class = ProcVar  THEN ws("ProcVar ");   wi(x.val)
+  ELSIF x.class = ValPar   THEN ws("ValPar ");    wi(x.val)
+  ELSIF x.class = RefPar   THEN ws("RefPar ");    wi(x.val)
+  ELSIF x.class = Field    THEN ws("Field ");     wi(x.val)
+  ELSIF x.class = Typ      THEN ws("Typ ");       ws(x.type.typobj.name)
+  ELSIF x.class = StdProc  THEN ws("StdProc ");   wi(x.val)
+  ELSIF x.class = StdFunc  THEN ws("StdFunc ");   wi(x.val)
+  ELSIF x.class = Mod      THEN ws("Mod ");       ws(x.name)
+  ELSIF x.class = Cond     THEN ws("Cond ");      wCond(x.val)
+  ELSIF x.class = RegVal   THEN ws("RegVal ");    wReg(x.val)
+  ELSIF x.class = RegRef   THEN ws("RegRef ");    wReg(x.val)
+  END;
+END wArgument;
+
 
 (* ------------------- Body analysis and code generation -------------------- *)
 
@@ -457,22 +521,30 @@ END DeRef;
 (* -------------------- Operation argument construction --------------------- *)
 
 PROCEDURE NewArg*(class, val, ext, modno: INTEGER; type: OXB.Type): Argument;
-VAR arg: Argument;  carg: ConditionArg;
+VAR  arg: Argument;  obj: OXB.ObjCore;
 BEGIN
-  IF class = Cond THEN NEW(carg);  arg := carg ELSE NEW(arg) END;
-  arg.class := class;  arg.val  := val;  arg.ext := ext;
+  NEW(arg);
+  arg.class := class;  arg.val  := val;   arg.ext := ext;
   arg.modno := modno;  arg.type := type;
   arg.name  := "";     arg.rdo  := FALSE;
-  arg.unique := Unique;   INC(Unique)
 RETURN arg END NewArg;
+
+PROCEDURE NewOpArg(op: Op; type: OXB.Type): Argument;
+VAR arg: Argument;
+BEGIN arg := NewArg(RegVal, 0, 0, 0, type);  arg.op := op
+RETURN arg END NewOpArg;
+
+PROCEDURE NewConditionArg(code: INTEGER): Argument;
+VAR arg: ConditionArg;
+BEGIN NEW(arg);  arg.class := code;  arg.type := OXB.boolType
+RETURN arg END NewConditionArg;
 
 PROCEDURE MakeArgument*(y: OXB.Object; curlev: INTEGER): Argument;
 VAR modno: INTEGER;  arg: Argument;
 BEGIN
-  ASSERT(y.class IN {Const, String, Proc, ModVar, ProcVar, ValPar, RefPar, Typ, Field});
-  arg := NewArg(y.class, y.val, y.ext, y.modno, y.type);
-  arg.name := y.name;
-  IF ~(y.class IN {OXB.Const, OXB.String, OXB.Proc, OXB.ValPar, OXB.RefPar}) THEN
+  ASSERT(y.class IN {Const, String, Proc, GlobVar, ProcVar, ValPar, RefPar, Typ, Field});
+  arg := NewArg(y.class, y.val, y.ext, y.modno, y.type);  arg.name := y.name;
+  IF ~(y.class IN {Const, String, Proc, ValPar, RefPar}) THEN
     IF (y.modno < 0) & (y.modno # -curlev) THEN ORS.Mark("not accessible") END
   END;
   IF y.class = String THEN ASSERT(y.rdo) END;
@@ -537,22 +609,24 @@ END StrToChar;
 PROCEDURE JumpForward(VAR chain: Jump; cond: INTEGER);
 VAR jump: Jump;
 BEGIN
-  NEW(jump);  Ops.next := jump;  Ops := jump;
-  jump.condition := cond;  jump.target := NIL;  jump.prev := chain;
+  NEW(jump);  Ops.next := jump;  jump.prev := Ops;  Ops := jump;
+  jump.addr := OpAddr;  INC(OpAddr);
+  jump.condition := cond;  jump.target := NIL;  jump.also := chain;
   chain := jump
 END JumpForward;
 
 PROCEDURE JumpBack(cond: INTEGER; target: Pseudocode);
 VAR jump: Jump;
 BEGIN
-  NEW(jump);  Ops.next := jump;  Ops := jump;
-  jump.condition := cond;  jump.target := target;  jump.prev := NIL;
+  NEW(jump);  Ops.next := jump;  jump.prev := Ops;  Ops := jump;
+  jump.addr := OpAddr;  INC(OpAddr);
+  jump.condition := cond;  jump.target := target;  jump.also := NIL;
 END JumpBack;
 
 
 PROCEDURE FixChain(VAR l: Jump; target: Label);
 BEGIN
-  WHILE l # NIL DO l.target := target; l := l.prev END;
+  WHILE l # NIL DO l.target := target; l := l.also END;
   l := NIL
 END FixChain;
 
@@ -561,11 +635,22 @@ VAR target: Label;
 BEGIN
   IF l # NIL THEN
     NEW(target);
-    Ops.next := target;  Ops := target;
-    target.label := Labelnum;  INC(Labelnum);
+    Ops.next := target;  target.prev := Ops;  Ops := target;
+    target.addr := OpAddr;
     FixChain(l, target)
   END
 END FixLink;
+
+
+PROCEDURE MakeOp(opnum: INTEGER; x, y: Argument);
+VAR op: Op;
+BEGIN
+  NEW(op);
+  IF Ops # NIL THEN Ops.next := op;  op.prev := Ops END;  Ops := op;
+  op.addr := OpAddr;  op.opnum := opnum;  op.x := x;  op.y := y;
+  INC(OpAddr)
+END MakeOp;
+
 
 PROCEDURE LoadFromCC(VAR x: Argument);
 (*            jxx    tchain
@@ -573,34 +658,46 @@ PROCEDURE LoadFromCC(VAR x: Argument);
               jmp    done
     tchain:   mov    eax,1
     done:                      *)
-VAR op: POINTER TO OpDesc;  done: Jump;
+VAR done: Jump;  cx: ConditionArg;
 BEGIN
-  INC(Internum);
   ASSERT(x # NIL);
-  ASSERT(x IS ConditionArg);
-  IF (x(ConditionArg).truechain = NIL) & (x(ConditionArg).falsechain = NIL) THEN
+  cx := x(ConditionArg);
+  IF (cx.truechain = NIL) & (cx.falsechain = NIL) THEN
     (* Can use X86 SetCC instruction *)
-    NEW(op);  Ops.next := op;  Ops := op;  op.opnum := OpSetCC;
-    op.x := x;  op.result := Internum;
+    MakeOp(OpSetCC, x, NIL);
+    x := NewOpArg(Ops(Op), OXB.boolType)
   ELSE
-    JumpForward(x(ConditionArg).truechain, x.val);
+    JumpForward(cx.truechain, cx.val);
 
-    FixLink(x(ConditionArg).falsechain);
-    NEW(op);  Ops.next := op;  Ops := op;  op.opnum := OpLoad;
-    op.x      := ConstArg0;
-    op.result := Internum;
+    FixLink(cx.falsechain);
+    MakeOp(OpLoad, ConstArg0, NIL);
     JumpForward(done, -1);
 
-    FixLink(x(ConditionArg).truechain);
-    NEW(op);  Ops.next := op;  Ops := op;  op.opnum := OpLoad;
-    op.x      := ConstArg1;
-    op.result := Internum;
+    FixLink(cx.truechain);
+    MakeOp(OpLoad, ConstArg1, NIL);
     FixLink(done);
 
-    x := NewArg(ItmdVal, op.result, 0, 0, OXB.intType)
-  END;
-  INC(Internum)
+(* TODO - needs thinking though with OpArgs - not yet done *)
+
+    x := NewArg(Head, 0(*op.result*), 0, 0, OXB.intType)
+  END
 END LoadFromCC;
+
+
+(*
+* PROCEDURE LoadReg(VAR x: Argument);
+* (* Generate any operations required to load x into any reg other than *)
+* (* those in x.active.                                                 *)
+* BEGIN
+*   IF (x.class = RegVal) & (x.reg * reg # {}) THEN x.reg := x.reg * reg
+*   ELSE
+*     MakeOp(OpLoad, x, NIL);
+*     x := NewOpArg(Ops(Op), x.type);
+*     x.reg := reg;
+*   END
+* END LoadReg;
+*)
+
 
 PROCEDURE OpnumToIntCondition(opnum: INTEGER; type: OXB.Type): INTEGER;
 VAR result: INTEGER;  signed: BOOLEAN;
@@ -608,7 +705,7 @@ BEGIN
   signed := type.ref IN {OXB.Int8, OXB.Int16, OXB.Int32, OXB.Int64};
   IF (opnum < OpIntEql) OR (opnum > OpStringGeq) THEN
     H.ws("opnum "); H.wi(opnum); H.wn;
-    H.Trap(8, "opnum out of range in OpnumToIntCondition")
+    H.Trap(16, "opnum out of range in OpnumToIntCondition")
   END;
   ASSERT((opnum >= OpIntEql) & (opnum <= OpStringGeq));
   opnum := OpIntEql + (opnum - OpIntEql) MOD 6;
@@ -623,114 +720,215 @@ BEGIN
 RETURN result END OpnumToIntCondition;
 
 
-PROCEDURE Operation(opnum: INTEGER; VAR x: Argument; y: Argument);
-CONST TraceOperation = FALSE;
-VAR op: POINTER TO OpDesc;
+PROCEDURE Enter*(x: Argument);
 BEGIN
+  ws("Enter '");  IF x # NIL THEN ws(x.name) ELSE ws("module body") END;  wsn("'.");
+  MakeOp(OpEnter, x, NIL);
+  Body     := Ops;
+  Labelnum := 1
+END Enter;
+
+
+PROCEDURE FindFree(avoid: SET): INTEGER;
+VAR r: INTEGER;
+BEGIN
+  INCL(avoid, RSP);
+  r := 0;  WHILE r IN avoid DO INC(r) END;
+  IF r > 15 THEN r := -1 END
+RETURN r END FindFree;
+
+
+PROCEDURE GetReg(x: Argument): INTEGER;
+VAR res: INTEGER;
+BEGIN
+  IF (x # NIL) & (x.class IN {RegVal, RegRef}) THEN
+    res := x.val
+  ELSE
+    res := -1
+  END
+RETURN res END GetReg;
+
+(*
+PROCEDURE SetReg(X: Argument; reg: INTEGER);
+BEGIN ASSERT((x # NIL) & (x.class IN {RegVal, RegRef}));
+  x.val := reg
+END SetReg;
+*)
+
+
+PROCEDURE AssignRegister(x: Argument; reg: INTEGER; avoid: SET; msg: ARRAY OF CHAR);
+VAR yreg: INTEGER;  moveop: Op;
+BEGIN ASSERT(x # NIL);
+  IF (x.op # NIL) & (x.class IN {RegVal, RegRef}) THEN
+    ws("AssignRegister ");  wReg(reg);
+    ws(" avoiding ");  wRegSet(avoid);
+    ws(": ");  ws(msg);  wc(" ");  wArgument(x);
+
+    (* Check for argument already in wrong register *)
+    IF (reg >= 0) & (x.val >= 0) & (x.val # reg) THEN
+      (* Insert movreg instruction *)
+      ASSERT(x.op # NIL);
+      NEW(moveop);
+      moveop.next := x.op.next;  moveop.prev    := x.op;
+      x.op.next   := moveop;     x.op.next.prev := moveop;
+
+      moveop.opnum := OpLoadReg;
+      moveop.x := x.op.result;  x.op.result.op := moveop;
+
+      moveop.result := NewArg(RegVal, reg, 0, 0, x.op.result.type);
+      reg := x.val
+    ELSE
+      IF reg < 0 THEN
+        IF x.val >= 0 THEN reg := x.val ELSE reg := FindFree(avoid) END
+      END;
+      x.val := reg
+    END;
+
+    (* Assign registers for x.op arguments *)
+    IF (x.op.opnum = OpIntMultiply)
+    OR (x.op.opnum = OpIntDivide)
+    OR (x.op.opnum = OpIntModulus) THEN
+      reg := RAX
+    END;
+
+    ASSERT(x.op.result # NIL);
+    ASSERT(x.op.result.class IN {RegVal, RegRef});
+
+    ws(" -> ");  wReg(reg);  wsn(".");
+
+    IF x.op.x # NIL THEN AssignRegister(x.op.x, reg, avoid, "op.x") END;
+
+    IF (x.op.y # NIL) & (x.op.y.op # NIL) THEN
+      AssignRegister(x.op.y, -1, avoid + {reg}, "op.y")
+    END
+  END
+END AssignRegister;
+
+
+PROCEDURE Operation*(opnum: INTEGER; VAR x: Argument; y: Argument);
+CONST TraceOperation = FALSE;
+VAR type: OXB.Type;  xval, yval: INTEGER;  op: Op;  avoid: SET;
+BEGIN
+  IF (x # NIL) & (x.op # NIL) THEN ASSERT(x = x.op.result) END;
+  IF (y # NIL) & (y.op # NIL) THEN ASSERT(y = y.op.result) END;
+
   IF TraceOperation THEN
     wOp(opnum, 1);
     IF x # NIL THEN
-      ws("("); wi(x.unique);
-      IF y # NIL THEN ws(", "); wi(y.unique) END;
-      ws(")");
       ASSERT((opnum = OpSetCC) OR ~(x IS ConditionArg))
     END
   END;
 
-  IF opnum = OpEnter THEN Internum := 0;  Labelnum := 1  END;
+  ASSERT(opnum # OpEnter);  (* OXP should call OXG.Enter *)
 
-  IF (x # NIL)
-   & (x IS ConditionArg)
-   & ((opnum < OpIntEql) OR (opnum > OpStringGeq)) THEN
-    LoadFromCC(x)
-  END;
-
-  NEW(op);  op.opnum := opnum;  op.x := x;  op.y := y;  op.result := -1;
-
-  IF (opnum >= OpAbs) & (opnum <= OpField) THEN
-    op.result := Internum;  INC(Internum);
-    x := NewArg(ItmdVal, op.result, 0, 0, x.type);
-  ELSIF (opnum >= OpIntEql) & (opnum <= OpStringGeq) THEN
-    x := NewArg(Cond, OpnumToIntCondition(opnum, x.type), 0, 0, OXB.boolType);
-    IF TraceOperation THEN ws(" -> ["); wi(x.unique); ws("]") END
-  ELSIF opnum = OpTestNZ THEN
-    x := NewArg(Cond, CNZ, 0, 0, OXB.boolType);
-    IF TraceOperation THEN ws(" -> ["); wi(x.unique); ws("]") END
-  END;
-  IF Ops # NIL THEN Ops.next := op END;  Ops := op;
-
-  IF opnum = OpEnter THEN Body := Ops END;
-
-  IF TraceOperation & (op.result >= 0) THEN ws(" -> "); wi(op.result) END;
-  IF TraceOperation THEN wn END
-END Operation;
-
-
-PROCEDURE Monadic*(op: INTEGER; VAR x: Argument);
-BEGIN
-  IF (x # NIL) & (x.class = Const) & (op >= OpAbs) & (op <= OpInvert) THEN
-    IF    op = OpAbs          THEN x.val := ABS(x.val)
-    ELSIF op = OpSetSingleton THEN x.val := LSL(1, x.val)
-    ELSIF op = OpNegate       THEN x.val := - x.val
-    ELSIF op = OpRealNegate   THEN ASSERT(FALSE) (*x.val := ORD(-SYSTEM.VAL(REAL, x.val))*)
-    ELSIF op = OpInvert       THEN x.val := ORD(-SYSTEM.VAL(SET, x.val))
+  IF (x # NIL) & (y = NIL) & (x.class = Const) & (opnum >= OpAbs) & (opnum <= OpInvert) THEN
+    (* Monadic with contant parameter *)
+    IF    opnum = OpAbs          THEN x.val := ABS(x.val)
+    ELSIF opnum = OpSetSingleton THEN x.val := LSL(1, x.val)
+    ELSIF opnum = OpNegate       THEN x.val := - x.val
+    ELSIF opnum = OpRealNegate   THEN ASSERT(FALSE) (*x.val := ORD(-SYSTEM.VAL(REAL, x.val))*)
+    ELSIF opnum = OpInvert       THEN x.val := ORD(-SYSTEM.VAL(SET, x.val))
     END
-  ELSE
-    Operation(op, x, NIL)
-  END
-END Monadic;
-
-PROCEDURE Dyadic*(op: INTEGER; VAR x: Argument; y: Argument);
-VAR type: OXB.Type;  xval, yval: INTEGER;
-BEGIN
-  IF x = NIL THEN H.Trap(24, "x NIL in Dyadic") END;
-  IF (x # NIL) & (y # NIL)
-   & (x.class = Const) & (y.class = Const)
-   & (   (op >= OpLSL)    & (op <= OpRealDivide)
-      OR (op >= OpIntEql) & (op <= OpRealGeq)) THEN
-    type := x.type;
-    xval := x.val;
-    yval := y.val;
-    IF    op = OpLSL          THEN x := NewArg(Const, LSL(xval, yval), 0, 0, type)
-    ELSIF op = OpASR          THEN x := NewArg(Const, ASR(xval, yval), 0, 0, type)
-    ELSIF op = OpROR          THEN x := NewArg(Const, ROR(xval, yval), 0, 0, type)
-    ELSIF op = OpADC          THEN ASSERT(FALSE) (*x := MakeConstArg(type, xval yval)*)
-    ELSIF op = OpSBC          THEN ASSERT(FALSE) (*x := MakeConstArg(type, xval yval)*)
-    ELSIF op = OpUML          THEN ASSERT(FALSE) (*x := MakeConstArg(type, xval yval)*)
-    ELSIF op = OpBit          THEN ASSERT(FALSE) (*x := MakeConstArg(type, SYSTEM.BIT(xval, yval))*)
-    ELSIF op = OpSetRange     THEN x := NewArg(Const, ORD({xval..yval}), 0, 0, type)
-    ELSIF op = OpSetOr        THEN x := NewArg(Const, ORD(SYSTEM.VAL(SET,xval) + SYSTEM.VAL(SET,yval)), 0, 0, type)
-    ELSIF op = OpSetAndNot    THEN x := NewArg(Const, ORD(SYSTEM.VAL(SET,xval) - SYSTEM.VAL(SET,yval)), 0, 0, type)
-    ELSIF op = OpSetAnd       THEN x := NewArg(Const, ORD(SYSTEM.VAL(SET,xval) * SYSTEM.VAL(SET,yval)), 0, 0, type)
-    ELSIF op = OpSetXor       THEN x := NewArg(Const, ORD(SYSTEM.VAL(SET,xval) / SYSTEM.VAL(SET,yval)), 0, 0, type)
-    ELSIF op = OpIntPlus      THEN x := NewArg(Const, xval + yval, 0, 0, type)
-    ELSIF op = OpIntMinus     THEN x := NewArg(Const, xval - yval, 0, 0, type)
-    ELSIF op = OpIntMultiply  THEN x := NewArg(Const, xval * yval, 0, 0, type)
-    ELSIF op = OpIntDivide    THEN x := NewArg(Const, xval DIV yval, 0, 0, type)
-    ELSIF op = OpIntModulus   THEN x := NewArg(Const, xval MOD yval, 0, 0, type)
-    ELSIF op = OpRealPlus     THEN ASSERT(FALSE) (*x := MakeConstArg(type, xval yval)*)
-    ELSIF op = OpRealMinus    THEN ASSERT(FALSE) (*x := MakeConstArg(type, xval yval)*)
-    ELSIF op = OpRealMultiply THEN ASSERT(FALSE) (*x := MakeConstArg(type, xval yval)*)
-    ELSIF op = OpRealDivide   THEN ASSERT(FALSE) (*x := MakeConstArg(type, xval yval)*)
-    ELSIF op = OpIntEql       THEN x := NewArg(Const, ORD(xval =  yval), 0, 0, OXB.boolType)
-    ELSIF op = OpIntNeq       THEN x := NewArg(Const, ORD(xval #  yval), 0, 0, OXB.boolType)
-    ELSIF op = OpIntLss       THEN x := NewArg(Const, ORD(xval <  yval), 0, 0, OXB.boolType)
-    ELSIF op = OpIntLeq       THEN x := NewArg(Const, ORD(xval <= yval), 0, 0, OXB.boolType)
-    ELSIF op = OpIntGtr       THEN x := NewArg(Const, ORD(xval >  yval), 0, 0, OXB.boolType)
-    ELSIF op = OpIntGeq       THEN x := NewArg(Const, ORD(xval >= yval), 0, 0, OXB.boolType)
+  ELSIF (x # NIL) & (y # NIL)
+      & (x.class = Const) & (y.class = Const)
+      & (   (opnum >= OpLSL)    & (opnum <= OpRealDivide)
+         OR (opnum >= OpIntEql) & (opnum <= OpRealGeq)) THEN
+    type := x.type;  xval := x.val;  yval := y.val;
+    IF    opnum = OpLSL          THEN x := NewArg(Const, LSL(xval, yval), 0, 0, type)
+    ELSIF opnum = OpASR          THEN x := NewArg(Const, ASR(xval, yval), 0, 0, type)
+    ELSIF opnum = OpROR          THEN x := NewArg(Const, ROR(xval, yval), 0, 0, type)
+    ELSIF opnum = OpADC          THEN ASSERT(FALSE) (*x := MakeConstArg(type, xval yval)*)
+    ELSIF opnum = OpSBC          THEN ASSERT(FALSE) (*x := MakeConstArg(type, xval yval)*)
+    ELSIF opnum = OpUML          THEN ASSERT(FALSE) (*x := MakeConstArg(type, xval yval)*)
+    ELSIF opnum = OpBit          THEN ASSERT(FALSE) (*x := MakeConstArg(type, SYSTEM.BIT(xval, yval))*)
+    ELSIF opnum = OpSetRange     THEN x := NewArg(Const, ORD({xval..yval}), 0, 0, type)
+    ELSIF opnum = OpSetOr        THEN x := NewArg(Const, ORD(SYSTEM.VAL(SET,xval) + SYSTEM.VAL(SET,yval)), 0, 0, type)
+    ELSIF opnum = OpSetAndNot    THEN x := NewArg(Const, ORD(SYSTEM.VAL(SET,xval) - SYSTEM.VAL(SET,yval)), 0, 0, type)
+    ELSIF opnum = OpSetAnd       THEN x := NewArg(Const, ORD(SYSTEM.VAL(SET,xval) * SYSTEM.VAL(SET,yval)), 0, 0, type)
+    ELSIF opnum = OpSetXor       THEN x := NewArg(Const, ORD(SYSTEM.VAL(SET,xval) / SYSTEM.VAL(SET,yval)), 0, 0, type)
+    ELSIF opnum = OpIntPlus      THEN x := NewArg(Const, xval + yval, 0, 0, type)
+    ELSIF opnum = OpIntMinus     THEN x := NewArg(Const, xval - yval, 0, 0, type)
+    ELSIF opnum = OpIntMultiply  THEN x := NewArg(Const, xval * yval, 0, 0, type)
+    ELSIF opnum = OpIntDivide    THEN x := NewArg(Const, xval DIV yval, 0, 0, type)
+    ELSIF opnum = OpIntModulus   THEN x := NewArg(Const, xval MOD yval, 0, 0, type)
+    ELSIF opnum = OpRealPlus     THEN ASSERT(FALSE) (*x := MakeConstArg(type, xval yval)*)
+    ELSIF opnum = OpRealMinus    THEN ASSERT(FALSE) (*x := MakeConstArg(type, xval yval)*)
+    ELSIF opnum = OpRealMultiply THEN ASSERT(FALSE) (*x := MakeConstArg(type, xval yval)*)
+    ELSIF opnum = OpRealDivide   THEN ASSERT(FALSE) (*x := MakeConstArg(type, xval yval)*)
+    ELSIF opnum = OpIntEql       THEN x := NewArg(Const, ORD(xval =  yval), 0, 0, OXB.boolType)
+    ELSIF opnum = OpIntNeq       THEN x := NewArg(Const, ORD(xval #  yval), 0, 0, OXB.boolType)
+    ELSIF opnum = OpIntLss       THEN x := NewArg(Const, ORD(xval <  yval), 0, 0, OXB.boolType)
+    ELSIF opnum = OpIntLeq       THEN x := NewArg(Const, ORD(xval <= yval), 0, 0, OXB.boolType)
+    ELSIF opnum = OpIntGtr       THEN x := NewArg(Const, ORD(xval >  yval), 0, 0, OXB.boolType)
+    ELSIF opnum = OpIntGeq       THEN x := NewArg(Const, ORD(xval >= yval), 0, 0, OXB.boolType)
     (*
-    ELSIF op = OpRealEql      THEN x := NewArg(Const, ORD(SYSTEM.VAL(REAL, xval) =  SYSTEM.VAL(REAL, yval)), 0, 0, OXB.boolType)
-    ELSIF op = OpRealNeq      THEN x := NewArg(Const, ORD(SYSTEM.VAL(REAL, xval) #  SYSTEM.VAL(REAL, yval)), 0, 0, OXB.boolType)
-    ELSIF op = OpRealLss      THEN x := NewArg(Const, ORD(SYSTEM.VAL(REAL, xval) <  SYSTEM.VAL(REAL, yval)), 0, 0, OXB.boolType)
-    ELSIF op = OpRealLeq      THEN x := NewArg(Const, ORD(SYSTEM.VAL(REAL, xval) <= SYSTEM.VAL(REAL, yval)), 0, 0, OXB.boolType)
-    ELSIF op = OpRealGtr      THEN x := NewArg(Const, ORD(SYSTEM.VAL(REAL, xval) >  SYSTEM.VAL(REAL, yval)), 0, 0, OXB.boolType)
-    ELSIF op = OpRealGeq      THEN x := NewArg(Const, ORD(SYSTEM.VAL(REAL, xval) >= SYSTEM.VAL(REAL, yval)), 0, 0, OXB.boolType)
+    ELSIF opnum = OpRealEql      THEN x := NewArg(Const, ORD(SYSTEM.VAL(REAL, xval) =  SYSTEM.VAL(REAL, yval)), 0, 0, OXB.boolType)
+    ELSIF opnum = OpRealNeq      THEN x := NewArg(Const, ORD(SYSTEM.VAL(REAL, xval) #  SYSTEM.VAL(REAL, yval)), 0, 0, OXB.boolType)
+    ELSIF opnum = OpRealLss      THEN x := NewArg(Const, ORD(SYSTEM.VAL(REAL, xval) <  SYSTEM.VAL(REAL, yval)), 0, 0, OXB.boolType)
+    ELSIF opnum = OpRealLeq      THEN x := NewArg(Const, ORD(SYSTEM.VAL(REAL, xval) <= SYSTEM.VAL(REAL, yval)), 0, 0, OXB.boolType)
+    ELSIF opnum = OpRealGtr      THEN x := NewArg(Const, ORD(SYSTEM.VAL(REAL, xval) >  SYSTEM.VAL(REAL, yval)), 0, 0, OXB.boolType)
+    ELSIF opnum = OpRealGeq      THEN x := NewArg(Const, ORD(SYSTEM.VAL(REAL, xval) >= SYSTEM.VAL(REAL, yval)), 0, 0, OXB.boolType)
     *)
     END
   ELSE
-    Operation(op, x, y)
-  END
-END Dyadic;
+    IF opnum IN {OpValueParam .. OpStringParam} THEN
+      ASSERT(y # NIL);
+      IF opnum = OpValueParam THEN ASSERT(y.class = ValPar)
+      ELSE ASSERT(y.class = RefPar)
+      END
+    END;
+
+    IF (x # NIL)
+     & (x IS ConditionArg)
+     & ((opnum < OpIntEql) OR (opnum > OpStringGeq)) THEN
+      LoadFromCC(x)
+    END;
+
+    MakeOp(opnum, x, y);  op := Ops(Op);
+
+    IF opnum = OpStore THEN  (* x := y *)
+      avoid := {};
+      IF GetReg(y) >= 0 THEN INCL(avoid, y.op.result.val) END;
+      IF x.op # NIL THEN
+        AssignRegister(x, -1, avoid, "store to");
+        ASSERT(GetReg(x) >= 0);
+        INCL(avoid, x.val)
+      END;
+      IF y.op # NIL THEN
+        AssignRegister(y, -1, avoid, "store from")
+      END;
+
+    ELSIF (opnum = OpReturn) & (y # NIL) THEN
+      AssignRegister(y, -1, {}, "function result")
+
+    ELSIF opnum = OpValueParam THEN
+      AssignRegister(x, -1, {}, "value param")
+
+    ELSIF (opnum >= OpAbs) & (opnum <= OpField) THEN
+      x := NewArg(RegVal, -1, 0, 0, x.type);  x.op := op;  op.result := x;
+      (* Set/propogate result register *)
+      IF    opnum = OpIntDivide  THEN x.val := RAX
+      ELSIF opnum = OpIntModulus THEN x.val := RDX
+      ELSIF GetReg(op.x) >= 0 THEN x.val := op.x.val  (* propagate arg x reg to result reg *)
+      END
+    ELSIF (opnum >= OpIntEql) & (opnum <= OpStringGeq) THEN
+      x := NewConditionArg(OpnumToIntCondition(opnum, x.type));  x.op := Ops(Op);
+    ELSIF opnum = OpTestNZ THEN
+      x := NewConditionArg(CNZ);  x.op := Ops(Op);
+    END;
+
+    (* Apply register result limitations imposed by X64 instruction set *)
+    IF (opnum = OpIntDivide) OR (opnum = OpIntModulus) THEN
+      ASSERT(x.class = RegVal);
+      ASSERT(x.op # NIL);
+      (*
+      IF opnum = OpIntDivide THEN x.reg := {rax} ELSE x.reg := {rdx} END;
+      *)
+    END
+  END;
+
+  IF TraceOperation THEN wn END
+END Operation;
 
 
 
@@ -757,7 +955,7 @@ BEGIN
   END;
 
   WHILE obj # NIL DO
-    IF    obj.class = OXB.ProcVar              THEN frame[obj.val].obj := obj
+    IF    obj.class = OXB.ProcVar               THEN frame[obj.val].obj := obj
     ELSIF obj.class IN {OXB.ValPar, OXB.RefPar} THEN parms[obj.val].obj := obj
     END;
     obj := obj.next
@@ -796,23 +994,26 @@ BEGIN
   IF Body # NIL THEN wsn("Operations:") END;
   inst := Body;
   WHILE inst # NIL DO
+    wi(inst.addr);  wtab(6);
+    IF inst IS Label THEN ws(":") END;
+    CASE inst OF Op: IF GetReg(inst.result) >= 0 THEN wReg(inst.result.val); ws(" <- ") END END;
+    wtab(7);
     CASE inst OF
-      Op:    wtab(10); wOp(inst.opnum, 1); wtab(15);
+      Op:    wOp(inst.opnum, 1);
+             wtab(14);
              IF inst.x # NIL THEN
                wArgument(inst.x);
-               IF inst.y # NIL THEN ws(", ");  wtab(40);  wArgument(inst.y) END;
+               IF inst.y # NIL THEN ws(", ");  wtab(30);  wArgument(inst.y) END;
                ws(" ")
              END;
-             IF inst.result >= 0 THEN ws("-> "); wi(inst.result) END;
              wn
-    | Label: ws("    l");  wil(inst.label, 5);  wsn("Label")
-    | Jump:  wtab(10);
-             IF inst.condition >= 0 THEN wCond(inst.condition) ELSE ws("Jmp") END;
-             wtab(15); wc("l");
+    | Label: wsn("Label")
+    | Jump:  IF inst.condition >= 0 THEN wCond(inst.condition) ELSE ws("Jmp") END;
+             wtab(15);
              IF inst.target = NIL THEN ws("??")
              ELSE
                ASSERT(inst.target # NIL);
-               wi(inst.target(Label).label)
+               wi(inst.target(Label).addr)
              END;
              wn
     END;
@@ -830,7 +1031,7 @@ RETURN ORD(SYSTEM.VAL(SET, cond)/{0}) END InvertedCondition;
 
 PROCEDURE CFJump*(VAR x: Argument);
 BEGIN
-  IF ~(x IS ConditionArg) THEN Dyadic(OpTestNZ, x, NIL) END;
+  IF ~(x IS ConditionArg) THEN Operation(OpTestNZ, x, NIL) END;
   ASSERT(x IS ConditionArg);
   CASE x OF ConditionArg:
     JumpForward(x.falsechain, InvertedCondition(x.val));
@@ -846,7 +1047,7 @@ BEGIN ASSERT(p # NIL);  JumpBack(-1, p) END BJump;
 
 PROCEDURE CBJump*(VAR x: Argument; p: Label);
 BEGIN ASSERT(p # NIL);  ASSERT(p IS Label);
-  IF ~(x IS ConditionArg) THEN Dyadic(OpTestNZ, x, NIL) END;
+  IF ~(x IS ConditionArg) THEN Operation(OpTestNZ, x, NIL) END;
   ASSERT(x IS ConditionArg);
   CASE x OF ConditionArg:
     JumpBack(InvertedCondition(x.val), p);
@@ -868,30 +1069,30 @@ PROCEDURE Store*(VAR dest, src: Argument); (* dest := src *)
 BEGIN
   ASSERT(dest # NIL);
   ASSERT(src # NIL);
-  Dyadic(OpStore, dest, src)
+  Operation(OpStore, dest, src)
 END Store;
 
 
 PROCEDURE StoreStruct*(VAR x, y: Argument);   (* x := y *)
-BEGIN Dyadic(OpStoreStruc, x, y) END StoreStruct;
+BEGIN Operation(OpStoreStruc, x, y) END StoreStruct;
 
 
 PROCEDURE CopyString*(VAR x, y: Argument);  (* x := y *)
-BEGIN Dyadic(OpCopyString, x, y) END CopyString;
+BEGIN Operation(OpCopyString, x, y) END CopyString;
 
 
 (* ---- Procedure / function calls ---- *)
 
 PROCEDURE PrepCall*(VAR x: Argument; VAR saved: SET);
-BEGIN Monadic(OpPrepCall, x) END PrepCall;
+BEGIN Operation(OpPrepCall, x, NIL) END PrepCall;
 
 
 PROCEDURE Call*(VAR x: Argument; saved: SET);
 BEGIN
   IF x.type.base.form = OXB.NoTyp THEN
-    Monadic(OpCallProc, x)
+    Operation(OpCallProc, x, NIL)
   ELSE
-    Monadic(OpCallFn, x)
+    Operation(OpCallFn, x, NIL)
   END
 END Call;
 
@@ -901,7 +1102,7 @@ END Call;
 PROCEDURE Assert*(VAR x: Argument);
 VAR call: Argument;  assertproc: Argument;
 BEGIN
-  IF ~(x IS ConditionArg) THEN Dyadic(OpTestNZ, x, NIL) END;
+  IF ~(x IS ConditionArg) THEN Operation(OpTestNZ, x, NIL) END;
   ASSERT(x IS ConditionArg);
   CASE x OF ConditionArg:
     JumpForward(x.truechain, x.val);
@@ -909,7 +1110,7 @@ BEGIN
 
     assertproc := NewArg(Proc, H.AssertionFailureProc, 0, 1, OXB.procType);
     assertproc.name := "<ASSERT>";
-    Dyadic(OpCallProc, assertproc, NIL);
+    Operation(OpCallProc, assertproc, NIL);
 
     FixLink(x.truechain)
   END
@@ -917,7 +1118,7 @@ END Assert;
 
 PROCEDURE Copy*(VAR x, y, z: Argument);
 BEGIN
-  ws(",");  wi(y.unique);  ws(",");  wi(z.unique); wsn(")");
+  wsn("copy")
 END Copy;
 
 
@@ -926,7 +1127,7 @@ END Copy;
 PROCEDURE Not*(VAR x: Argument);   (* x := ~x *)
 VAR t: Jump;
 BEGIN
-  IF ~(x IS ConditionArg) THEN Dyadic(OpTestNZ, x, NIL) END;
+  IF ~(x IS ConditionArg) THEN Operation(OpTestNZ, x, NIL) END;
   ASSERT(x IS ConditionArg);
   CASE x OF ConditionArg:
     x.val := InvertedCondition(x.val);
@@ -934,21 +1135,21 @@ BEGIN
   END
 END Not;
 
-PROCEDURE MergeChain(falsechain, truechain: Jump): Jump;
-(* Returns falsechain + truechain *)
+PROCEDURE MergeChain(chain1, chain2: Jump): Jump;
+(* Returns chain1 + chain2 *)
 VAR p: Jump;
 BEGIN
-  IF falsechain = NIL THEN falsechain := truechain
-  ELSIF truechain # NIL THEN
-    p := falsechain; WHILE p.next # NIL DO p := p.next(Jump) END;
-    p.next := truechain
+  IF chain1 = NIL THEN chain1 := chain2
+  ELSIF chain2 # NIL THEN
+    p := chain1; WHILE p.also # NIL DO p := p.also(Jump) END;
+    p.also := chain2
   END
-RETURN falsechain END MergeChain;
+RETURN chain1 END MergeChain;
 
 PROCEDURE And1*(VAR x: Argument);   (* x := x & *)
 BEGIN
   (*ws("And1("); wi(x.unique); wsn(").");*)
-  IF ~(x IS ConditionArg) THEN Dyadic(OpTestNZ, x, NIL) END;
+  IF ~(x IS ConditionArg) THEN Operation(OpTestNZ, x, NIL) END;
   ASSERT(x IS ConditionArg);
   CASE x OF ConditionArg:
     JumpForward(x.falsechain, InvertedCondition(x.val));
@@ -959,7 +1160,7 @@ END And1;
 PROCEDURE And2*(VAR x, y: Argument);   (* x := x & y *)
 BEGIN
   (*ws("And2("); wi(x.unique); ws(","); wi(y.unique); wsn(").");*)
-  IF ~(y IS ConditionArg) THEN Dyadic(OpTestNZ, y, NIL) END;
+  IF ~(y IS ConditionArg) THEN Operation(OpTestNZ, y, NIL) END;
   ASSERT(x IS ConditionArg);  ASSERT(y IS ConditionArg);
   CASE x OF ConditionArg:  CASE y OF ConditionArg:
     x.falsechain := MergeChain(y.falsechain, x.falsechain);
@@ -971,7 +1172,7 @@ END And2;
 PROCEDURE Or1*(VAR x: Argument);   (* x := x OR *)
 BEGIN
   (*ws("Or1("); wi(x.unique); wsn(").");*)
-  IF ~(x IS ConditionArg) THEN Dyadic(OpTestNZ, x, NIL) END;
+  IF ~(x IS ConditionArg) THEN Operation(OpTestNZ, x, NIL) END;
   ASSERT(x IS ConditionArg);
   CASE x OF ConditionArg:
     JumpForward(x.truechain, x.val);
@@ -982,7 +1183,7 @@ END Or1;
 PROCEDURE Or2*(VAR x, y: Argument);   (* x := x OR y *)
 BEGIN
   (*ws("Or2("); wi(x.unique); ws(","); wi(y.unique); wsn(").");*)
-  IF ~(y IS ConditionArg) THEN Dyadic(OpTestNZ, y, NIL) END;
+  IF ~(y IS ConditionArg) THEN Operation(OpTestNZ, y, NIL) END;
   ASSERT(x IS ConditionArg);  ASSERT(y IS ConditionArg);
   CASE x OF ConditionArg:  CASE y OF ConditionArg:
     x.falsechain := y.falsechain;
@@ -997,8 +1198,8 @@ END Or2;
 PROCEDURE MarkLoopStart*(): Label;
 VAR target: Label;
 BEGIN
-  NEW(target);  target.label := Labelnum;  INC(Labelnum);
-  Ops.next := target;  Ops := target;
+  NEW(target);  target.addr := OpAddr;  INC(OpAddr);
+  Ops.next := target;  target.prev := Ops;  Ops := target;
 RETURN target END MarkLoopStart;
 
 PROCEDURE CheckRegs*;
@@ -1009,25 +1210,25 @@ END CheckRegs;
 
 PROCEDURE For0*(VAR var, ctl: Argument); (* ctl is initial value *)
 BEGIN
-  ws("For0(var ");  wi(var.unique);
-  ws(", ctl ");     wi(ctl.unique);  wsn(")");
+  ws("For0(var ");  wArgument(var);
+  ws(", ctl ");     wArgument(ctl);  wsn(")");
 END For0;
 
 
 PROCEDURE For1*(VAR var, ctl, lim, inc: Argument; VAR l: Jump);
 BEGIN
-  ws("For1(var ");  wi(var.unique);
-  ws(", ctl ");     wi(ctl.unique);
-  ws(", lim ");     wi(lim.unique);
-  ws(", inc ");     wi(inc.unique);  wsn(")");
+  ws("For1(var ");  wArgument(var);
+  ws(", ctl ");     wArgument(ctl);
+  ws(", lim ");     wArgument(lim);
+  ws(", inc ");     wArgument(inc);  wsn(")");
 END For1;
 
 
 PROCEDURE For2*(VAR var, ctl, inc: Argument);
 BEGIN
-  ws("For2(var ");  wi(var.unique);
-  ws(", ctl ");     wi(ctl.unique);
-  ws(", inc ");     wi(inc.unique); wsn(")");
+  ws("For2(var ");  wArgument(var);
+  ws(", ctl ");     wArgument(ctl);
+  ws(", inc ");     wArgument(inc); wsn(")");
 END For2;
 
 
@@ -1040,7 +1241,7 @@ END BuildTD;
 
 PROCEDURE TypeTest*(VAR x: Argument; T: OXB.Type; varpar, isguard: BOOLEAN);
 BEGIN
-  ws("TypeTest(");  wi(x.unique); wsn(")");
+  ws("TypeTest(");  wArgument(x); wsn(")");
 END TypeTest;
 
 
@@ -1084,15 +1285,14 @@ END Close;
 BEGIN
   Texts.OpenWriter(W);
   wsn("OX Generator DCWB 2024-08-11");
-  Unique   := 0;
-  Internum := 0;
-  Labelnum := 0;
-  TextAdr  := 0;
-  StrCnt   := 0;
-  Ops      := NIL;
+  Labelnum       := 0;
+  TextAdr        := 0;
+  StrCnt         := 0;
+  Ops            := NIL;
+  OpAddr         := 0;
   SavedStringDup := 0;
   StringBytes    := 0;
-  DupStrings := 0;
-  ConstArg0 := NewArg(Const, 0, 0, 0, OXB.intType);
-  ConstArg1 := NewArg(Const, 1, 0, 0, OXB.intType);
+  DupStrings     := 0;
+  ConstArg0      := NewArg(Const, 0, 0, 0, OXB.intType);
+  ConstArg1      := NewArg(Const, 1, 0, 0, OXB.intType);
 END OXG.

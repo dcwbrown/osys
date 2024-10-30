@@ -162,6 +162,7 @@ VAR
   FirstPreload: EmbeddedModule;
   LastPreload:  EmbeddedModule;
   PreloadSize:  INTEGER;
+  HasGui:       BOOLEAN;    (* If preload includes Gui.Mod *)
 
   (* Section ".idata" - imports from Windows OS *)
   Idt:            ImportDirectoryTable;
@@ -318,7 +319,8 @@ BEGIN
   hdr.majorSubsystemVersion   := 5;
   hdr.sizeOfImage             := RvaModules + PageAlign(Core.Size); (* + 1000H;*) (*Align(ModuleSize, MemoryAlignment);*)
   hdr.sizeOfHeaders           := HeaderSize;
-  hdr.subsystem               := 3;      (* Console *)
+  IF HasGui THEN hdr.subsystem := 2 ELSE hdr.subsystem := 3 END;
+(*hdr.subsystem               := 3;*)    (* Console *)
 (*hdr.subsystem               := 2;*)    (* Windows *)
   hdr.dllCharacteristics      := 400H;   (* No SEH *)
   hdr.sizeOfStackReserve      := 1000H;
@@ -570,7 +572,7 @@ BEGIN
   H.ZeroFill(Idt);
 
   (* **NOTE** these imports must be in exactly the same order as the *)
-  (* corresponding procedure variable declarations in Host.Mod.       *)
+  (* corresponding procedure variable declarations in *.Host.Mod.    *)
 
   Idt.Kernel32LookupTable := RvaImport + FieldRVA(Idt.Kernel32Lookups);
   Idt.Kernel32Dllnameadr  := RvaImport + FieldRVA(Idt.Kernel32Dllname);
@@ -1291,6 +1293,7 @@ BEGIN
           wsn(" is not a whole multiple of 16.");
           ASSERT(FALSE)
         ELSE
+          HasGui := HasGui OR (name = "Gui");
           SetFilePos(r, f, (SYSTEM.SIZE(Modules.ModDesc) + 15) DIV 16 * 16);
           Files.ReadString(r, imp);
           WHILE imp[0] # 0X DO
@@ -1395,4 +1398,5 @@ BEGIN
   FirstPreload := NIL;
   LastPreload  := NIL;
   PreloadSize  := 0;
+  HasGui       := FALSE;
 END Link.

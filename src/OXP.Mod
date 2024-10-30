@@ -30,9 +30,9 @@ VAR
 
 
 PROCEDURE wn; BEGIN Texts.WriteLn(W); Texts.Append(Texts.Log, W.buf) END wn;
-PROCEDURE ws (s: ARRAY OF CHAR); BEGIN Texts.WriteString(W, s)     END ws;
-PROCEDURE wsn(s: ARRAY OF CHAR); BEGIN Texts.WriteString(W, s); wn END wsn;
-PROCEDURE wi (i: INTEGER);       BEGIN Texts.WriteInt(W, i, 1)     END wi;
+PROCEDURE ws (s: ARRAY OF CHAR); BEGIN Texts.WriteString(W, s)       END ws;
+PROCEDURE wsn(s: ARRAY OF CHAR); BEGIN Texts.WriteString(W, s); wn   END wsn;
+PROCEDURE wi (i: INTEGER);       BEGIN Texts.WriteInt(W, i, 1)       END wi;
 
 
 PROCEDURE Check(s: INTEGER;  msg: ARRAY OF CHAR);
@@ -167,7 +167,7 @@ BEGIN
     IF sym = ORS.lbrak THEN
       REPEAT ORS.Get(sym);  expression(y);
         IF x.type.form = OXB.Array THEN
-          CheckInt(y);  OXG.Dyadic(OXG.OpIndex, x, y);  x.type := x.type.base
+          CheckInt(y);  OXG.Operation(OXG.OpIndex, x, y);  x.type := x.type.base
         ELSE ORS.Mark("not an array")
         END
       UNTIL sym # ORS.comma;
@@ -177,7 +177,7 @@ BEGIN
         IF x.type.form = OXB.Pointer THEN OXG.DeRef(x);  x.type := x.type.base END;
         IF x.type.form = OXB.Record THEN
           obj := OXB.thisfield(x.type);  ORS.Get(sym);
-          IF obj # NIL THEN OXG.Dyadic(OXG.OpField, x, OXG.MakeArgument(obj, Level));  x.type := obj.type
+          IF obj # NIL THEN OXG.Operation(OXG.OpField, x, OXG.MakeArgument(obj, Level));  x.type := obj.type
           ELSE ORS.Mark("undef")
           END
         ELSE ORS.Mark("not a record")
@@ -242,27 +242,27 @@ BEGIN
     varpar := par.class = OXB.RefPar;
     IF CompTypes(par.type, x.type, varpar) THEN
       IF ~varpar THEN
-        OXG.Dyadic(OXG.OpValueParam, x, y)
+        OXG.Operation(OXG.OpValueParam, x, y)
       ELSE (*par.class = RefPar*)
         IF ~par.rdo THEN CheckReadOnly(x) END;
-        OXG.Dyadic(OXG.OpVarParam, x, y);
+        OXG.Operation(OXG.OpVarParam, x, y);
       END
     ELSIF (x.type.form = OXB.Array)     & (par.type.form = OXB.Array)
         & (x.type.base = par.type.base) & (par.type.len < 0) THEN
       IF ~par.rdo THEN CheckReadOnly(x) END;
-      OXG.Dyadic(OXG.OpOpenArrParam, x, y)
+      OXG.Operation(OXG.OpOpenArrParam, x, y)
     ELSIF (x.type.form = OXB.StrAdr) & varpar & par.rdo
         & (par.type.form = OXB.Array) & (par.type.base.form = OXB.Char)
         & (par.type.len < 0) THEN
-      OXG.Dyadic(OXG.OpStringParam, x, y)
+      OXG.Operation(OXG.OpStringParam, x, y)
     ELSIF ~varpar & (par.type.form = OXB.Int64) & (x.type.form = OXB.Int64) THEN
-      OXG.Dyadic(OXG.OpValueParam, x, y)  (* Integer types interop *)
+      OXG.Operation(OXG.OpValueParam, x, y)  (* Integer types interop *)
     ELSIF OXG.IsSingleCharacterString(x)
         & (par.class = OXB.ValPar) & (par.type.form = OXB.Char) THEN
-      OXG.StrToChar(x);  OXG.Dyadic(OXG.OpValueParam, x, y)
+      OXG.StrToChar(x);  OXG.Operation(OXG.OpValueParam, x, y)
     ELSIF (par.type.form = OXB.Array) & (par.type.base = OXB.byteType) & (par.type.len < 0) THEN
       IF ~par.rdo THEN CheckReadOnly(x) END;
-      OXG.Dyadic(OXG.OpByteArrParam, x, y)  (* Can pass anything to a dynamic array of byte *)
+      OXG.Operation(OXG.OpByteArrParam, x, y)  (* Can pass anything to a dynamic array of byte *)
     ELSE
       ORS.Mark("incompatible parameters");
     END
@@ -300,34 +300,34 @@ BEGIN Check(ORS.lparen, "no (");
   Check(ORS.rparen, "no )");
   IF n = npar THEN
     IF    fct = 0 THEN (*ABS*)   IF x.type.form IN {OXB.Int64, OXB.Real} THEN
-                                   OXG.Monadic(OXG.OpAbs, x);  restyp := x.type
+                                   OXG.Operation(OXG.OpAbs, x, NIL);  restyp := x.type
                                  ELSE ORS.Mark("bad type") END
-    ELSIF fct = 1 THEN (*ODD*)   CheckInt(x);   OXG.Monadic(OXG.OpOdd,   x)
-    ELSIF fct = 2 THEN (*FLOOR*) CheckReal(x);  OXG.Monadic(OXG.OpFloor, x)
-    ELSIF fct = 3 THEN (*FLT*)   CheckInt(x);   OXG.Monadic(OXG.OpFloat, x)
-    ELSIF fct = 4 THEN (*ORD*)   IF x.type.form <= OXB.ProcAdr THEN OXG.Monadic(OXG.OpOrd, x)
+    ELSIF fct = 1 THEN (*ODD*)   CheckInt(x);   OXG.Operation(OXG.OpOdd,   x, NIL)
+    ELSIF fct = 2 THEN (*FLOOR*) CheckReal(x);  OXG.Operation(OXG.OpFloor, x, NIL)
+    ELSIF fct = 3 THEN (*FLT*)   CheckInt(x);   OXG.Operation(OXG.OpFloat, x, NIL)
+    ELSIF fct = 4 THEN (*ORD*)   IF x.type.form <= OXB.ProcAdr THEN OXG.Operation(OXG.OpOrd, x, NIL)
                                  ELSIF OXG.IsSingleCharacterString(x) THEN OXG.StrToChar(x)
                                  ELSE ORS.Mark("bad type")
                                  END
-    ELSIF fct = 5 THEN (*CHR*)   CheckInt(x);  OXG.Monadic(OXG.OpOrd, x)
-    ELSIF fct = 6 THEN (*LEN*)   IF x.type.form = OXB.Array THEN OXG.Monadic(OXG.OpLen, x)
+    ELSIF fct = 5 THEN (*CHR*)   CheckInt(x);  OXG.Operation(OXG.OpOrd, x, NIL)
+    ELSIF fct = 6 THEN (*LEN*)   IF x.type.form = OXB.Array THEN OXG.Operation(OXG.OpLen, x, NIL)
                                  ELSE ORS.Mark("not an array") END
     ELSIF fct IN {7, 8, 9} THEN (*LSL, ASR, ROR*)
                                  CheckInt(y);
                                  IF x.type.form IN {OXB.Int64, OXB.Set} THEN
-                                   OXG.Dyadic(OXG.OpLSL + fct - 7, x, y);  restyp := x.type
+                                   OXG.Operation(OXG.OpLSL + fct - 7, x, y);  restyp := x.type
                                  ELSE ORS.Mark("bad type") END
-    ELSIF fct = 11 THEN (*ADC*)  OXG.Dyadic(OXG.OpADC, x, y)
-    ELSIF fct = 12 THEN (*SBC*)  OXG.Dyadic(OXG.OpSBC, x, y)
-    ELSIF fct = 13 THEN (*UML*)  OXG.Dyadic(OXG.OpUML, x, y)
-    ELSIF fct = 14 THEN (*BIT*)  CheckInt(x);    CheckInt(y);  OXG.Dyadic(OXG.OpBit, x, y)
-    ELSIF fct = 15 THEN (*REG*)  CheckConst(x);  CheckInt(x);  OXG.Monadic(OXG.OpREG, x)
+    ELSIF fct = 11 THEN (*ADC*)  OXG.Operation(OXG.OpADC, x, y)
+    ELSIF fct = 12 THEN (*SBC*)  OXG.Operation(OXG.OpSBC, x, y)
+    ELSIF fct = 13 THEN (*UML*)  OXG.Operation(OXG.OpUML, x, y)
+    ELSIF fct = 14 THEN (*BIT*)  CheckInt(x);    CheckInt(y);  OXG.Operation(OXG.OpBit, x, y)
+    ELSIF fct = 15 THEN (*REG*)  CheckConst(x);  CheckInt(x);  OXG.Operation(OXG.OpREG, x, NIL)
     ELSIF fct = 16 THEN (*VAL*)  IF x.type.size <= y.type.size THEN restyp := x.type;  x := y
                                  ELSE ORS.Mark("casting not allowed") END
-    ELSIF fct = 17 THEN (*ADR*)  OXG.Monadic(OXG.OpAdr, x)
+    ELSIF fct = 17 THEN (*ADR*)  OXG.Operation(OXG.OpAdr, x, NIL)
     ELSIF fct = 18 THEN (*SIZE*) IF x.class = OXB.Typ THEN x := OXG.NewArg(OXB.Const, x.type.size, 0, 0, OXB.intType)
                                  ELSE ORS.Mark("must be a type") END
-    ELSIF fct = 19 THEN (*COND*) CheckConst(x);  CheckInt(x);  OXG.Monadic(OXG.OpCond, x)
+    ELSIF fct = 19 THEN (*COND*) CheckConst(x);  CheckInt(x);  OXG.Operation(OXG.OpCond, x, NIL)
     END;
     x.type := restyp
   ELSE ORS.Mark("wrong nof params")
@@ -338,9 +338,9 @@ PROCEDURE element(VAR x: OXG.Argument);
 VAR y: OXG.Argument;
 BEGIN expression(x);  CheckSetVal(x);
   IF sym = ORS.upto THEN
-    ORS.Get(sym);  expression(y);  CheckSetVal(y);  OXG.Dyadic(OXG.OpSetRange, x, y)
+    ORS.Get(sym);  expression(y);  CheckSetVal(y);  OXG.Operation(OXG.OpSetRange, x, y)
   ELSE
-    OXG.Monadic(OXG.OpSetSingleton, x)
+    OXG.Operation(OXG.OpSetSingleton, x, NIL)
   END;
   x.type := OXB.setType
 END element;
@@ -356,7 +356,7 @@ BEGIN
       IF    sym = ORS.comma  THEN ORS.Get(sym)
       ELSIF sym # ORS.rbrace THEN ORS.Mark("missing comma")
       END;
-      element(y);  OXG.Dyadic(OXG.OpSetOr, x, y)
+      element(y);  OXG.Operation(OXG.OpSetOr, x, y)
     END
   END
 END set;
@@ -403,18 +403,18 @@ BEGIN factor(x); f := x.type.form;
   WHILE (sym >= ORS.times) & (sym <= ORS.and) DO
     op := sym;  ORS.Get(sym);
     IF op = ORS.times THEN
-      IF    f = OXB.Int64 THEN factor(y);  CheckInt(y);   OXG.Dyadic(OXG.OpIntMultiply, x, y)
-      ELSIF f = OXB.Real  THEN factor(y);  CheckReal(y);  OXG.Dyadic(OXG.OpRealMultiply, x, y)
-      ELSIF f = OXB.Set   THEN factor(y);  CheckSet(y);   OXG.Dyadic(OXG.OpSetAnd, x, y)
+      IF    f = OXB.Int64 THEN factor(y);  CheckInt(y);   OXG.Operation(OXG.OpIntMultiply, x, y)
+      ELSIF f = OXB.Real  THEN factor(y);  CheckReal(y);  OXG.Operation(OXG.OpRealMultiply, x, y)
+      ELSIF f = OXB.Set   THEN factor(y);  CheckSet(y);   OXG.Operation(OXG.OpSetAnd, x, y)
       ELSE ORS.Mark("bad type")
       END
     ELSIF (op = ORS.div) OR (op = ORS.mod) THEN
-      CheckInt(x);  factor(y);  CheckInt(y);  IF op = ORS.div THEN OXG.Dyadic(OXG.OpIntDivide,  x, y)
-                                              ELSE                 OXG.Dyadic(OXG.OpIntModulus, x, y)
+      CheckInt(x);  factor(y);  CheckInt(y);  IF op = ORS.div THEN OXG.Operation(OXG.OpIntDivide,  x, y)
+                                              ELSE                 OXG.Operation(OXG.OpIntModulus, x, y)
                                               END
     ELSIF op = ORS.rdiv THEN
-      IF    f = OXB.Real THEN factor(y);  CheckReal(y);  OXG.Dyadic(OXG.OpRealDivide, x, y)
-      ELSIF f = OXB.Set  THEN factor(y);  CheckSet(y);   OXG.Dyadic(OXG.OpSetXor, x, y)
+      IF    f = OXB.Real THEN factor(y);  CheckReal(y);  OXG.Operation(OXG.OpRealDivide, x, y)
+      ELSIF f = OXB.Set  THEN factor(y);  CheckSet(y);   OXG.Operation(OXG.OpSetXor, x, y)
       ELSE ORS.Mark("bad type")
       END
     ELSE (*op = and*) CheckBool(x);  OXG.And1(x);  factor(y);  CheckBool(y);  OXG.And2(x, y)
@@ -426,9 +426,9 @@ PROCEDURE SimpleExpression(VAR x: OXG.Argument);
 VAR y: OXG.Argument;  op: INTEGER;
 BEGIN
   IF sym = ORS.minus THEN ORS.Get(sym); term(x);
-    IF    x.type.form = OXB.Int64 THEN OXG.Monadic(OXG.OpNegate,     x)
-    ELSIF x.type.form = OXB.Real  THEN OXG.Monadic(OXG.OpRealNegate, x)
-    ELSIF x.type.form = OXB.Set   THEN OXG.Monadic(OXG.OpInvert,     x)
+    IF    x.type.form = OXB.Int64 THEN OXG.Operation(OXG.OpNegate,     x, NIL)
+    ELSIF x.type.form = OXB.Real  THEN OXG.Operation(OXG.OpRealNegate, x, NIL)
+    ELSIF x.type.form = OXB.Set   THEN OXG.Operation(OXG.OpInvert,     x, NIL)
     ELSE CheckInt(x) END
   ELSIF sym = ORS.plus THEN ORS.Get(sym); term(x);
   ELSE term(x)
@@ -438,11 +438,11 @@ BEGIN
     IF op = ORS.or THEN CheckBool(x);  term(y);  CheckBool(y);
       OXG.Or1(x);  OXG.Or2(x, y)
     ELSIF x.type.form = OXB.Int64 THEN term(y);  CheckInt(y);
-      OXG.Dyadic(OXG.OpIntPlus + op - ORS.plus, x, y)
+      OXG.Operation(OXG.OpIntPlus + op - ORS.plus, x, y)
     ELSIF x.type.form = OXB.Real THEN term(y);  CheckReal(y);
-      OXG.Dyadic(OXG.OpRealPlus + op - ORS.plus, x, y)
+      OXG.Operation(OXG.OpRealPlus + op - ORS.plus, x, y)
     ELSE CheckSet(x);  term(y);  CheckSet(y);
-      OXG.Dyadic(OXG.OpSetOr + op - ORS.plus, x, y)
+      OXG.Operation(OXG.OpSetOr + op - ORS.plus, x, y)
     END
   END
 END SimpleExpression;
@@ -454,17 +454,17 @@ BEGIN SimpleExpression(x);
     rel := sym;  ORS.Get(sym);  SimpleExpression(y);  xf := x.type.form;  yf := y.type.form;
     IF x.type = y.type THEN
       IF (xf IN {OXB.Char, OXB.Int64}) THEN
-        OXG.Dyadic(OXG.OpIntEql + rel - ORS.eql, x, y)
+        OXG.Operation(OXG.OpIntEql + rel - ORS.eql, x, y)
       ELSIF xf = OXB.Real THEN
-        OXG.Dyadic(OXG.OpRealEql + rel - ORS.eql, x, y)
+        OXG.Operation(OXG.OpRealEql + rel - ORS.eql, x, y)
       ELSIF (xf IN {OXB.Set, OXB.Pointer, OXB.ProcAdr, OXB.NilTyp, OXB.Bool}) THEN
         IF rel <= ORS.neq THEN
-          OXG.Dyadic(OXG.OpIntEql + rel - ORS.eql, x, y)
+          OXG.Operation(OXG.OpIntEql + rel - ORS.eql, x, y)
         ELSE
           ORS.Mark("only = or #")
         END
       ELSIF (xf = OXB.Array) & (x.type.base.form = OXB.Char) OR (xf = OXB.StrAdr) THEN
-        OXG.Dyadic(OXG.OpStringEql + rel - ORS.eql, x, y)
+        OXG.Operation(OXG.OpStringEql + rel - ORS.eql, x, y)
       ELSE
         ORS.Mark("illegal comparison")
       END
@@ -472,7 +472,7 @@ BEGIN SimpleExpression(x);
        OR (yf IN {OXB.Pointer, OXB.ProcAdr}) & (xf = OXB.NilTyp) THEN
       IF rel <= ORS.neq
         THEN
-          OXG.Dyadic(OXG.OpIntEql + rel - ORS.eql, x, y)
+          OXG.Operation(OXG.OpIntEql + rel - ORS.eql, x, y)
         ELSE
           ORS.Mark("only = or #")
         END
@@ -480,27 +480,27 @@ BEGIN SimpleExpression(x);
        OR IsExtension(y.type.base, x.type.base))
        OR (xf = OXB.ProcAdr) & (yf = OXB.ProcAdr) & EqualSignatures(x.type, y.type) THEN
       IF rel <= ORS.neq THEN
-        OXG.Dyadic(OXG.OpIntEql + rel - ORS.eql, x, y)
+        OXG.Operation(OXG.OpIntEql + rel - ORS.eql, x, y)
       ELSE
         ORS.Mark("only = or #")
       END
     ELSIF (xf = OXB.Array) & (x.type.base.form = OXB.Char)
         & ((yf = OXB.StrAdr) OR (yf = OXB.Array) & (y.type.base.form = OXB.Char))
         OR (yf = OXB.Array) & (y.type.base.form = OXB.Char) & (xf = OXB.StrAdr) THEN
-      OXG.Dyadic(OXG.OpStringEql + rel - ORS.eql, x, y)
+      OXG.Operation(OXG.OpStringEql + rel - ORS.eql, x, y)
     ELSIF (xf = OXB.Char) & OXG.IsSingleCharacterString(y) THEN
-      OXG.StrToChar(y);  OXG.Dyadic(OXG.OpIntEql + rel - ORS.eql, x, y)
+      OXG.StrToChar(y);  OXG.Operation(OXG.OpIntEql + rel - ORS.eql, x, y)
     ELSIF (yf = OXB.Char) & OXG.IsSingleCharacterString(x) THEN
-      OXG.StrToChar(x);  OXG.Dyadic(OXG.OpIntEql + rel - ORS.eql, x, y)
+      OXG.StrToChar(x);  OXG.Operation(OXG.OpIntEql + rel - ORS.eql, x, y)
     ELSIF (xf = OXB.Int64) & (yf = OXB.Int64) THEN
-      OXG.Dyadic(OXG.OpIntEql + rel - ORS.eql, x, y)  (*BYTE*)
+      OXG.Operation(OXG.OpIntEql + rel - ORS.eql, x, y)  (*BYTE*)
     ELSE
       ORS.Mark("illegal comparison")
     END;
     (*x.type := OXB.boolType*)
   ELSIF sym = ORS.in THEN
     ORS.Get(sym);  CheckInt(x);  SimpleExpression(y);  CheckSet(y);
-    OXG.Dyadic(OXG.OpIn, x, y);  x.type := OXB.boolType
+    OXG.Operation(OXG.OpIn, x, y);  x.type := OXB.boolType
   ELSIF sym = ORS.is THEN
     ORS.Get(sym);  qualident(obj);
     TypeTest(x, obj.type, FALSE);  x.type := OXB.boolType
@@ -527,25 +527,25 @@ BEGIN
   IF (npar = nap) OR (pno IN {0, 1}) THEN
     IF pno IN {0, 1} THEN (*INC, DEC*)
       CheckInt(x);  CheckReadOnly(x);  IF y # NIL THEN CheckInt(y) END;
-      OXG.Dyadic(OXG.OpInc + pno, x, y)
+      OXG.Operation(OXG.OpInc + pno, x, y)
     ELSIF pno IN {2, 3} THEN (*INCL, EXCL*)
       CheckSet(x);  CheckReadOnly(x);  CheckInt(y);
-      OXG.Dyadic(OXG.OpSetIncl + pno-2, x, y)
+      OXG.Operation(OXG.OpSetIncl + pno-2, x, y)
     ELSIF pno = 4 THEN CheckBool(x);  OXG.Assert(x)
     ELSIF pno = 5 THEN(*NEW*) CheckReadOnly(x);
        IF (x.type.form = OXB.Pointer) & (x.type.base.form = OXB.Record) THEN
-         OXG.Monadic(OXG.OpNew, x)
+         OXG.Operation(OXG.OpNew, x, NIL)
        ELSE
          ORS.Mark("not a pointer to record")
        END
-    ELSIF pno = 6  THEN CheckReal(x);  CheckInt(y);  CheckReadOnly(x);  OXG.Dyadic(OXG.OpPack, x, y)
-    ELSIF pno = 7  THEN CheckReal(x);  CheckInt(y);  CheckReadOnly(x);  OXG.Dyadic(OXG.OpUnpack, x, y)
-    ELSIF pno = 8  THEN IF x.type.form <= OXB.Set THEN OXG.Monadic(OXG.OpLed, x) ELSE ORS.Mark("bad type") END
-    ELSIF pno = 10 THEN CheckInt(x);  OXG.Dyadic(OXG.OpGet, x, y)
-    ELSIF pno = 11 THEN CheckInt(x);  OXG.Dyadic(OXG.OpPut, x, y)
+    ELSIF pno = 6  THEN CheckReal(x);  CheckInt(y);  CheckReadOnly(x);  OXG.Operation(OXG.OpPack, x, y)
+    ELSIF pno = 7  THEN CheckReal(x);  CheckInt(y);  CheckReadOnly(x);  OXG.Operation(OXG.OpUnpack, x, y)
+    ELSIF pno = 8  THEN IF x.type.form <= OXB.Set THEN OXG.Operation(OXG.OpLed, x, NIL) ELSE ORS.Mark("bad type") END
+    ELSIF pno = 10 THEN CheckInt(x);  OXG.Operation(OXG.OpGet, x, y)
+    ELSIF pno = 11 THEN CheckInt(x);  OXG.Operation(OXG.OpPut, x, y)
     ELSIF pno = 12 THEN CheckInt(x);  CheckInt(y);  CheckInt(z);  OXG.Copy(x, y, z)
     (*ELSIF pno = 13 THEN CheckConst(x);  CheckInt(x);  OXG.LDPSR(x)*)
-    ELSIF pno = 14 THEN CheckInt(x);  OXG.Dyadic(OXG.OpLoadReg, x, y)
+    ELSIF pno = 14 THEN CheckInt(x);  OXG.Operation(OXG.OpLoadReg, x, y)
     ELSE ORS.Mark("Standard procedure not implement")
     END
   ELSE ORS.Mark("wrong number of parameters")
@@ -1092,7 +1092,7 @@ BEGIN ORS.Get(sym);
       (* Compile procedure body *)
       (*wn; ws("["); wi(ORS.linenum); ws("] PROCEDURE "); ws(procid); wsn("."); wn;*)
       x := OXG.MakeArgument(proc, Level);
-      OXG.Monadic(OXG.OpEnter, x);
+      OXG.Enter(x);
       IF sym = ORS.begin THEN ORS.Get(sym);  StatSequence END;
       IF sym = ORS.return THEN
         ORS.Get(sym);  expression(y);
@@ -1108,7 +1108,7 @@ BEGIN ORS.Get(sym);
         ORS.Get(sym)
       ELSE ORS.Mark("no proc id")
       END;
-      OXG.Dyadic(OXG.OpReturn, x, y);
+      OXG.Operation(OXG.OpReturn, x, y);
 
       (* Having generated pseudode we can now determine storage of *)
       (* local variables, intermediate values and parameters.      *)
@@ -1145,9 +1145,8 @@ VAR
   exno:   INTEGER;
   obj:    OXB.Object;
   start:  INTEGER;
-  x:      OXG.Argument;
 BEGIN
-  start := H.Time();
+  start := H.Ticks();
   Texts.WriteString(W, "  compiling ");
   ORS.Get(sym);
   IF sym # ORS.module THEN
@@ -1169,13 +1168,13 @@ BEGIN
       Check(ORS.semicolon, "; missing")
     END;
     OXG.Open(modid);
-    Declarations(OXB.ModVar);
+    Declarations(OXB.GlobVar);
 
     (* Allocate global variable addresses *)
     VarSize := 0;
     obj := OXB.topScope.next;
     WHILE obj # NIL DO
-      IF obj.class = OXB.ModVar THEN
+      IF obj.class = OXB.GlobVar THEN
         Align(VarSize, obj.type.size);  obj.val := VarSize;  INC(VarSize, obj.type.size)
       END;
       obj := obj.next
@@ -1184,8 +1183,7 @@ BEGIN
     OXG.SetDataSize((VarSize + 7) DIV 8 * 8);
     WHILE sym = ORS.procedure DO ProcedureDecl; Check(ORS.semicolon, "no ;") END;
 
-    x := NIL;
-    OXG.Monadic(OXG.OpEnter, x);
+    OXG.Enter(NIL);
 
     IF sym = ORS.begin THEN ORS.Get(sym);  StatSequence END;
     Check(ORS.end, "no END");
@@ -1219,7 +1217,7 @@ BEGIN
       IF newsymbols THEN Texts.WriteString(W, " new symbol file") END;
       OXG.Close(modid, key, exno);
       (*Texts.WriteInt(W, X64.PC, 6);*)  Texts.WriteInt(W, VarSize, 6);  Texts.WriteHex(W, key);
-      Texts.WriteInt(W, (H.Time() - start) DIV 10000, 4); Texts.WriteString(W, "ms")
+      Texts.WriteInt(W, (H.Ticks() - start) DIV 10000, 4); Texts.WriteString(W, "ms")
     ELSE
       Texts.WriteLn(W);  Texts.WriteString(W, "compilation FAILED");
       H.SetExitCode(1)
@@ -1274,6 +1272,6 @@ END Compile;
 BEGIN
   Texts.OpenWriter(W); Texts.WriteString(W, "OX Compiler  DCWB 2024-08-10, NW 8.3.2020 ");
   Texts.WriteLn(W); Texts.Append(Texts.Log, W.buf);
-  NEW(dummy);  dummy.class := OXB.ModVar;  dummy.type := OXB.intType;
+  NEW(dummy);  dummy.class := OXB.GlobVar;  dummy.type := OXB.intType;
   expression := expression0;  Type := Type0;  FormalType := FormalType0;
 END OXP.

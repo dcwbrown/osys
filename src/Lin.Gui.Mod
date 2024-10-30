@@ -512,8 +512,8 @@ VAR bytecount: INTEGER;
 BEGIN
   ASSERT(Width MOD 8 = 0);
   bytecount := Width DIV 8;
-  SendByte(72);    (* command *)
-  SendByte(0);     (* format 0: 1 bit per pixel *)
+  SendByte(72);       (* command PutImage *)
+  SendByte(0);        (* format 0: Bitmap *)
   SendWord((bytecount + 3) DIV 4 + 6);
   SendDWord(Window);  SendDWord(Context);
   SendWord(Width);    SendWord(1);
