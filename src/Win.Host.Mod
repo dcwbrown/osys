@@ -35,8 +35,6 @@ CONST
   MEMCOMMIT            = 1000H;
   PAGEEXECUTEREADWRITE = 40H;
 
-  HostName* = "Windows";
-
 
 TYPE
   (* -------------------- Windows exception structures -------------------- *)
@@ -1271,7 +1269,7 @@ BEGIN
   AllocPtr  := Preload.CoreAdr + Preload.CoreSize;
   CommitLen := (Preload.CoreSize + 0FFFFH) DIV 10000H * 10000H;
 
-  (* Reserve memroy beyond committed up to 2GB *)
+  (* Reserve memory beyond committed up to 2GB *)
   reserveadr := Preload.CoreAdr + CommitLen;
   reservelen := 80000000H - CommitLen;
   res := VirtualAlloc(reserveadr, reservelen, MEMRESERVE, PAGEEXECUTEREADWRITE);

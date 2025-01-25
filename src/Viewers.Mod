@@ -3,7 +3,8 @@ MODULE Viewers; (*JG 14.9.90 / NW 15.9.2013*)
 
   CONST restore* = 0; modify* = 1; suspend* = 2; (*message ids*)
     inf = 65535;
-    titlebargap = 2;
+    titlebargap  = 2;
+    titlebartop* = 2;
 
   TYPE Viewer* = POINTER TO ViewerDesc;
     ViewerDesc* = RECORD (Display.FrameDesc) state*: INTEGER END;
@@ -26,8 +27,10 @@ MODULE Viewers; (*JG 14.9.90 / NW 15.9.2013*)
 
   PROCEDURE AllocateTitleViewer*(V: Viewer);
   BEGIN TitleViewer := V;
-    V.X := 0;                 V.W := Display.Width;
-    V.Y := DH + titlebargap;  V.H := Display.Height - DH - titlebargap
+    V.X := 2;
+    V.W := Display.Width-4;
+    V.Y := DH + titlebargap;
+    V.H := Display.Height - DH - titlebargap - titlebartop
   END AllocateTitleViewer;
 
   PROCEDURE Open* (V: Viewer; X, Y: INTEGER);
@@ -208,7 +211,9 @@ MODULE Viewers; (*JG 14.9.90 / NW 15.9.2013*)
   END Broadcast;
 
 BEGIN backup := NIL; curW := 0; minH := 1;
-  DH := Display.Height - (Fonts.Default.height + titlebargap + 1);  (* Reserve space for host title bar *)
+  (* Reserve space for host title bar *)
+  DH := Display.Height - (Fonts.Default.height + titlebartop + titlebargap + 1);
+
   NEW(FillerViewer); FillerViewer.X := 0; FillerViewer.W := inf; FillerViewer.Y := 0; FillerViewer.H := DH;
   FillerViewer.next := FillerViewer;
   NEW(FillerTrack);

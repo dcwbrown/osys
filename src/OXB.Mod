@@ -80,23 +80,22 @@ TYPE
   (*  Typ      descriptor address/impno             modno  *)
   (*  Proc     code address/impno                   modno  *)
   (*  GlobVar  data address/impno                   modno  *)
-  (*  ProcVar  index                                       *)
-  (*  ValPar   index                                       *)
-  (*  RefPar   index                                       *)
+  (*  ProcVar  index                     reg               *)
+  (*  ValPar   index                     reg               *)
+  (*  RefPar   index                     reg               *)
   (*  Field    offset                                      *)
   (*  StdProc  inline code number                          *)
   (*  StdFunc  inline code number                          *)
   (*  Mod      key                                         *)
 
-  ObjCoreDesc* = RECORD
+  ObjCoreDesc* = RECORD  (* Used in OXB.ObjDesc and OXG.ArgumentDesc *)
     class*:  BYTE;
-    rdo*:    BOOLEAN;   (* read-only                             *)
-    val*:    INTEGER;   (* see above                             *)
-    ext*:    INTEGER;
-    modno*:  INTEGER;   (* <0: local stack frame, = proc nesting *)
-                        (*  0: module globals                    *)
-                        (* >0: -imported module num (-1 .. -16)  *)
-                        (* For class String = string length      *)
+    rdo*:    BOOLEAN;    (* read-only                             *)
+    val*:    INTEGER;    (* see above                             *)
+    ext*:    INTEGER;    (* see above                             *)
+    modno*:  INTEGER;    (* <0: local stack frame, = proc nesting *)
+                         (*  0: module global                     *)
+                         (* >0: -imported module num (1 .. 16)    *)
     type*:   Type;
     name*:   ORS.Ident;
   END;
@@ -108,7 +107,7 @@ TYPE
     dsc*:  Object
   END;
 
-  ModDesc* = RECORD (ObjDesc) orgname*: ORS.Ident END;
+  ModDesc = RECORD (ObjDesc) orgname*: ORS.Ident END;
 
 
   (* Type forms and the meaning of "dsc" and "base" *)
