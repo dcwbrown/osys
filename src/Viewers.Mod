@@ -27,8 +27,8 @@ MODULE Viewers; (*JG 14.9.90 / NW 15.9.2013*)
 
   PROCEDURE AllocateTitleViewer*(V: Viewer);
   BEGIN TitleViewer := V;
-    V.X := 2;
-    V.W := Display.Width-4;
+    V.X := 0;
+    V.W := Display.Width;
     V.Y := DH + titlebargap;
     V.H := Display.Height - DH - titlebargap - titlebartop
   END AllocateTitleViewer;
