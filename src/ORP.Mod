@@ -774,7 +774,7 @@ BEGIN NEW(typ);
       obj0 := obj;
       WHILE (obj0 # NIL) & (obj0.name # ORS.id) DO obj0 := obj0.next END;
       IF obj0 # NIL THEN ORS.Mark("mult def") END;
-      NEW(new);  ORS.CopyId(new.name);  new.class := ORB.Fld;  new.next := obj;  obj := new;  INC(n);
+      NEW(new);  new.name := ORS.id;  new.class := ORB.Fld;  new.next := obj;  obj := new;  INC(n);
       ORS.Get(sym);  CheckExport(new.expo);
       IF (sym # ORS.comma) & (sym # ORS.colon) THEN ORS.Mark("comma expected")
       ELSIF sym = ORS.comma THEN ORS.Get(sym)
@@ -906,7 +906,7 @@ BEGIN type := ORB.intType;  (*sync*)
         ELSE ORS.Mark("no valid base type")
         END
       ELSE CheckRecLevel(level);  (*enter into list of forward references to be fixed in Declarations*)
-        NEW(ptbase); ORS.CopyId(ptbase.name); ptbase.type := type; ptbase.next := pbsList; pbsList := ptbase
+        NEW(ptbase); ptbase.name := ORS.id; ptbase.type := type; ptbase.next := pbsList; pbsList := ptbase
       END;
       ORS.Get(sym)
     ELSE Type(type.base);
@@ -937,7 +937,7 @@ BEGIN (*sync*) pbsList := NIL;
   IF sym = ORS.const THEN
     ORS.Get(sym);
     WHILE sym = ORS.ident DO
-      ORS.CopyId(id);  ORS.Get(sym);  CheckExport(expo);
+      id := ORS.id;  ORS.Get(sym);  CheckExport(expo);
       IF sym = ORS.eql THEN ORS.Get(sym) ELSE ORS.Mark("= ?") END;
       expression(x);
       IF (x.type.form = ORB.String) & (x.n = 2) THEN ASSERT(X64.Mode(x) = X64.String); ORG.StrToChar(x) END;
@@ -957,7 +957,7 @@ BEGIN (*sync*) pbsList := NIL;
   IF sym = ORS.type THEN
     ORS.Get(sym);
     WHILE sym = ORS.ident DO
-      ORS.CopyId(id);  ORS.Get(sym);  CheckExport(expo);
+      id := ORS.id;  ORS.Get(sym);  CheckExport(expo);
       IF sym = ORS.eql THEN ORS.Get(sym) ELSE ORS.Mark("=?") END;
       Type(tp);
       ORB.NewObj(obj, id, ORB.Typ); obj.type := tp; obj.expo := expo; obj.lev := level;
@@ -1030,7 +1030,7 @@ BEGIN ORS.Get(sym);
   END;
 
   IF sym = ORS.ident THEN
-    ORS.CopyId(procid);  ORS.Get(sym);
+    procid := ORS.id;  ORS.Get(sym);
     ORB.NewObj(proc, ORS.id, ORB.Const);
     NEW(type);  type.form := ORB.Proc;  type.size := ORG.WordSize;
     type.hosted := hosted;
@@ -1175,10 +1175,10 @@ PROCEDURE Import;
 VAR impid, impid1: ORS.Ident;
 BEGIN
   IF sym = ORS.ident THEN
-    ORS.CopyId(impid); ORS.Get(sym);
+    impid := ORS.id; ORS.Get(sym);
     IF sym = ORS.becomes THEN
       ORS.Get(sym);
-      IF sym = ORS.ident THEN ORS.CopyId(impid1); ORS.Get(sym)
+      IF sym = ORS.ident THEN impid1 := ORS.id;  ORS.Get(sym)
       ELSE ORS.Mark("id expected"); impid1 := impid
       END
     ELSE impid1 := impid
@@ -1209,7 +1209,7 @@ BEGIN
     dc := 0;
     ORB.Init;  ORB.OpenScope;
     IF sym = ORS.ident THEN
-      ORS.CopyId(modid);  ORS.Get(sym);
+      modid := ORS.id;  ORS.Get(sym);
       Texts.WriteString(W, modid);  Texts.Append(Texts.Log, W.buf)
     ELSE ORS.Mark("identifier expected")
     END;
