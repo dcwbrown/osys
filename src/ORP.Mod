@@ -162,7 +162,7 @@ PROCEDURE selector(VAR x: X64.Item);
 VAR y: X64.Item;  obj: ORB.Object;
 BEGIN
   WHILE (sym = ORS.lbrak) OR (sym = ORS.period) OR (sym = ORS.arrow)
-      OR (sym = ORS.lparen) & (x.type.form IN {ORB.Record, ORB.Pointer}) DO
+     OR (sym = ORS.lparen) & (x.type.form IN {ORB.Record, ORB.Pointer}) DO
     IF sym = ORS.lbrak THEN
       REPEAT ORS.Get(sym);  expression(y);
         IF x.type.form = ORB.Array THEN

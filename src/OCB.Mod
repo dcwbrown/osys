@@ -37,6 +37,21 @@ CONST
   StdFunc* = 11;
   Mod*     = 12;
 
+  (* Generated classes *)
+  (*                    next         dsc      *)
+  Expression* = 20;  (* 1st arg      2nd arg  *)
+  Param*      = 21;  (* reg/stk      expr     *)
+  Statement*  = 22;  (* prev stmt    detail   *)
+  Assign*     = 23;  (* dest         expr     *)
+  If*         = 24;  (* cond         body     *)
+  Elsif*      = 25;  (* cond         body     *)
+  Else*       = 26;  (* /            body     *)
+  While*      = 27;  (* cond         body     *)
+  Repeat*     = 28;  (* cond         body     *)
+  Case*       = 29;  (* expr         /        *)
+  Caseval*    = 30;  (* val          body     *)
+
+
   (* form values *)
   Byte*    = 1;
   Bool*    = 2;
@@ -70,22 +85,35 @@ TYPE
   Module*  = POINTER TO ModDesc;
   Type*    = POINTER TO TypeDesc;
 
-  (* Object classes                                        *)
-  (*                                                       *)
-  (*  class    val                       ext        modno  *)
-  (*  -------  ------------------------  ---------  -----  *)
-  (*  Const    value                                       *)
-  (*  String   code address              len               *)
-  (*  Typ      descriptor address/impno             modno  *)
-  (*  Proc     code address/impno                   modno  *)
-  (*  GlobVar  data address/impno                   modno  *)
-  (*  ProcVar  index                     reg               *)
-  (*  ValPar   index                     reg               *)
-  (*  RefPar   index                     reg               *)
-  (*  Field    offset                                      *)
-  (*  StdProc  inline code number                          *)
-  (*  StdFunc  inline code number                          *)
-  (*  Mod      key                                         *)
+  (* Object classes                                                           *)
+  (*                                                                          *)
+  (*  class       val                       ext  modno  next         dsc      *)
+  (*  -------     ------------------------  ---  -----  -----------  -------- *)
+  (*  Const       value                                                       *)
+  (*  String      code address              len                               *)
+  (*  Typ         descriptor address/impno       modno                        *)
+  (*  Proc        code address/impno             modno                        *)
+  (*  GlobVar     data address/impno             modno                        *)
+  (*  ProcVar     index                     reg                               *)
+  (*  ValPar      index                     reg                               *)
+  (*  RefPar      index                     reg                               *)
+  (*  Field       offset                                                      *)
+  (*  StdProc     inline code number                                          *)
+  (*  StdFunc     inline code number                                          *)
+  (*  Mod         key                                                         *)
+  (*                                                                          *)
+  (*  Condition                                         1st arg      2nd arg  *)
+  (*  Expression  op symbol                 reg         1st arg      2nd arg  *)
+  (*  Param                                             reg/stk      expr     *)
+  (*  Statement                                         prev stmt    detail   *)
+  (*  Assign                                            dest         expr     *)
+  (*  If                                                cond         body     *)
+  (*  Elsif                                             cond         body     *)
+  (*  Else                                              /            body     *)
+  (*  While                                             cond         body     *)
+  (*  Repeat                                            cond         body     *)
+  (*  Case                                              expr         /        *)
+  (*  Caseval                                           val          body     *)
 
   ObjDesc* = RECORD
     class*: BYTE;
