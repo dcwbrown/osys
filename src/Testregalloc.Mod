@@ -23,6 +23,7 @@ VAR k, l: INTEGER;
 BEGIN
   i := 1;
   j := i + 2;
+  k := j + (-1);
   k := j * (-1);
   IF i = 1 THEN
     j := (i + j) - (k + l)

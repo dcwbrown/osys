@@ -117,16 +117,17 @@ TYPE
 
   ObjDesc* = RECORD
     class*: BYTE;
-    rdo*:   BOOLEAN;    (* read-only                             *)
-    val*:   INTEGER;    (* see above                             *)
-    ext*:   INTEGER;    (* see above                             *)
-    modno*: INTEGER;    (* <0: local stack frame, = proc nesting *)
-                        (*  0: module global                     *)
-                        (* >0: -imported module num (1 .. 16)    *)
+    rdo*:   BOOLEAN;    (* read-only                               *)
+    val*:   INTEGER;    (* see above                               *)
+    ext*:   INTEGER;    (* see above                               *)
+    modno*: INTEGER;    (* <0: local stack frame, = proc nesting   *)
+                        (*  0: module global                       *)
+                        (* >0: -imported module num (1 .. 16)      *)
     type*:  Type;
     name*:  ORS.Ident;
-    expo*:  BOOLEAN;   (* whether exported as a symbol *)
-    exno*:  BYTE;      (* export number in object file *)
+    expo*:  BOOLEAN;    (* whether exported as a symbol            *)
+    exno*:  BYTE;       (* export number in object file            *)
+    uses*:  SET;        (* registers necessarily used by expr eval *)
     next*:  Object;
     dsc*:   Object
   END;
@@ -187,7 +188,7 @@ BEGIN x := topScope;
     new.name := id;     new.class := class;  new.next := NIL;
     new.rdo  := FALSE;  new.dsc   := NIL;    new.exno := 0;
     new.expo := FALSE;  new.modno := 0;      new.type := NIL;
-    new.val  := 0;      new.ext   := 0;
+    new.val  := 0;      new.ext   := 0;      new.uses := {};
     x.next := new;  obj := new
   ELSE obj := x.next; ORS.Mark("mult def")
   END
