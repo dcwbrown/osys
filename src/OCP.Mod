@@ -39,26 +39,15 @@ PROCEDURE wi (i: INTEGER);       BEGIN Texts.WriteInt(W, i, 1)        END wi;
 PROCEDURE wir(i, n: INTEGER);    BEGIN Texts.WriteInt(W, i, n)        END wir;
 
 
-(*
-PROCEDURE NewStmt(class, val, ext: INTEGER;
-                  type:            OCB.Type;
-                  next, dsc:       OCB.Object): OCB.Object;
-VAR obj: OCB.Object;
-BEGIN
-  NEW(obj);
-  obj.class := class;  obj.rdo  := FALSE;
-  obj.val   := val;    obj.ext  := ext;
-  obj.exno  := 0;      obj.type := type;
-  obj.name  := "";     obj.expo := FALSE;
-  obj.next  := next;   obj.dsc  := dsc;
-  obj.modno := ORS.linenum
-RETURN obj END NewStmt;
-*)
+PROCEDURE GenExpr(sym: INTEGER; x, y: OCB.Object): OCB.Object;
+RETURN OCG.NewItem(OCB.Expression, sym, -1, x.type, x, y)
+END GenExpr;
 
-PROCEDURE AddCode(val: INTEGER; obj: OCB.Object);
+
+PROCEDURE GenStmt(val: INTEGER; obj: OCB.Object);
 BEGIN
   CodeSeq := OCG.NewItem(OCB.Statement, val, 0, NIL, CodeSeq, obj)
-END AddCode;
+END GenStmt;
 
 
 PROCEDURE Check(s: INTEGER;  msg: ARRAY OF CHAR);
@@ -214,11 +203,11 @@ PROCEDURE selector(x: OCB.Object): OCB.Object;
 VAR y: OCB.Object;  obj: OCB.Object;
 BEGIN
   WHILE (sym = ORS.lbrak) OR (sym = ORS.period) OR (sym = ORS.arrow)
-      OR (sym = ORS.lparen) & (x.type.form IN {OCB.Record, OCB.Pointer}) DO
+     OR (sym = ORS.lparen) & (x.type.form IN {OCB.Record, OCB.Pointer}) DO
     IF sym = ORS.lbrak THEN
       REPEAT ORS.Get(sym);  y := expression();
         IF x.type.form = OCB.Array THEN
-          CheckInt(y);  x := OCG.GenIndex(x, y);  x.type := x.type.base
+          CheckInt(y);  x := GenExpr(ORS.lbrak, x, y);  x.type := x.type.base
         ELSE ORS.Mark("not an array")
         END
       UNTIL sym # ORS.comma;
@@ -226,11 +215,12 @@ BEGIN
     ELSIF sym = ORS.period THEN ORS.Get(sym);
       IF sym = ORS.ident THEN
         IF x.type.form = OCB.Pointer THEN
-          x := OCG.GenDeref(x);  x.type := x.type.base
+          x := GenExpr(ORS.arrow, x, NIL);  x.type := x.type.base
         END;
         IF x.type.form = OCB.Record THEN
           obj := OCB.thisfield(x.type);  ORS.Get(sym);
-          IF obj # NIL THEN x := OCG.GenField(x, obj, Level);  x.type := obj.type
+          IF obj # NIL THEN
+            x := GenExpr(ORS.period, x, obj);  x.type := obj.type
           ELSE ORS.Mark("undef")
           END
         ELSE ORS.Mark("not a record")
@@ -239,7 +229,7 @@ BEGIN
       END
     ELSIF sym = ORS.arrow THEN
       ORS.Get(sym);
-      IF x.type.form = OCB.Pointer THEN x := OCG.GenDeref(x);  x.type := x.type.base
+      IF x.type.form = OCB.Pointer THEN x := GenExpr(ORS.arrow, x, NIL);  x.type := x.type.base
       ELSE ORS.Mark("not a pointer")
       END
     ELSIF (sym = ORS.lparen) & (x.type.form IN {OCB.Record, OCB.Pointer}) THEN (*type guard*)
@@ -281,17 +271,19 @@ BEGIN (*check for assignment compatibility*)
     OR (t0.form = OCB.Array) & (t1.form = OCB.Array) & (t0.base =  t1.base) & (t0.len = t1.len)
     OR (t0.form = OCB.Record) & (t1.form = OCB.Record)  & IsExtension(t0, t1)
     OR ~varpar &
-      (  (t0.form = OCB.Pointer) & (t1.form = OCB.Pointer)  & IsExtension(t0.base, t1.base)
+      (  (t0.form = OCB.Pointer) & (t1.form = OCB.Pointer) & IsExtension(t0.base, t1.base)
       OR (t0.form = OCB.ProcAdr) & (t1.form = OCB.ProcAdr) & EqualSignatures(t0, t1)
       OR (t0.form IN {OCB.Pointer, OCB.ProcAdr}) & (t1.form = OCB.NilTyp))
       OR (t0.form = OCB.Int64) & (t1.form = OCB.Int64)  (* All int types are value compatible *)
 END CompTypes;
 
 
+(*
 PROCEDURE NewParam(formal, actual: OCB.Object): OCB.Object;
 RETURN OCG.NewItem(OCB.Param, 0, 0, NIL, formal, actual) END NewParam;
+*)
 
-PROCEDURE Parameter(par: OCB.Object;  hosted: BYTE;  n: INTEGER);
+PROCEDURE Parameter(prep, par: OCB.Object);
 VAR x: OCB.Object;  varpar: BOOLEAN;
 BEGIN
   x := expression();
@@ -300,7 +292,7 @@ BEGIN
     IF CompTypes(par.type, x.type, varpar) THEN
 
       IF varpar & ~par.rdo THEN CheckReadOnly(x) END;
-      AddCode(0, NewParam(par, x));
+      OCG.GenParam(prep, par, x);
 
     ELSIF (par.type.form = OCB.Array) & (par.type.len < 0)
         & (   (x.type.form = OCB.Array)  & (x.type.base = par.type.base)
@@ -308,18 +300,18 @@ BEGIN
            OR (par.type.base = OCB.byteType)) THEN
 
       IF ~par.rdo THEN CheckReadOnly(x) END;
-      AddCode(0, NewParam(par, x));
+      OCG.GenParam(prep, par, x);
 
     ELSIF ~varpar & (par.type.form = OCB.Int64) & (x.type.form = OCB.Int64) THEN
 
       ASSERT(FALSE); (* should not reach here because it Looks like *)
                      (* this case is already handled in comptypes   *)
-      AddCode(0, NewParam(par, x));
+      OCG.GenParam(prep, par, x);
 
     ELSIF OCG.IsSingleCharacterString(x)
         & (par.class = OCB.ValPar) & (par.type.form = OCB.Char) THEN
 
-      OCG.StrToChar(x);  AddCode(0, NewParam(par, x));
+      OCG.StrToChar(x);  OCG.GenParam(prep, par, x);
 
     ELSE
       ORS.Mark("incompatible parameters");
@@ -327,28 +319,28 @@ BEGIN
   END
 END Parameter;
 
-PROCEDURE ParamList(VAR x: OCB.Object);
-VAR n: INTEGER;  par: OCB.Object;
+PROCEDURE ParamList(prep: OCB.Object);
+VAR par: OCB.Object;
 BEGIN
-  ASSERT(x.type # NIL);
-  par := x.type.dsc;  n := 0;
+  ASSERT(prep.type # NIL);  ASSERT(prep.class = OCB.CallSite);
+  par := prep.type.dsc;
   IF sym # ORS.rparen THEN
-    Parameter(par, x.type.hosted, n);  n := 1;
+    Parameter(prep, par);
     WHILE sym <= ORS.comma DO
       Check(ORS.comma, "comma?");
       IF par # NIL THEN par := par.next END;
-      Parameter(par, x.type.hosted, n);  INC(n);
+      Parameter(prep, par);
 
-IF FALSE THEN END;  (* Crashes without this. Haven't found out why. May be to *)
-                    (* do with true chain, false chain, and jump generation?  *)
-                    (* TODO remove with new code generator                    *)
+IF FALSE THEN END  (* Crashes without this. Haven't found out why. May be to *)
+                   (* do with true chain, false chain, and jump generation?  *)
+                   (* TODO remove with new code generator                    *)
 
     END;
     Check(ORS.rparen, ") missing")
   ELSE ORS.Get(sym);
   END;
-  IF n < x.type.nofpar THEN    ORS.Mark("too few params")
-  ELSIF n > x.type.nofpar THEN ORS.Mark("too many params")
+  IF    prep.val < prep.type.nofpar THEN ORS.Mark("too few params")
+  ELSIF prep.val > prep.type.nofpar THEN ORS.Mark("too many params")
   END
 END ParamList;
 
@@ -362,7 +354,7 @@ BEGIN Check(ORS.lparen, "missing (");
     IF    fct = 0 THEN (*ABS*)   IF x.type.form IN {OCB.Int64, OCB.Real} THEN
                                    x := OCG.GenStdFunc(fct, x, NIL);  restyp := x.type
                                  ELSE ORS.Mark("bad type") END
-    ELSIF fct = 1 THEN (*ODD*)   CheckInt(x);   x := OCG.GenStdFunc(fct,   x, NIL)
+    ELSIF fct = 1 THEN (*ODD*)   CheckInt(x);   x := OCG.GenStdFunc(fct, x, NIL)
     ELSIF fct = 2 THEN (*FLOOR*) CheckReal(x);  x := OCG.GenStdFunc(fct, x, NIL)
     ELSIF fct = 3 THEN (*FLT*)   CheckInt(x);   x := OCG.GenStdFunc(fct, x, NIL)
     ELSIF fct = 4 THEN (*ORD*)   IF x.type.form <= OCB.ProcAdr THEN x := OCG.GenStdFunc(fct, x, NIL)
@@ -399,9 +391,9 @@ VAR x, y: OCB.Object;
 BEGIN x := expression();  CheckSetVal(x);
   IF sym = ORS.upto THEN
     ORS.Get(sym);  y := expression();  CheckSetVal(y);
-    x := OCG.GenOperation(ORS.upto, x, y)
+    x := GenExpr(ORS.upto, x, y)
   ELSE
-    x := OCG.GenOperation(ORS.rbrace, x, NIL)
+    x := GenExpr(ORS.rbrace, x, NIL)
   END;
   x.type := OCB.setType
 RETURN x END element;
@@ -417,7 +409,7 @@ BEGIN
       IF    sym = ORS.comma  THEN ORS.Get(sym)
       ELSIF sym # ORS.rbrace THEN ORS.Mark("missing comma")
       END;
-      x := OCG.GenOperation(ORS.comma, x, element())
+      x := GenExpr(ORS.comma, x, element())
     END
   END
 RETURN x END set;
@@ -437,7 +429,7 @@ BEGIN (*sync*)
       IF sym = ORS.lparen THEN
         ORS.Get(sym);
         IF (x.type.form = OCB.ProcAdr) & (x.type.base.form # OCB.NoTyp) THEN
-          OCG.GenPrepCall(x);  ParamList(x);  OCG.GenCall(x);
+          OCG.GenCallSite(x);  ParamList(x);
           x.type := x.type.base
         ELSE ORS.Mark("not a function");  ParamList(x)
         END
@@ -453,7 +445,7 @@ BEGIN (*sync*)
   ELSIF sym = ORS.lparen THEN ORS.Get(sym);  x := expression();  Check(ORS.rparen, "missing )")
   ELSIF sym = ORS.lbrace THEN ORS.Get(sym);  x := set();     Check(ORS.rbrace, "missing }")
   ELSIF sym = ORS.not    THEN ORS.Get(sym);  x := factor();  CheckBool(x);
-                              x := OCG.GenOperation(ORS.not, x, NIL)
+                              x := GenExpr(ORS.not, x, NIL)
   ELSE ORS.Mark("not a factor");  x := OCG.NewItem(OCB.Const, 0, 0, OCB.intType, NIL, NIL)
   END
 RETURN x END factor;
@@ -464,21 +456,21 @@ BEGIN x := factor(); f := x.type.form;
   WHILE (sym >= ORS.times) & (sym <= ORS.and) DO
     op := sym;  ORS.Get(sym);
     IF op = ORS.times THEN
-      IF    f = OCB.Int64 THEN y := factor();  CheckInt(y);   x := OCG.GenOperation(op, x, y)
-      ELSIF f = OCB.Real  THEN y := factor();  CheckReal(y);  x := OCG.GenOperation(op, x, y)
-      ELSIF f = OCB.Set   THEN y := factor();  CheckSet(y);   x := OCG.GenOperation(op, x, y)
+      IF    f = OCB.Int64 THEN y := factor();  CheckInt(y);   x := GenExpr(op, x, y)
+      ELSIF f = OCB.Real  THEN y := factor();  CheckReal(y);  x := GenExpr(op, x, y)
+      ELSIF f = OCB.Set   THEN y := factor();  CheckSet(y);   x := GenExpr(op, x, y)
       ELSE ORS.Mark("bad type")
       END
     ELSIF (op = ORS.div) OR (op = ORS.mod) THEN
-      CheckInt(x);  y := factor();  CheckInt(y);  x := OCG.GenOperation(op, x, y)
+      CheckInt(x);  y := factor();  CheckInt(y);  x := GenExpr(op, x, y)
     ELSIF op = ORS.rdiv THEN
-      IF    f = OCB.Real THEN y := factor();  CheckReal(y);  x := OCG.GenOperation(op, x, y)
-      ELSIF f = OCB.Set  THEN y := factor();  CheckSet(y);   x := OCG.GenOperation(op, x, y)
+      IF    f = OCB.Real THEN y := factor();  CheckReal(y);  x := GenExpr(op, x, y)
+      ELSIF f = OCB.Set  THEN y := factor();  CheckSet(y);   x := GenExpr(op, x, y)
       ELSE ORS.Mark("bad type")
       END
     ELSE (*op = and*) CheckBool(x);
        (*OXG.And1(x); y := factor();  CheckBool(y);  OXG.And2(x, y)*)
-       y := factor();  CheckBool(y);  x := OCG.GenOperation(op, x, y)
+       y := factor();  CheckBool(y);  x := GenExpr(op, x, y)
     END
   END
 RETURN x END term;
@@ -487,18 +479,18 @@ PROCEDURE SimpleExpression(): OCB.Object;
 VAR x, y: OCB.Object;  op: INTEGER;
 BEGIN
   IF sym = ORS.minus THEN ORS.Get(sym); x := term();
-    IF x.type.form IN {OCB.Int64, OCB.Real, OCB.Set} THEN x := OCG.GenOperation(ORS.minus, x, NIL)
+    IF x.type.form IN {OCB.Int64, OCB.Real, OCB.Set} THEN x := GenExpr(ORS.minus, x, NIL)
     ELSE CheckInt(x) END
   ELSIF sym = ORS.plus THEN ORS.Get(sym); x := term();
   ELSE x := term()
   END;
   WHILE (sym >= ORS.plus) & (sym <= ORS.or) DO
     op := sym;  ORS.Get(sym);
-    IF op = ORS.or THEN CheckBool(x);  y := term();  CheckBool(y);  x := OCG.GenOperation(op, x, y);
+    IF op = ORS.or THEN CheckBool(x);  y := term();  CheckBool(y);  x := GenExpr(op, x, y);
       (*OXG.Or1(x);  OXG.Or2(x, y)*)
-    ELSIF x.type.form = OCB.Int64 THEN y := term();  CheckInt(y);   x := OCG.GenOperation(op, x, y)
-    ELSIF x.type.form = OCB.Real  THEN y := term();  CheckReal(y);  x := OCG.GenOperation(op, x, y)
-    ELSE                 CheckSet(x);  y := term();  CheckSet(y);   x := OCG.GenOperation(op, x, y)
+    ELSIF x.type.form = OCB.Int64 THEN y := term();  CheckInt(y);   x := GenExpr(op, x, y)
+    ELSIF x.type.form = OCB.Real  THEN y := term();  CheckReal(y);  x := GenExpr(op, x, y)
+    ELSE                 CheckSet(x);  y := term();  CheckSet(y);   x := GenExpr(op, x, y)
     END
   END
 RETURN x END SimpleExpression;
@@ -509,44 +501,44 @@ BEGIN x := SimpleExpression();
   IF (sym >= ORS.eql) & (sym <= ORS.geq) THEN
     rel := sym;  ORS.Get(sym);  y := SimpleExpression();  xf := x.type.form;  yf := y.type.form;
     IF x.type = y.type THEN
-      IF (xf IN {OCB.Char, OCB.Int64}) THEN x := OCG.GenOperation(rel, x, y)
-      ELSIF xf = OCB.Real              THEN x := OCG.GenOperation(rel, x, y)
+      IF (xf IN {OCB.Char, OCB.Int64}) THEN x := GenExpr(rel, x, y)
+      ELSIF xf = OCB.Real              THEN x := GenExpr(rel, x, y)
       ELSIF (xf IN {OCB.Set, OCB.Pointer, OCB.ProcAdr, OCB.NilTyp, OCB.Bool}) THEN
-        IF rel <= ORS.neq              THEN x := OCG.GenOperation(rel, x, y)
+        IF rel <= ORS.neq              THEN x := GenExpr(rel, x, y)
         ELSE ORS.Mark("only = or #")
         END
       ELSIF (xf = OCB.Array) & (x.type.base.form = OCB.Char) OR (xf = OCB.StrAdr) THEN
-        x := OCG.GenOperation(rel, x, y)
+        x := GenExpr(rel, x, y)
       ELSE ORS.Mark("illegal comparison")
       END
     ELSIF (xf IN {OCB.Pointer, OCB.ProcAdr}) & (yf = OCB.NilTyp)
        OR (yf IN {OCB.Pointer, OCB.ProcAdr}) & (xf = OCB.NilTyp) THEN
-      IF rel <= ORS.neq THEN x := OCG.GenOperation(rel, x, y)
+      IF rel <= ORS.neq THEN x := GenExpr(rel, x, y)
       ELSE ORS.Mark("only = or #")
       END
     ELSIF (xf = OCB.Pointer) & (yf = OCB.Pointer) & (IsExtension(x.type.base, y.type.base)
        OR IsExtension(y.type.base, x.type.base))
        OR (xf = OCB.ProcAdr) & (yf = OCB.ProcAdr) & EqualSignatures(x.type, y.type) THEN
-      IF rel <= ORS.neq THEN x := OCG.GenOperation(rel, x, y)
+      IF rel <= ORS.neq THEN x := GenExpr(rel, x, y)
       ELSE ORS.Mark("only = or #")
       END
     ELSIF (xf = OCB.Array) & (x.type.base.form = OCB.Char)
         & ((yf = OCB.StrAdr) OR (yf = OCB.Array) & (y.type.base.form = OCB.Char))
         OR (yf = OCB.Array) & (y.type.base.form = OCB.Char) & (xf = OCB.StrAdr) THEN
-      x := OCG.GenOperation(rel, x, y)
+      x := GenExpr(rel, x, y)
     ELSIF (xf = OCB.Char) & OCG.IsSingleCharacterString(y) THEN
-      OCG.StrToChar(y);  x := OCG.GenOperation(rel, x, y)
+      OCG.StrToChar(y);  x := GenExpr(rel, x, y)
     ELSIF (yf = OCB.Char) & OCG.IsSingleCharacterString(x) THEN
-      OCG.StrToChar(x);  x := OCG.GenOperation(rel, x, y)
+      OCG.StrToChar(x);  x := GenExpr(rel, x, y)
     ELSIF (xf = OCB.Int64) & (yf = OCB.Int64) THEN
-      x := OCG.GenOperation(rel, x, y)  (*BYTE*)
+      x := GenExpr(rel, x, y)  (*BYTE*)
     ELSE
       ORS.Mark("illegal comparison")
     END;
     (*x.type := OCB.boolType*)
   ELSIF sym = ORS.in THEN
     ORS.Get(sym);  CheckInt(x);  y := SimpleExpression();  CheckSet(y);
-    x := OCG.GenOperation(ORS.in, x, y);  x.type := OCB.boolType
+    x := GenExpr(ORS.in, x, y);  x.type := OCB.boolType
   ELSIF sym = ORS.is THEN
     ORS.Get(sym);  qualident(obj);
     x := TypeTest(x, obj.type, FALSE);  x.type := OCB.boolType
@@ -623,7 +615,7 @@ VAR
       CheckAccess(obj, Level);
       qualident(typobj);
       IF typobj.class # OCB.Typ THEN ORS.Mark("not a type") END;
-      AddCode(0, OCG.NewItem(OCB.Caseval, 0, 0, NIL, TypeTest(obj, typobj.type, FALSE), StatSequence()));
+      GenStmt(0, OCG.NewItem(OCB.Caseval, 0, 0, NIL, TypeTest(obj, typobj.type, FALSE), StatSequence()));
       obj.type := typobj.type;
       (* OXG.CFJump(x);  TODO jumps *)
       Check(ORS.colon, ": expected");
@@ -664,7 +656,7 @@ BEGIN (* StatSequence *)
           OR (obj.type.form = OCB.Array) & (y.type.form = OCB.Array) & (obj.type.base = y.type.base) & (y.type.len < 0)
           OR (obj.type.form = OCB.Array) & (obj.type.base.form = OCB.Char) & (y.type.form = OCB.StrAdr)
           OR (obj.type.form = OCB.Int64) & (y.type.form = OCB.Int64) THEN
-            AddCode(0, OCG.GenAssign(obj, y))
+            GenStmt(0, OCG.GenAssign(obj, y))
           ELSE
             ORS.Mark("illegal assignment")
           END
@@ -673,8 +665,7 @@ BEGIN (* StatSequence *)
 
           ORS.Get(sym);
           IF (obj.type.form = OCB.ProcAdr) & (obj.type.base.form = OCB.NoTyp) THEN
-            OCG.GenPrepCall(obj);  ParamList(obj);  OCG.GenCall(obj);
-            AddCode(0, obj)
+            OCG.GenCallSite(obj);  ParamList(obj);  GenStmt(0, obj)
           ELSE
             ORS.Mark("not a procedure");  ParamList(obj)
           END
@@ -683,8 +674,7 @@ BEGIN (* StatSequence *)
 
           IF obj.type.nofpar > 0 THEN ORS.Mark("missing parameters") END;
           IF obj.type.base.form = OCB.NoTyp THEN
-            OCG.GenPrepCall(obj);  OCG.GenCall(obj);
-            AddCode(0, obj)
+            OCG.GenCallSite(obj);  GenStmt(0, obj)
           ELSE
             ORS.Mark("not a procedure")
           END
@@ -698,7 +688,7 @@ BEGIN (* StatSequence *)
       (* OXG.CFJump(x);  TODO jumps *)
       Check(ORS.then, "missing THEN");
       y := StatSequence();  jmp := -1;
-      AddCode(0, OCG.NewItem(OCB.If, 0,0,NIL, obj, y));
+      GenStmt(0, OCG.NewItem(OCB.If, 0,0,NIL, obj, y));
       WHILE sym = ORS.elsif DO
         ORS.Get(sym);
         (* OXG.FJump(x); OXG.FixLink(x(OXG.ConditionArg).falsechain);  TODO jumps *)
@@ -706,13 +696,13 @@ BEGIN (* StatSequence *)
         (* OXG.CFJump(x);  TODO jumps *)
         Check(ORS.then, "missing THEN");
         y := StatSequence();
-        AddCode(0, OCG.NewItem(OCB.Elsif, 0,0,NIL, obj, y))
+        GenStmt(0, OCG.NewItem(OCB.Elsif, 0,0,NIL, obj, y))
       END;
       IF sym = ORS.else THEN
         ORS.Get(sym);
         (* OXG.FJump(jmp); OXG.FixLink(x(OXG.ConditionArg).falsechain);  TODO jumps *)
         y := StatSequence();
-        AddCode(0, OCG.NewItem(OCB.Else, 0,0,NIL, NIL, y))
+        GenStmt(0, OCG.NewItem(OCB.Else, 0,0,NIL, NIL, y))
       ELSE
         (* OXG.FixLink(x(OXG.ConditionArg).falsechain)  TODO jumps *)
       END;

@@ -71,7 +71,7 @@ VAR
 
   W:            Texts.Writer;
   Srv:          INTEGER;
-  Buf:          ARRAY 16384 OF BYTE;
+  Buf:          ARRAY 2048 (*16384*) OF BYTE;  (* Not so large as to cause all rows to be buffered *)
   Out:          INTEGER;
   NextId:       INTEGER;
   IdIncr:       INTEGER;
@@ -204,7 +204,7 @@ END WriteError;
 
 PROCEDURE SendUnbuffered(buf: ARRAY OF BYTE; offset, len: INTEGER);
 VAR rv: INTEGER;
-BEGIN  ASSERT(len <= LEN(buf));
+BEGIN  ASSERT(offset + len <= LEN(buf));
   IF len > 0 THEN
     rv := syswrite(Srv, SYSTEM.ADR(buf) + offset, len);
     IF    rv < 0   THEN H.Trap(-1, "Write to X11 server failed.")

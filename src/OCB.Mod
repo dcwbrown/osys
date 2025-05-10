@@ -38,18 +38,20 @@ CONST
   Mod*     = 12;
 
   (* Generated classes *)
-  (*                    next         dsc      *)
-  Expression* = 20;  (* 1st arg      2nd arg  *)
-  Param*      = 21;  (* reg/stk      expr     *)
-  Statement*  = 22;  (* prev stmt    detail   *)
-  Assign*     = 23;  (* dest         expr     *)
-  If*         = 24;  (* cond         body     *)
-  Elsif*      = 25;  (* cond         body     *)
-  Else*       = 26;  (* /            body     *)
-  While*      = 27;  (* cond         body     *)
-  Repeat*     = 28;  (* cond         body     *)
-  Case*       = 29;  (* expr         /        *)
-  Caseval*    = 30;  (* val          body     *)
+  (*                    next        dsc       val            expo  *)
+  Expression* = 20;  (* 1st arg     2nd arg                        *)
+  Param*      = 21;  (* formal      expr      slot                 *)
+  Statement*  = 22;  (* prev stmt   detail                         *)
+  Assign*     = 23;  (* dest        expr                           *)
+  If*         = 24;  (* cond        body                           *)
+  Elsif*      = 25;  (* cond        body                           *)
+  Else*       = 26;  (* /           body                           *)
+  While*      = 27;  (* cond        body                           *)
+  Repeat*     = 28;  (* cond        body                           *)
+  Case*       = 29;  (* expr        /                              *)
+  Caseval*    = 30;  (* val         body                           *)
+  CallSite*   = 31;  (* 1st par     function                       *)
+  PassParam*  = 32;  (* nextpass    param                          *)
 
 
   (* form values *)
@@ -102,7 +104,7 @@ TYPE
   (*  StdFunc     inline code number                                          *)
   (*  Mod         key                                                         *)
   (*                                                                          *)
-  (*  Condition                                         1st arg      2nd arg  *)
+  (*  Selector    field offset                          variable     index    *)
   (*  Expression  op symbol                 reg         1st arg      2nd arg  *)
   (*  Param                                             reg/stk      expr     *)
   (*  Statement                                         prev stmt    detail   *)
@@ -114,6 +116,8 @@ TYPE
   (*  Repeat                                            cond         body     *)
   (*  Case                                              expr         /        *)
   (*  Caseval                                           val          body     *)
+  (*                                                                          *)
+  (*  For selector, expo means dereference before index/field offset          *)
 
   ObjDesc* = RECORD
     class*: BYTE;
@@ -127,7 +131,6 @@ TYPE
     name*:  ORS.Ident;
     expo*:  BOOLEAN;    (* whether exported as a symbol            *)
     exno*:  BYTE;       (* export number in object file            *)
-    uses*:  SET;        (* registers necessarily used by expr eval *)
     next*:  Object;
     dsc*:   Object
   END;
@@ -188,7 +191,7 @@ BEGIN x := topScope;
     new.name := id;     new.class := class;  new.next := NIL;
     new.rdo  := FALSE;  new.dsc   := NIL;    new.exno := 0;
     new.expo := FALSE;  new.modno := 0;      new.type := NIL;
-    new.val  := 0;      new.ext   := 0;      new.uses := {};
+    new.val  := 0;      new.ext   := 0;
     x.next := new;  obj := new
   ELSE obj := x.next; ORS.Mark("mult def")
   END
