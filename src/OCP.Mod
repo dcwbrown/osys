@@ -27,20 +27,20 @@ VAR
   modid:       ORS.Ident;
   pbsList:     PtrBase;    (* list of names of pointer base types *)
   dummy:       OCB.Object;
-  W:           Texts.Writer;
   CodeSeq:     OCB.Object;
 
 
-PROCEDURE wa;                    BEGIN Texts.Append(Texts.Log, W.buf) END wa;
-PROCEDURE wn;                    BEGIN Texts.WriteLn(W); wa           END wn;
-PROCEDURE ws (s: ARRAY OF CHAR); BEGIN Texts.WriteString(W, s)        END ws;
-PROCEDURE wsn(s: ARRAY OF CHAR); BEGIN Texts.WriteString(W, s); wn    END wsn;
-PROCEDURE wi (i: INTEGER);       BEGIN Texts.WriteInt(W, i, 1)        END wi;
-PROCEDURE wir(i, n: INTEGER);    BEGIN Texts.WriteInt(W, i, n)        END wir;
+PROCEDURE wa;                    BEGIN OCB.wa       END wa;
+PROCEDURE wn;                    BEGIN OCB.wn       END wn;
+PROCEDURE ws (s: ARRAY OF CHAR); BEGIN OCB.ws(s)    END ws;
+PROCEDURE wsn(s: ARRAY OF CHAR); BEGIN OCB.wsn(s)   END wsn;
+PROCEDURE wi (i: INTEGER);       BEGIN OCB.wi(i)    END wi;
+PROCEDURE wir(i, n: INTEGER);    BEGIN OCB.wir(i,n) END wir;
+PROCEDURE wh (n: INTEGER);       BEGIN OCB.wh(n)    END wh;
 
 
 PROCEDURE GenExpr(sym: INTEGER; x, y: OCB.Object): OCB.Object;
-RETURN OCG.NewItem(OCB.Expression, sym, -1, x.type, x, y)
+RETURN OCG.NewItem(OCB.Expression, sym, 0, x.type, x, y)
 END GenExpr;
 
 
@@ -48,7 +48,6 @@ PROCEDURE GenStmt(val: INTEGER; obj: OCB.Object);
 BEGIN
   CodeSeq := OCG.NewItem(OCB.Statement, val, 0, NIL, CodeSeq, obj)
 END GenStmt;
-
 
 PROCEDURE Check(s: INTEGER;  msg: ARRAY OF CHAR);
 BEGIN IF sym = s THEN ORS.Get(sym) ELSE ORS.Mark(msg) END
@@ -278,69 +277,69 @@ BEGIN (*check for assignment compatibility*)
 END CompTypes;
 
 
-(*
-PROCEDURE NewParam(formal, actual: OCB.Object): OCB.Object;
-RETURN OCG.NewItem(OCB.Param, 0, 0, NIL, formal, actual) END NewParam;
-*)
-
-PROCEDURE Parameter(prep, par: OCB.Object);
-VAR x: OCB.Object;  varpar: BOOLEAN;
+PROCEDURE Parameter(par: OCB.Object): OCB.Object;
+VAR x, res: OCB.Object;  varpar: BOOLEAN;  valid: BOOLEAN;
 BEGIN
-  x := expression();
+  x := expression();  res := NIL;  valid := FALSE;
   IF par # NIL THEN
     varpar := par.class = OCB.RefPar;
+    valid  := TRUE;
     IF CompTypes(par.type, x.type, varpar) THEN
-
       IF varpar & ~par.rdo THEN CheckReadOnly(x) END;
-      OCG.GenParam(prep, par, x);
 
     ELSIF (par.type.form = OCB.Array) & (par.type.len < 0)
         & (   (x.type.form = OCB.Array)  & (x.type.base = par.type.base)
            OR (x.type.form = OCB.StrAdr) & varpar & par.rdo & (par.type.base.form = OCB.Char)
            OR (par.type.base = OCB.byteType)) THEN
-
       IF ~par.rdo THEN CheckReadOnly(x) END;
-      OCG.GenParam(prep, par, x);
 
     ELSIF ~varpar & (par.type.form = OCB.Int64) & (x.type.form = OCB.Int64) THEN
-
       ASSERT(FALSE); (* should not reach here because it Looks like *)
                      (* this case is already handled in comptypes   *)
-      OCG.GenParam(prep, par, x);
 
     ELSIF OCG.IsSingleCharacterString(x)
         & (par.class = OCB.ValPar) & (par.type.form = OCB.Char) THEN
-
-      OCG.StrToChar(x);  OCG.GenParam(prep, par, x);
+      OCG.StrToChar(x)
 
     ELSE
-      ORS.Mark("incompatible parameters");
+      ORS.Mark("incompatible parameter");  valid := FALSE
     END
-  END
-END Parameter;
+  END;
 
-PROCEDURE ParamList(prep: OCB.Object);
-VAR par: OCB.Object;
+  IF valid THEN res := OCG.NewItem(OCB.Param, 0, 0, NIL, par, x) END
+RETURN res END Parameter;
+
+PROCEDURE PassParameters(list: OCB.Object);
 BEGIN
-  ASSERT(prep.type # NIL);  ASSERT(prep.class = OCB.CallSite);
-  par := prep.type.dsc;
+  IF list.next # NIL THEN PassParameters(list.next) END;
+  GenStmt(0, list.dsc)
+END PassParameters;
+
+PROCEDURE ParamList(par: OCB.Object; n: INTEGER);
+VAR list: OCB.Object;  i: INTEGER;
+BEGIN list := NIL;  i := 0;
   IF sym # ORS.rparen THEN
-    Parameter(prep, par);
+    list := OCG.NewItem(0, i, 0, NIL, list, Parameter(par));
+    i := 1;
     WHILE sym <= ORS.comma DO
       Check(ORS.comma, "comma?");
       IF par # NIL THEN par := par.next END;
-      Parameter(prep, par);
+      list := OCG.NewItem(0, i, 0, NIL, list, Parameter(par));
+      INC(i);
 
+(*
 IF FALSE THEN END  (* Crashes without this. Haven't found out why. May be to *)
                    (* do with true chain, false chain, and jump generation?  *)
                    (* TODO remove with new code generator                    *)
+*)
 
     END;
     Check(ORS.rparen, ") missing")
   ELSE ORS.Get(sym);
   END;
-  IF    prep.val < prep.type.nofpar THEN ORS.Mark("too few params")
-  ELSIF prep.val > prep.type.nofpar THEN ORS.Mark("too many params")
+  IF    i < n THEN ORS.Mark("too few params")
+  ELSIF i > n THEN ORS.Mark("too many params")
+  ELSE IF list # NIL THEN PassParameters(list) END
   END
 END ParamList;
 
@@ -422,16 +421,19 @@ BEGIN (*sync*)
     REPEAT ORS.Get(sym) UNTIL (sym >= ORS.char) & (sym <= ORS.for) OR (sym >= ORS.then)
   END;
   IF sym = ORS.ident THEN
+    ws("factor, sym is ident: ");  ws(ORS.id);
     qualident(x);
+    ws(", --> qualident returned ");  OCG.wObject(x);
+    ws(", type ");  OCG.wType(x.type);  wn;
     IF x.class = OCB.StdFunc THEN x := StandFunc(x.val, x.type)
     ELSE CheckAccess(x, Level);
       x := selector(x);
       IF sym = ORS.lparen THEN
         ORS.Get(sym);
         IF (x.type.form = OCB.ProcAdr) & (x.type.base.form # OCB.NoTyp) THEN
-          OCG.GenCallSite(x);  ParamList(x);
+          ParamList(x.type.dsc, x.type.nofpar);
           x.type := x.type.base
-        ELSE ORS.Mark("not a function");  ParamList(x)
+        ELSE ORS.Mark("not a function");  ParamList(x.type.dsc, x.type.nofpar)
         END
       END
     END
@@ -554,9 +556,9 @@ VAR
     x, y, z:   OCB.Object;
 BEGIN
   (*
-  ws("StandProc("); wa;  OCG.wObject(obj);  ws(")");
-  IF obj.next # NIL THEN ws(", next ");  wa;  OCG.wObject(obj.next) END;
-  IF obj.dsc  # NIL THEN ws(", dsc ");   wa;  OCG.wObject(obj.dsc)  END;
+  ws("StandProc(");  OCG.wObject(obj);  ws(")");
+  IF obj.next # NIL THEN ws(", next ");  OCG.wObject(obj.next) END;
+  IF obj.dsc  # NIL THEN ws(", dsc ");   OCG.wObject(obj.dsc)  END;
   wn;
   *)
 
@@ -647,9 +649,10 @@ BEGIN (* StatSequence *)
 
         IF sym IN {ORS.becomes, ORS.eql} THEN (* assignment *)
 
-          IF sym = ORS.eql THEN ORS.Mark("should be :=") END;
-          ORS.Get(sym);  CheckReadOnly(obj);  y := expression();
-          IF (obj.type.form = OCB.Char) & OCG.IsSingleCharacterString(y) THEN
+          IF sym = ORS.eql THEN ORS.Mark("missing ':'") END;
+          ORS.Get(sym);  CheckReadOnly(obj);
+          y := expression();
+          IF OCG.IsSingleCharacterString(y) & (obj.type.form = OCB.Char)  THEN
             OCG.StrToChar(y)
           END;
           IF CompTypes(obj.type, y.type, FALSE)
@@ -665,16 +668,17 @@ BEGIN (* StatSequence *)
 
           ORS.Get(sym);
           IF (obj.type.form = OCB.ProcAdr) & (obj.type.base.form = OCB.NoTyp) THEN
-            OCG.GenCallSite(obj);  ParamList(obj);  GenStmt(0, obj)
+            ParamList(obj.type.dsc, obj.type.nofpar);
+            GenStmt(0, obj)
           ELSE
-            ORS.Mark("not a procedure");  ParamList(obj)
+            ORS.Mark("not a procedure");  ParamList(obj.type.dsc, obj.type.nofpar)
           END
 
         ELSIF obj.type.form = OCB.ProcAdr THEN (*procedure call without parameters*)
 
           IF obj.type.nofpar > 0 THEN ORS.Mark("missing parameters") END;
           IF obj.type.base.form = OCB.NoTyp THEN
-            OCG.GenCallSite(obj);  GenStmt(0, obj)
+            GenStmt(0, obj)
           ELSE
             ORS.Mark("not a procedure")
           END
@@ -902,10 +906,18 @@ BEGIN NEW(typ);
   type := typ
 END RecordType;
 
+PROCEDURE ParameterSize(t: OCB.Type): INTEGER;  (* Number of 64 bit slots needed *)
+VAR len: INTEGER;
+BEGIN
+  IF (t.form = OCB.Array) & (t.len < 0) OR (t.form = OCB.Record)
+  THEN len := 2 ELSE len := 1
+  END
+RETURN len END ParameterSize;
+
 (* Formal parameter section - one or more comma separated vars of one type *)
 (* Each parameter takes either one or two 64 bit cells on the stack        *)
 (* Parameters are numbered in obj.val starting at 0                        *)
-PROCEDURE FPSection(VAR nofpar: INTEGER);
+PROCEDURE FPSection(VAR nofpar, parlen: INTEGER);
 VAR obj, first: OCB.Object;  tp: OCB.Type;  cl: INTEGER;  rdo: BOOLEAN;
 BEGIN
   IF sym = ORS.var THEN ORS.Get(sym); cl := OCB.RefPar ELSE cl := OCB.ValPar END;
@@ -915,36 +927,57 @@ BEGIN
   END;
   obj := first;
   WHILE obj # NIL DO
-    obj.val   := nofpar;  INC(nofpar);
     obj.class := cl;      obj.type  := tp;
     obj.rdo   := rdo;     obj.modno := -Level;
+    obj.val   := parlen;
+    IF TRUE THEN
+      ws("Parsing formal parameter object ");  OCG.wObject(obj);
+      ws(", type ");  OCG.wType(obj.type);
+      IF obj.type.form = OCB.Array THEN ws(" len ");  wi(obj.type.len) END;
+      wn
+    END;
+    INC(nofpar);  INC(parlen, ParameterSize(obj.type));
     obj := obj.next
+  END;
+  IF TRUE THEN
+    ws("FPSection -> nofpar ");  wi(nofpar);  ws(", parlen ");  wi(parlen);  wn
   END
 END FPSection;
 
 PROCEDURE ProcedureType(ptype: OCB.Type);
-VAR obj: OCB.Object;  nofpar: INTEGER;
-BEGIN ptype.base := OCB.noType;  nofpar := 0;  ptype.dsc := NIL;
+VAR obj: OCB.Object;  nofpar, parlen: INTEGER;
+BEGIN ptype.base := OCB.noType;  nofpar := 0;  parlen := 0;  ptype.dsc := NIL;
   IF sym = ORS.lparen THEN                     (* Parse formal parameters *)
     ORS.Get(sym);
     IF sym = ORS.rparen THEN ORS.Get(sym)
     ELSE
-      FPSection(nofpar);
-      WHILE sym = ORS.semicolon DO ORS.Get(sym); FPSection(nofpar) END;
+      FPSection(nofpar, parlen);
+      WHILE sym = ORS.semicolon DO
+        ORS.Get(sym);  FPSection(nofpar, parlen)
+      END;
       Check(ORS.rparen, "missing )")
     END;
     IF sym = ORS.colon THEN                    (* Parse function result type *)
       ORS.Get(sym);
       IF sym = ORS.ident THEN
         qualident(obj);  ptype.base := obj.type;
-        IF ~((obj.class = OCB.Typ) & (obj.type.form IN {OCB.Byte .. OCB.Pointer, OCB.ProcAdr})) THEN
+        IF ~(  (obj.class = OCB.Typ)
+             & (obj.type.form IN {OCB.Byte .. OCB.Pointer, OCB.ProcAdr})) THEN
           ORS.Mark("illegal function type")
         END
       ELSE ORS.Mark("type identifier expected")
       END
     END
   END;
+  ws("ProcedureType -> nofpar ");  wi(nofpar);  ws(", parlen ");  wi(parlen);
+  IF ptype.base = NIL THEN
+    ws(", no result")
+  ELSE
+    ws(", result: ");  OCG.wType(ptype.base)
+  END;
+  wn;
   ptype.nofpar := nofpar;
+  ptype.len    := parlen
 END ProcedureType;
 
 PROCEDURE FormalType0(VAR typ: OCB.Type;  dim: INTEGER);
@@ -1221,7 +1254,7 @@ BEGIN
   ELSE
     ORS.Get(sym);
     OCB.Init;  OCB.OpenScope;
-    IF sym = ORS.ident THEN modid := ORS.id;  ORS.Get(sym);  ws(modid);  wa
+    IF sym = ORS.ident THEN modid := ORS.id;  ORS.Get(sym);  ws(modid)
     ELSE ORS.Mark("identifier expected")
     END;
     Check(ORS.semicolon, "missing ;");  Level := 0;  key := 0;
@@ -1231,7 +1264,7 @@ BEGIN
       WHILE sym = ORS.comma DO ORS.Get(sym); Import END;
       Check(ORS.semicolon, "; missing")
     END;
-    OCG.GenOpenModule(modid);
+    OCG.GenModuleOpen(modid);
     Declarations(OCB.GlobVar);
 
     (* Allocate global variable addresses *)
@@ -1284,10 +1317,12 @@ BEGIN
       OCB.Export(modid, newsymbols, key);
       IF newsymbols THEN ws(" new symbol file") END;
       OCG.GenCloseModule(modid, key, exno);
-      (*Texts.WriteInt(W, X64.PC, 6);*)  Texts.WriteInt(W, VarSize, 6);  Texts.WriteHex(W, key);
+      (*Texts.WriteInt(W, X64.PC, 6);*)
+      (*Texts.WriteInt(W, VarSize, 6);  Texts.WriteHex(W, key);*)
+      wir(VarSize, 6);  wh(key);
       wir((H.Ticks() - start) DIV 10000, 4); ws("ms")
     ELSE
-      wn;  ws("compilation FAILED");  wa;  H.SetExitCode(1)
+      wn;  ws("compilation FAILED");  H.SetExitCode(1)
     END;
     wn;
     OCB.CloseScope;  pbsList := NIL
@@ -1331,12 +1366,13 @@ BEGIN Texts.OpenScanner(S, Texts.Par.text, Texts.Par.pos); Texts.Scan(S);
       IF (T.len # 0) & (ORS.errcnt = 0) THEN Texts.Scan(S) ELSE S.class := 0 END
     END
   END;
+  wa;
   Modules.Collect(0)  (* Trigger immediate garbage collection when OCP exits *)
 END Compile;
 
 
 BEGIN
-  Texts.OpenWriter(W); wsn("Oberon compiler. NW 2020-08-03, DCWB 2025-02-12.");
+  wsn("Oberon compiler. NW 2020-08-03, DCWB 2025-02-12.");
   NEW(dummy);  dummy.class := OCB.GlobVar;  dummy.type := OCB.intType;
   expression := expression0;  Type := Type0;  FormalType := FormalType0;
 END OCP.

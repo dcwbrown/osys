@@ -43,8 +43,6 @@ TYPE
 
 
 VAR
-  W: Texts.Writer;
-
   Text:  ARRAY TextSize OF BYTE;
   PC:    INTEGER;
 
@@ -55,23 +53,22 @@ VAR
 
 (* -------------------------------- Tracing --------------------------------- *)
 
-PROCEDURE wa;                    BEGIN Texts.Append(Texts.Log, W.buf) END wa;
-PROCEDURE wn*;                   BEGIN Texts.WriteLn(W);  wa          END wn;
-PROCEDURE wc (c: CHAR);          BEGIN Texts.Write(W, c)              END wc;
-PROCEDURE ws (s: ARRAY OF CHAR); BEGIN Texts.WriteString(W, s)        END ws;
-PROCEDURE wsn(s: ARRAY OF CHAR); BEGIN Texts.WriteString(W, s); wn    END wsn;
-PROCEDURE wi (i: INTEGER);       BEGIN Texts.WriteInt(W, i, 1)        END wi;
-PROCEDURE wir(i, n: INTEGER);    BEGIN Texts.WriteInt(W, i, n)        END wir;
+PROCEDURE wa;                     BEGIN OCB.wa       END wa;
+PROCEDURE wn;                     BEGIN OCB.wn       END wn;
+PROCEDURE wc  (c: CHAR);          BEGIN OCB.wc(c)    END wc;
+PROCEDURE ws  (s: ARRAY OF CHAR); BEGIN OCB.ws(s)    END ws;
+PROCEDURE wsn (s: ARRAY OF CHAR); BEGIN OCB.wsn(s)   END wsn;
+PROCEDURE wi  (i: INTEGER);       BEGIN OCB.wi(i)    END wi;
+PROCEDURE wir (i, n: INTEGER);    BEGIN OCB.wir(i,n) END wir;
+
+PROCEDURE wh  (n: INTEGER);       BEGIN OCB.wh(n)    END wh;
+PROCEDURE wtab(n: INTEGER);       BEGIN OCB.wtab(n)  END wtab;
 
 PROCEDURE wsl*(s: ARRAY OF CHAR; w: INTEGER; c: CHAR);  (* Left justified with trailing c *)
 BEGIN ws(s);  DEC(w, H.Length(s));  WHILE w > 0 DO wc(c); DEC(w) END END wsl;
 
 PROCEDURE wsr*(s: ARRAY OF CHAR; w: INTEGER; c: CHAR);  (* Right justified with leading c *)
 BEGIN DEC(w, H.Length(s));  WHILE w > 0 DO wc(c); DEC(w) END;  ws(s) END wsr;
-
-PROCEDURE wh*(n: INTEGER);
-VAR hex: ARRAY 32 OF CHAR;
-BEGIN H.IntToHex(n, hex); ws(hex) END wh;
 
 PROCEDURE whr*(n, w: INTEGER; c: CHAR);  (* Right justified with leading c *)
 VAR hex: ARRAY 32 OF CHAR;
@@ -80,13 +77,6 @@ BEGIN H.IntToHex(n, hex); wsr(hex, w, c) END whr;
 PROCEDURE wil(n, w: INTEGER);
 VAR num: ARRAY 32 OF CHAR;
 BEGIN H.IntToDecimal(n, num); wsl(num, w, " ") END wil;
-
-PROCEDURE wtab(n: INTEGER);
-VAR l: INTEGER;
-BEGIN
-  l := W.buf.len;  WHILE l < n DO wc(" ");  INC(l) END;
-  Texts.Append(Texts.Log, W.buf)
-END wtab;
 
 PROCEDURE wSpace(n: INTEGER);
 BEGIN WHILE n > 0 DO wc(" ");  DEC(n) END
@@ -182,7 +172,7 @@ BEGIN
   END;
 END wClass;
 
-PROCEDURE wType(tp: OCB.Type);
+PROCEDURE wType*(tp: OCB.Type);
 BEGIN
   IF (tp.typobj # NIL) & (tp.typobj.name # "") THEN
     ws(tp.typobj.name);  ws(": ");
@@ -239,8 +229,8 @@ BEGIN
   ELSIF x.class = OCB.Proc       THEN ws("Proc ");       wAdr(x)
   ELSIF x.class = OCB.GlobVar    THEN ws("M");           wAdr(x)
   ELSIF x.class = OCB.ProcVar    THEN ws("L");           wi(x.val)
-  ELSIF x.class = OCB.ValPar     THEN ws("ValPar ");     wi(x.val)
-  ELSIF x.class = OCB.RefPar     THEN ws("RefPar ");     wi(x.val)
+  ELSIF x.class = OCB.ValPar     THEN ws("ValPar ");     wi(x.ext)
+  ELSIF x.class = OCB.RefPar     THEN ws("RefPar ");     wi(x.ext)
   ELSIF x.class = OCB.Field      THEN ws("Field ");      wi(x.val)
   ELSIF x.class = OCB.StdProc    THEN ws("StdProc ");    wi(x.val)
   ELSIF x.class = OCB.StdFunc    THEN ws("StdFunc ");    wi(x.val)
@@ -256,14 +246,13 @@ BEGIN
   ELSIF x.class = OCB.Repeat     THEN ws("Repeat ");
   ELSIF x.class = OCB.Case       THEN ws("Case ");
   ELSIF x.class = OCB.Caseval    THEN ws("Caseval ");
-  ELSIF x.class = OCB.CallSite   THEN ws("CallSite ");
+(*ELSIF x.class = OCB.CallSite   THEN ws("CallSite ");*)
   ELSIF x.class = OCB.PassParam  THEN ws("PassParam ");
   ELSE
     ws("<"); wi(x.class); (*ws(", op "); wOp(x.op, 1);*) ws(">")
-  END;
+  END
   (*IF x.name # "" THEN ws(")") END;*)
   (*IF x.op # 0 THEN wc("(");  wOp(x.op, 1);  ws(")") END;*)
-  wa
 END wObject;
 
 PROCEDURE wExpr(x: OCB.Object);
@@ -396,23 +385,6 @@ END GenStdProc;
    expo:  BOOLAN
 *)
 
-PROCEDURE GenCallSite*(VAR x: OCB.Object);
-BEGIN ws("GenCallSite     ");  wObject(x);  wn;
-  x := NewItem(OCB.CallSite, 0, 0, x.type, x, NIL)
-END GenCallSite;
-
-PROCEDURE GenParam*(callSite, formal, actual: OCB.Object);
-VAR param: OCB.Object;
-BEGIN
-  ws("GenParam        callSite ");  wObject(callSite);
-  ws(", formal: ");                 wObject(formal);
-  ws(", actual: ");                 wObject(actual);
-  wn;
-  param := NewItem(OCB.Param, 0, 0, NIL, formal, actual);
-  callSite.dsc := NewItem(OCB.PassParam, callSite.val, 0, NIL, callSite.dsc, param);
-  INC(callSite.val);  (* # parameters *)
-END GenParam;
-
 PROCEDURE GenAssert*(x: OCB.Object);
 BEGIN ASSERT(FALSE);
 END GenAssert;
@@ -425,7 +397,7 @@ PROCEDURE StartStatement*; END StartStatement;
 
 PROCEDURE GenAssign*(x, y: OCB.Object): OCB.Object;
 (* Encapsulates Store, StoreStruct and CopyString *)
-BEGIN (*ws("GenStore x ");  wObject(x);  ws(" := y ");  wExpr(y);  wn;*)
+BEGIN ws("GenAssign x ");  wObject(x);  ws(" := y ");  wExpr(y);  wn;
 RETURN NewItem(OCB.Assign, 0, 0, NIL, x, y) END GenAssign;
 
 PROCEDURE GenFor0*(x, y: OCB.Object);
@@ -633,6 +605,7 @@ VAR dsco: Operand;  avoid: SET;
 BEGIN
   ASSERT(x # NIL);
   o.r := -1;  o.x := 0;  o.v := NIL;  o.i := -1;
+  ws("ResolveOperand, x.class = ");  wClass(x.class);  wn;
   IF x.class = OCB.Const THEN
     o.direct := TRUE;  o.x := x.val
   ELSIF x.class IN {OCB.String, OCB.Typ, OCB.Proc, OCB.GlobVar} THEN
@@ -642,8 +615,10 @@ BEGIN
   ELSIF x.class = OCB.RefPar THEN
     o.direct := FALSE;  o.r := SelReg(x.dsc, reg, keep);
     LoadReg(x.dsc, o.r, keep)
+  (*
   ELSIF x.class = OCB.CallSite THEN
     o.direct := FALSE;  o.r := RSP;  o.x := 111;  (* function result *)
+  *)
   ELSIF x.class = OCB.Expression THEN
     wObject(x);  wn;
     IF x.val = ORS.period THEN (* field *)
@@ -708,7 +683,7 @@ BEGIN
   ASSERT(reg >= 0);
   ResolveOperand(x, reg, keep, o);
   IF (~o.direct) OR (o.r # reg) THEN
-      wOp("mov");  wReg(reg);  ws(", ");  wOperand(o);  wn;
+      wOp("mov");  wReg(reg);  ws(", ");  wOperand(o);  wn;  INC(PC)
   END
 END LoadReg0;
 
@@ -780,20 +755,15 @@ END ResolveChain;
 
 PROCEDURE PreprocessFunctionCalls(arg: OCB.Object);
 BEGIN
+  wsn("Preprocess function calls.");
   IF arg # NIL THEN
     IF arg.class = OCB.Expression THEN
       PreprocessFunctionCalls(arg.next);  PreprocessFunctionCalls(arg.dsc);
-    (*ELSIF arg.class = *)
+    ELSIF arg.class = OCB.Proc THEN
+      wsn("*Preprocess function call*");
     END
   END
 END PreprocessFunctionCalls;
-
-PROCEDURE PreprocessExpression(expr: OCB.Object);
-BEGIN
-  IF expr.class = OCB.Expression THEN
-
-  END
-END PreprocessExpression;
 
 PROCEDURE ProcessStmtSeq(nest, tempcount: INTEGER;  seq: OCB.Object;  VAR maxtemp: INTEGER);
 VAR stmttemp: INTEGER;
@@ -808,10 +778,14 @@ VAR stmttemp: INTEGER;
 
       IF stmt.class = OCB.Assign  THEN (* dest, expr  *)
         wObject(stmt.next);  ws(" := ");  wExpr(stmt.dsc);  wn;
+        PreprocessFunctionCalls(stmt.dsc);
         ResolveOperand(stmt.dsc, RAX, keep, o);
-        wOp("mov");  wObject(stmt.next);  ws(", ");  wOperand(o);  wn;  INC(PC)
+        wOp("mov");  wObject(stmt.next);  ws(", ");  wOperand(o);  INC(PC)
 
-      ELSIF stmt.class = OCB.Param   THEN (* dest, expr  *) wObject(stmt.next);  ws(" := ");  wExpr(stmt.dsc)
+      ELSIF stmt.class = OCB.Param   THEN (* dest, expr  *)
+        wObject(stmt.next);  ws(" := ");  wExpr(stmt.dsc);  wn;
+        ResolveOperand(stmt.dsc, RAX, keep, o);
+        wOp("mov");  ws("L111");  ws(", ");  wOperand(o);  INC(PC)
 
       ELSIF stmt.class = OCB.If      THEN (* cond, body  *)
         wExpr(stmt.next);  wn;
@@ -829,37 +803,78 @@ VAR stmttemp: INTEGER;
       ELSIF stmt.class = OCB.Repeat  THEN (* cond, body  *) ws("... UNTIL ");  wExpr(stmt.dsc)
       ELSIF stmt.class = OCB.Case    THEN (* expr, /     *) wExpr(stmt.next)
       ELSIF stmt.class = OCB.Caseval THEN (* val , body  *) wExpr(stmt.next);  ws(":")
-      ELSIF stmt.class = OCB.Proc    THEN (* /   , parms *) ws(" "); wi(stmt.type.nofpar); ws(" parms")
+
+      ELSIF stmt.class = OCB.Proc    THEN
+        wn;
+        ResolveOperand(stmt, RAX, keep, o);
+        wOp("call");  wObject(stmt);  INC(PC);
+        IF stmt.type # NIL THEN  (* It's a function *)
+          wn;  wOp("mov");  ws("[rsp+111), rax");
+          ws("  ");  wtab(16);  ws("; save function result");  INC(PC)
+        END
       END;
+
       wn;
       IF stmt.class IN {OCB.If,    OCB.Elsif,  OCB.Else,
                         OCB.While, OCB.Repeat, OCB.Caseval} THEN
         ProcessStmtSeq(nest+1, maxtemp, stmt.dsc, maxtemp)
-      ELSIF stmt.class = OCB.Proc THEN
-        parm := stmt.type.dsc;  n := stmt.type.nofpar;
-        WHILE (parm # NIL) & (n > 0) DO
-          ws(" ");  wObject(parm);  wn;
-          parm := parm.next;  DEC(n);
-        END;
       END
     END
   END ProcessStmt;
 
-BEGIN IF seq # NIL THEN
-  ASSERT(seq.class = OCB.Statement);
-  stmttemp := tempcount;
+BEGIN
+  IF seq # NIL THEN
+    ASSERT(seq.class = OCB.Statement);
+    stmttemp := tempcount;
 
-  ProcessStmtSeq(nest, tempcount, seq.next, stmttemp);
-  IF stmttemp > maxtemp THEN maxtemp := stmttemp END;
+    ProcessStmtSeq(nest, tempcount, seq.next, stmttemp);
+    IF stmttemp > maxtemp THEN maxtemp := stmttemp END;
 
-  ProcessStmt(nest, tempcount, seq.dsc, maxtemp)
-END END ProcessStmtSeq;
+    ProcessStmt(nest, tempcount, seq.dsc, maxtemp)
+  END
+END ProcessStmtSeq;
 
+
+PROCEDURE MeasureExpressionLocals(x: OCB.Object;  VAR fnparams, fnresults: INTEGER);
+BEGIN
+  ws("MeasureExpressionLocals, x: ");  wObject(x);  wn;
+  IF x # NIL THEN
+    IF x.type.form = OCB.ProcAdr THEN
+      ASSERT(x.type.len MOD 8 = 0);
+      IF x.type.len > fnparams THEN fnparams := x.type.len END;
+      IF x.type.base # NIL THEN INC(fnresults) END
+    ELSIF x.class = OCB.Expression THEN
+      MeasureExpressionLocals(x.next, fnparams, fnresults);
+      MeasureExpressionLocals(x.dsc,  fnparams, fnresults)
+    END
+  END
+END MeasureExpressionLocals;
+
+PROCEDURE MeasureBlockLocals(x: OCB.Object): INTEGER;  (* x is first statement of block *)
+VAR blockparams, blockresults, fnparams, fnresults, i: INTEGER;
+BEGIN blockparams := 0;  blockresults := 0;
+  IF x # NIL THEN
+    ASSERT(x.class = OCB.Statement);
+    WHILE x # NIL DO
+      IF x.dsc.class = OCB.Assign THEN
+        fnparams := 0;  fnresults := 0;
+        MeasureExpressionLocals(x.dsc.dsc, fnparams, fnresults);
+        IF fnparams  > blockparams  THEN blockparams  := fnparams  END;
+        IF fnresults > blockresults THEN blockresults := fnresults END
+      END;
+      x := x.next;
+    END;
+    ws("Block local slots: params: ");  wi(blockparams);
+    ws(", results: ");  wi(blockresults);  wn
+  END
+RETURN blockparams + blockresults END MeasureBlockLocals;
 
 PROCEDURE GenBody*(proc, seq: OCB.Object);
-VAR tempdepth: INTEGER;
+VAR tempdepth: INTEGER;  localslots: INTEGER;
 BEGIN ws("GenBody ");
   IF proc = NIL THEN ws("<MAIN>") ELSE wObject(proc) END;  wn;
+  localslots := MeasureBlockLocals(seq);
+
   tempdepth := 0;
   ProcessStmtSeq(1, 0, seq, tempdepth);
   IF tempdepth # 0 THEN
@@ -877,9 +892,9 @@ BEGIN wsn("GenReturn");
   END
 END GenReturn;
 
-PROCEDURE GenOpenModule*(modid: ORS.Ident);
-BEGIN wn;  ws("GenOpenModule   '");  ws(modid);  wsn("'")
-END GenOpenModule;
+PROCEDURE GenModuleOpen*(modid: ORS.Ident);
+BEGIN wn;  ws("GenModuleOpen   '");  ws(modid);  wsn("'")
+END GenModuleOpen;
 
 PROCEDURE GenSetDataSize*(size: INTEGER);
 BEGIN ws("GenSetDataSize  (");  wi(size);  wsn(")");
@@ -892,6 +907,6 @@ BEGIN
   ws(", exno ");            wi(exno);  wn
 END GenCloseModule;
 
-BEGIN Texts.OpenWriter(W);
+BEGIN
   PC := 0;  LoadReg := LoadReg0;  LoadCond := LoadCond0
 END OCG.

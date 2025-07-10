@@ -1,7 +1,45 @@
 MODULE Testregalloc;  (* DCWB 2024-10-06 *)
 
-IMPORT OCB;
+VAR
+  I, J, K: INTEGER;
 
+PROCEDURE f1(i: INTEGER): INTEGER; RETURN i END f1;
+
+BEGIN
+  J := f1(K);
+END Testregalloc.
+
+
+(*
+TYPE
+  REC  = RECORD p: PROCEDURE(): INTEGER END;
+  ARR  = ARRAY 10 OF CHAR;
+
+VAR I, J: INTEGER; R: REC;
+
+PROCEDURE p0; BEGIN END p0;
+
+PROCEDURE p1(i: INTEGER); BEGIN END p1;
+
+PROCEDURE f1(i: INTEGER): INTEGER; RETURN i END f1;
+
+PROCEDURE pa (    s: ARRAY OF CHAR); BEGIN END pa;
+PROCEDURE pva(VAR s: ARRAY OF CHAR); BEGIN END pva;
+PROCEDURE pr (    r: REC); BEGIN END pr;
+PROCEDURE pvr(VAR r: REC); BEGIN END pvr;
+PROCEDURE pmp(i1: INTEGER; s1: ARR; s2: ARRAY OF CHAR; r: REC; i2: INTEGER);
+BEGIN END pmp;
+
+BEGIN
+  I := 1;
+  p0;
+  p1(I);
+  J := f1(I);
+  I := R.p();
+END Testregalloc.
+*)
+
+(*
 TYPE
   R = RECORD x: INTEGER;  a: ARRAY 16 OF INTEGER END;
   P = POINTER TO R;
@@ -46,7 +84,6 @@ BEGIN
   a(i DIV j);
   INC(i);
   k := t(x);
-  k := OCB.WordSize;
 END p;
 
 BEGIN
@@ -54,5 +91,7 @@ BEGIN
   proc(5);
 END Testregalloc.
 
+
 ORP.Compile Testregalloc.Mod/s ~
 
+*)

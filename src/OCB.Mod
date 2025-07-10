@@ -1,6 +1,6 @@
 MODULE OCB;   (*NW 25.6.2014  / AP 4.3.2020 / 8.3.2019  in Oberon-07*)
 
-IMPORT SYSTEM, H := Host, Files, ORS;
+IMPORT SYSTEM, H := Host, Files, Texts, ORS;
 
 (*  Definition of data types Object and Type, which together form the data
     structure called "symbol table".
@@ -40,7 +40,7 @@ CONST
   (* Generated classes *)
   (*                    next        dsc       val            expo  *)
   Expression* = 20;  (* 1st arg     2nd arg                        *)
-  Param*      = 21;  (* formal      expr      slot                 *)
+  Param*      = 21;  (* formal      expr      1st slot used        *)
   Statement*  = 22;  (* prev stmt   detail                         *)
   Assign*     = 23;  (* dest        expr                           *)
   If*         = 24;  (* cond        body                           *)
@@ -50,8 +50,8 @@ CONST
   Repeat*     = 28;  (* cond        body                           *)
   Case*       = 29;  (* expr        /                              *)
   Caseval*    = 30;  (* val         body                           *)
-  CallSite*   = 31;  (* 1st par     function                       *)
-  PassParam*  = 32;  (* nextpass    param                          *)
+(*CallSite*   = 31;*)(* 1st par     function                       *)
+  PassParam*  = 32;  (* type        val/expr                       *)
 
 
   (* form values *)
@@ -96,9 +96,9 @@ TYPE
   (*  Typ         descriptor address/impno       modno                        *)
   (*  Proc        code address/impno             modno                        *)
   (*  GlobVar     data address/impno             modno                        *)
-  (*  ProcVar     index                     reg                               *)
-  (*  ValPar      index                     reg                               *)
-  (*  RefPar      index                     reg                               *)
+  (*  ProcVar     index                                                       *)
+  (*  ValPar      index                                                       *)
+  (*  RefPar      index                                                       *)
   (*  Field       offset                                                      *)
   (*  StdProc     inline code number                                          *)
   (*  StdFunc     inline code number                                          *)
@@ -180,6 +180,28 @@ VAR
 
   nofmod, Ref: INTEGER;
   typtab: ARRAY maxTypTab OF Type;
+
+  W*: Texts.Writer;
+
+
+(* ------------------------------- Logging -------------------------------- *)
+
+PROCEDURE wa*;                    BEGIN Texts.Append(Texts.Log, W.buf) END wa;
+PROCEDURE wn*;                    BEGIN Texts.WriteLn(W); wa           END wn;
+PROCEDURE wc* (c: CHAR);          BEGIN Texts.Write(W, c)              END wc;
+PROCEDURE ws* (s: ARRAY OF CHAR); BEGIN Texts.WriteString(W, s)        END ws;
+PROCEDURE wsn*(s: ARRAY OF CHAR); BEGIN Texts.WriteString(W, s); wn    END wsn;
+PROCEDURE wi* (i: INTEGER);       BEGIN Texts.WriteInt(W, i, 1)        END wi;
+PROCEDURE wir*(i, n: INTEGER);    BEGIN Texts.WriteInt(W, i, n)        END wir;
+
+PROCEDURE wh*(n: INTEGER);
+VAR hex: ARRAY 32 OF CHAR;
+BEGIN H.IntToHex(n, hex);  ws(hex) END wh;
+
+PROCEDURE wtab*(n: INTEGER);
+BEGIN WHILE W.buf.len < n DO wc(" ") END;  wa END wtab;
+
+
 
 
 PROCEDURE NewObj*(VAR obj: Object; id: ORS.Ident; class: INTEGER);
@@ -520,6 +542,8 @@ END enter;
 
 
 BEGIN
+  Texts.OpenWriter(W);
+
   byteType   := type(Byte,   Int64,   1);
   boolType   := type(Bool,   Bool,    1);
   charType   := type(Char,   Char,    1);
