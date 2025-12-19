@@ -139,6 +139,7 @@ VAR
   GetProcAddress*:                 PROCEDURE\(hmodule, procname: INTEGER): INTEGER;
   GetStdHandle*:                   PROCEDURE\(nStdHandle: SYSTEM.INT32): INTEGER;
   GetSystemTimePreciseAsFileTime*: PROCEDURE\(tickAdr: INTEGER);
+  GetSystemTimes:                  PROCEDURE\(lpIdle, lpKernel, lpUser: INTEGER): INTEGER;
   GetTempFileNameA*:               PROCEDURE\(pathadr, prefixadr, unique, tempfilenameadr: INTEGER): INTEGER;
   GetTempPathA*:                   PROCEDURE\(buflen, bufadr: INTEGER): INTEGER;
   LoadLibraryA*:                   PROCEDURE\(libname: INTEGER): INTEGER;
@@ -994,6 +995,22 @@ END WriteTime;
 PROCEDURE WriteClock*(clock: INTEGER);
 BEGIN WriteDate(clock); wc(" "); WriteTime(clock)
 END WriteClock;
+
+
+PROCEDURE ProcessTimes*(VAR user, system: INTEGER);
+(*VAR idle, kernel, process: RECORD low, high: SYSTEM.CARD32 END;*)
+VAR idle, kernel, process: INTEGER;
+BEGIN
+  user := 0;  system := 0;
+  IF GetSystemTimes(SYSTEM.ADR(idle), SYSTEM.ADR(kernel), SYSTEM.ADR(process)) # 0 THEN
+    (*
+    user   := process.low + LSL(ORD(process.high), 32);
+    system := kernel.low  + LSL(ORD(kernel.high), 32) - idle.low + LSL(ORD(idle.high), 32);
+    *)
+    user   := process;
+    system := kernel - idle;
+  END
+END ProcessTimes;
 
 
 (* -------------------------------------------------------------------------- *)
