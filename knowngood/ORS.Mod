@@ -33,7 +33,8 @@ CONST IdLen* = 32;
 
 TYPE Ident* = ARRAY IdLen OF CHAR;
 
-VAR ival*, slen*: LONGINT;  (* results of Get *)
+VAR
+  ival*, slen*: LONGINT;  (* results of Get *)
   rval*:        REAL;
   id*:          Ident;    (* for identifiers *)
   str*:         ARRAY stringBufSize OF CHAR;
@@ -51,28 +52,25 @@ VAR ival*, slen*: LONGINT;  (* results of Get *)
               RECORD sym: INTEGER; id: ARRAY 12 OF CHAR END;
 
   (* Compilation options *)
-  ListCodegen*:  BOOLEAN;
-  ListAssembly*: BOOLEAN;
-  Hasty*:        BOOLEAN;
+  ListCodegen*:  BOOLEAN;  (* 'lc+' *)
+  ListAssembly*: BOOLEAN;  (* 'la+' *)
+  Hasty*:        BOOLEAN;  (* 'h+': Disables index range and pointer nil checks *)
 
-
-PROCEDURE CopyId*(VAR ident: Ident);
-BEGIN ident := id
-END CopyId;
 
 PROCEDURE Pos*(): INTEGER;
 BEGIN RETURN Texts.Pos(R) - 1
 END Pos;
 
 PROCEDURE GetCh;
-VAR prevch: CHAR;
+VAR next: CHAR;
 BEGIN
-  prevch := ch;  Texts.Read(R, ch);
-  IF (prevch = 0DX) OR (prevch = 0AX) THEN
-    IF (prevch = 0DX) & (ch = 0AX) THEN Texts.Read(R, ch) END;
+  Texts.Read(R, next);
+  IF (ch = 0DX) OR (ch = 0AX) THEN
+    IF (ch = 0DX) & (next = 0AX) THEN Texts.Read(R, next) END;
     INC(linenum);
     linebeg := Pos()
-  END
+  END;
+  ch := next
 END GetCh;
 
 PROCEDURE Mark*(msg: ARRAY OF CHAR);

@@ -13,7 +13,8 @@ CONST (*scanner symbol classes*)
   (* TextBlock = TextTag offset run {run} "0" len {AsciiCode}.
      run       = fnt [name] col voff len. *)
 
-  TAB = 9X;  CR = 0DX;
+  TAB      = 9X;
+  CR       = 0DX;
   LF       = 0AX;
   TextTag  = 0F1X;
   replace* = 0;  insert* = 1;  delete* = 2;  unmark* = 3;  (*op-codes*)
@@ -443,8 +444,9 @@ PROCEDURE Write* (VAR W: Writer; ch: CHAR);
 VAR p: Piece;
 BEGIN
   IF (W.buf.last.fnt # W.fnt) OR (W.buf.last.col # W.col) OR (W.buf.last.voff # W.voff) THEN
-    NEW(p);  p.f := Files.Base(W.rider);  p.off := Files.Pos(W.rider);  p.len := 0;
-    p.fnt := W.fnt;  p.col := W.col;  p.voff := W.voff;
+    NEW(p);  p.f := Files.Base(W.rider);
+    p.off  := Files.Pos(W.rider);  p.len := 0;
+    p.fnt  := W.fnt;  p.col  := W.col;  p.voff := W.voff;
     p.next := NIL;         W.buf.last.next := p;
     p.prev := W.buf.last;  W.buf.last      := p
   END;

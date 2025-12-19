@@ -317,7 +317,8 @@ BEGIN T := TextFrames.Text("");
   M := Modules.Root;
   WHILE M # NIL DO
     IF M.name[0] # 0X THEN
-      Texts.WriteString(W, M.name); Texts.Write(W, 9X); Texts.WriteHex(W, ORD(M));
+      Texts.WriteHex(W, ORD(M) - H.Preload.CoreAdr); Texts.Write(W, 9X);
+      Texts.WriteString(W, M.name); Texts.Write(W, 9X);
       (*Texts.WriteHex(W, M.code);*) Texts.WriteInt(W, M.refcnt, 4)
     ELSE Texts.WriteString(W, "---")
     END ;

@@ -12,7 +12,7 @@ CONST
 
   OberonCoreBase = 100000000H;  (* All linking is arranged to place the Oberon core at 1,0000,0000H *)
 
-  Kernel32ImportCount = 43;
+  Kernel32ImportCount = 44;
   Gdi32ImportCount    = 18;
   User32ImportCount   = 35;
 
@@ -605,6 +605,7 @@ BEGIN
   AddImport(Idt.Kernel32Lookups, s, "GetProcAddress");
   AddImport(Idt.Kernel32Lookups, s, "GetStdHandle");
   AddImport(Idt.Kernel32Lookups, s, "GetSystemTimePreciseAsFileTime");
+  AddImport(Idt.Kernel32Lookups, s, "GetSystemTimes");
   AddImport(Idt.Kernel32Lookups, s, "GetTempFileNameA");
   AddImport(Idt.Kernel32Lookups, s, "GetTempPathA");
   AddImport(Idt.Kernel32Lookups, s, "LoadLibraryA");
@@ -1361,7 +1362,11 @@ BEGIN
 
   ParseTarget(r, ch, target, modname);
   WHILE (target[0] # 0X) & (target # "~") DO
-    IF tgthost = Win THEN ws(" linking PE ") ELSE ws(" linking ELF ") END;
+    IF tgthost = Win THEN
+      ws(" linking Windows portable executable ")
+    ELSE
+      ws(" linking Linux executable and linkable format ")
+    END;
     ws(target);
     IF tgthost = Win THEN ws(".exe  ") ELSE ws("  ") END;
 

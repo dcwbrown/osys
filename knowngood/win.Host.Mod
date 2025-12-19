@@ -35,8 +35,6 @@ CONST
   MEMCOMMIT            = 1000H;
   PAGEEXECUTEREADWRITE = 40H;
 
-  HostName* = "Windows";
-
 
 TYPE
   (* -------------------- Windows exception structures -------------------- *)
@@ -141,6 +139,7 @@ VAR
   GetProcAddress*:                 PROCEDURE\(hmodule, procname: INTEGER): INTEGER;
   GetStdHandle*:                   PROCEDURE\(nStdHandle: SYSTEM.INT32): INTEGER;
   GetSystemTimePreciseAsFileTime*: PROCEDURE\(tickAdr: INTEGER);
+  GetSystemTimes*:                 PROCEDURE\(lpIdle, lpKernel, lpUser: INTEGER): INTEGER;
   GetTempFileNameA*:               PROCEDURE\(pathadr, prefixadr, unique, tempfilenameadr: INTEGER): INTEGER;
   GetTempPathA*:                   PROCEDURE\(buflen, bufadr: INTEGER): INTEGER;
   LoadLibraryA*:                   PROCEDURE\(libname: INTEGER): INTEGER;
@@ -332,7 +331,7 @@ PROCEDURE wh*(n: INTEGER);
 VAR hex: ARRAY 32 OF CHAR;
 BEGIN IntToHex(n, hex); Log(hex) END wh;
 
-PROCEDURE whr*(n, w: INTEGER; c: CHAR);  (* Right justified with leading zeroes *)
+PROCEDURE whr*(n, w: INTEGER; c: CHAR);  (* Right justified with leading c *)
 VAR hex: ARRAY 32 OF CHAR;
 BEGIN IntToHex(n, hex); wsr(hex, w, c) END whr;
 
@@ -437,6 +436,7 @@ BEGIN
   IF DeleteUnregisteredFilesAtExit # NIL THEN DeleteUnregisteredFilesAtExit END;
   ExitProcess(ExitCode)
 END Exit;
+
 
 (* ---------------------- Exception and trap handling ----------------------- *)
 
@@ -1270,7 +1270,7 @@ BEGIN
   AllocPtr  := Preload.CoreAdr + Preload.CoreSize;
   CommitLen := (Preload.CoreSize + 0FFFFH) DIV 10000H * 10000H;
 
-  (* Reserve memroy beyond committed up to 2GB *)
+  (* Reserve memory beyond committed up to 2GB *)
   reserveadr := Preload.CoreAdr + CommitLen;
   reservelen := 80000000H - CommitLen;
   res := VirtualAlloc(reserveadr, reservelen, MEMRESERVE, PAGEEXECUTEREADWRITE);

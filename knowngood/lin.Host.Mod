@@ -514,11 +514,11 @@ VAR
   info:    POINTER- TO SignalInfo;
   err: SET;
 BEGIN
-  IF signal    = SIGILL  THEN ws("Illegal instruction")
+  IF    signal = SIGILL  THEN ws("Illegal instruction")
   ELSIF signal = SIGBUS  THEN ws("Bus fault")
   ELSIF signal = SIGSEGV THEN ws("Segmentation fault")
   ELSIF signal = SIGFPE  THEN ws("Floating point error")
-  ELSE  wh(signal); wc("H")
+  ELSE  ws("Signal ");  wh(signal);  wc("H")
   END;
   wsn(", context:");
   wsn("Signal info:");

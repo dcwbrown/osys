@@ -71,7 +71,7 @@ VAR
 
   W:            Texts.Writer;
   Srv:          INTEGER;
-  Buf:          ARRAY 16384 OF BYTE;
+  Buf:          ARRAY 2048 (*16384*) OF BYTE;  (* Not so large as to cause all rows to be buffered *)
   Out:          INTEGER;
   NextId:       INTEGER;
   IdIncr:       INTEGER;
@@ -204,7 +204,7 @@ END WriteError;
 
 PROCEDURE SendUnbuffered(buf: ARRAY OF BYTE; offset, len: INTEGER);
 VAR rv: INTEGER;
-BEGIN  ASSERT(len <= LEN(buf));
+BEGIN  ASSERT(offset + len <= LEN(buf));
   IF len > 0 THEN
     rv := syswrite(Srv, SYSTEM.ADR(buf) + offset, len);
     IF    rv < 0   THEN H.Trap(-1, "Write to X11 server failed.")
@@ -279,21 +279,55 @@ END MustReceive;
 
 (* ------------------------ X authority file reader ------------------------- *)
 
-(*  01 00                                                                              family
-    00 0b 73 75 72 66 61 63 65 62 6f 6f 6b                       'surfacebook'         address
-    00 01 31                                                     '1'                   number
-    00 12 4d 49 54 2d 4d 41 47 49 43 2d 43 4f  4f 4b 49 45 2d 31 'MIT-MAGIC-COOKIE-1'  name
-    00 10 c9 81 0e 0d 82 f4 0a 5b af 37 61 d0 d1 49 d5 d1                              data
-    ff ff                                                                              family
-    00 00                                                                              address
-    00 01 31                                                                           number
-    00 12 4d 49 54 2d 4d 41 47  49 43 2d 43 4f 4f 4b 49 45 2d 31 'MIT-MAGIC-COOKIE-1'  name
-    00 10 c9 81 0e 0d 82 f4 0a 5b af 37 61 d0 d1 49 d5 d1                              data
-*)
+PROCEDURE ParseEnvVar(adr: INTEGER; VAR key, value: ARRAY OF CHAR);
+VAR ch: CHAR;  i: INTEGER;
+BEGIN key[0] := 0X; value[0] := 0X;
+  IF adr # 0 THEN
+    SYSTEM.GET(adr, ch); INC(adr);  WHILE ch = " " DO SYSTEM.GET(adr, ch); INC(adr) END;
+    i := 0;
+    WHILE (i < LEN(key)-1) & (ch > " ") & (ch # "=") DO
+      key[i] := ch;  INC(i);  SYSTEM.GET(adr, ch); INC(adr)
+    END;
+    key[i] := 0X;
+    i := 0;  IF ch = "=" THEN SYSTEM.GET(adr, ch); INC(adr) END;
+    WHILE (i < LEN(value)-1) & (ch > " ") DO
+      value[i] := ch;  INC(i);  SYSTEM.GET(adr, ch); INC(adr)
+    END;
+    value[i] := 0X;
+  END;
+  (*H.ws("Parsed env var '"); H.ws(key); H.ws("' = '"); H.ws(value); H.wsn("'.")*)
+END ParseEnvVar;
+
+PROCEDURE GetEnvVar(name: ARRAY OF CHAR; VAR value: ARRAY OF CHAR): BOOLEAN;
+VAR
+  env, varadr: INTEGER;
+  key:         ARRAY 260 OF CHAR;
+  found:       BOOLEAN;
+BEGIN
+  found := FALSE;  env := H.Environment;  SYSTEM.GET(env, varadr);
+  WHILE (varadr # 0) & ~found DO
+    ParseEnvVar(varadr, key, value);
+    found := key = name;
+    INC(env, 8);  SYSTEM.GET(env, varadr);
+  END;
+  IF ~found THEN value[0] := 0X END
+RETURN found END GetEnvVar;
+
+
+PROCEDURE GetAuthFile(): Files.File;
+VAR
+  fn:   ARRAY 260 OF CHAR;
+  f:    Files.File;
+BEGIN
+  IF ~GetEnvVar("XAUTHORITY", fn) THEN
+    IF GetEnvVar("HOME", fn) THEN H.Append("/.Xauthority", fn) ELSE fn[0] := 0X END
+  END;
+  f := Files.Old(fn);
+RETURN f END GetAuthFile;
 
 PROCEDURE ReadAuthWord(VAR r: Files.Rider): INTEGER;
 VAR w: SYSTEM.CARD16;
-BEGIN Files.ReadRaw(r, w);  H.ByteReverse(w)  RETURN w END ReadAuthWord;
+BEGIN w := 0;  Files.ReadRaw(r, w);  H.ByteReverse(w)  RETURN w END ReadAuthWord;
 
 PROCEDURE ReadAuthString(VAR r: Files.Rider; VAR s: ARRAY OF CHAR);
 VAR i, len: INTEGER;
@@ -302,50 +336,58 @@ BEGIN len := ReadAuthWord(r);  ASSERT(len < LEN(s));
   s[len] := 0X
 END ReadAuthString;
 
-PROCEDURE ParseEnvVar(adr: INTEGER; VAR key, value: ARRAY OF CHAR);
-VAR ch: CHAR;  i: INTEGER;
-BEGIN key[0] := 0X; value[0] := 0X;
-  IF adr # 0 THEN
-    SYSTEM.GET(adr, ch);  WHILE ch = " " DO SYSTEM.GET(adr, ch) END;
-    i := 0;
-    WHILE (i < LEN(key)-1) & (ch > " ") & (ch # "=") DO
-      key[i] := ch;  INC(i);  SYSTEM.GET(adr, ch)
-    END;
-    key[i] := 0X;
-    i := 0;  IF ch = "=" THEN SYSTEM.GET(adr, ch) END;
-    WHILE (i < LEN(value)-1) & (ch > " ") DO
-      value[i] := ch;  INC(i);  SYSTEM.GET(adr, ch)
-    END;
-    value[i] := 0X;
-  END;
-  H.ws("Parsed env var '"); H.ws(key); H.ws("' = '"); H.ws(value); H.wsn("'.")
-END ParseEnvVar;
-
-(*
-PROCEDURE GetAuthFileName(VAR fn: ARRAY OF CHAR);
-VAR env, varadr: INTEGER;  key: ARRAY 20 OF CHAR;  found: BOOLEAN;
+PROCEDURE GetAuthCookie(VAR name: ARRAY OF CHAR; VAR data: ARRAY OF BYTE; VAR datalen: INTEGER);
+VAR
+  f: Files.File;
+  r: Files.Rider;
+  family: INTEGER;
+  address: ARRAY 100 OF CHAR;
+  number:  ARRAY 20 OF CHAR;
 BEGIN
-  found := FALSE;  fn[0] := 0X;
-  env := H.Environment;  SYSTEM.GET(env, vardadr);
-  WHILE (varadr # 0) & ~found DO
-    ParseEnvVar(varadr, key, fn);
-    found := key = "XAUTHORITY";
-    INC(env, 8);  SYSTEM.GET(env, vardadr);
-  END
-END GetAuthFileName;
-*)
+  f := GetAuthFile();
+  IF f # NIL THEN
+    Files.Set(r, f, 0);
+    REPEAT
+      family := ReadAuthWord(r);
+      ReadAuthString(r, address);  (* H.ws("Address '");   H.ws(address);              *)
+      ReadAuthString(r, number);   (* H.ws("', number '"); H.ws(number);               *)
+      ReadAuthString(r, name);     (* H.ws("', name '");   H.ws(name);    H.wsn("'."); *)
+      datalen := ReadAuthWord(r);  ASSERT(datalen <= LEN(data));
+      Files.ReadMem(r, SYSTEM.ADR(data), datalen);
+    UNTIL r.eof OR (number = "1") OR (family = 0FFFFH)
+  END;
+END GetAuthCookie;
 
 
 (* ------------------------ Server connection setup ------------------------- *)
 
 PROCEDURE ConnectToX11Server(VAR fd: INTEGER);
-CONST x11sockname = "/tmp/.X11-unix/X0";
-VAR  rv, namelen: INTEGER;  sockadr:  ARRAY 200 OF BYTE;
+VAR
+  rv, namelen: INTEGER;
+  sockname:    ARRAY 32 OF CHAR;
+  sockadr:     ARRAY 200 OF BYTE;
+  display:     ARRAY 20 OF CHAR;
+  displaylen:  INTEGER;
+  i, j:        INTEGER;
 BEGIN
+  sockname := "/tmp/.X11-unix/X";
   fd := syssocket(AFUNIX, SOCKSTREAM, 0);  ASSERT(fd >= 0);
+  IF GetEnvVar("DISPLAY", display) THEN
+    IF display[0] # ":" THEN H.Trap(-1, "X11 supported only through unix socket") END;
+    i := 1;  j := H.Length(sockname);
+    WHILE display[i] = " " DO INC(i) END;
+    WHILE (display[i] >= "0") & (display[i] <= "9") DO
+      sockname[j] := display[i];  INC(i);  INC(j)
+    END;
+  ELSE
+    sockname[j] := "0";  INC(j);
+  END;
+  sockname[j] := 0X;
+  (*H.ws("Using X11 display ");  H.ws(sockname);  H.wsn(".");*)
+
   SYSTEM.PUT(SYSTEM.ADR(sockadr), SYSTEM.VAL(SYSTEM.INT16, AFUNIX));
-  namelen := H.Length(x11sockname);  ASSERT(namelen + 2 <= LEN(sockadr));
-  SYSTEM.COPY(SYSTEM.ADR(x11sockname), SYSTEM.ADR(sockadr[2]), namelen);
+  namelen := H.Length(sockname);  ASSERT(namelen + 2 <= LEN(sockadr));
+  SYSTEM.COPY(SYSTEM.ADR(sockname), SYSTEM.ADR(sockadr[2]), namelen);
   rv := sysconnect(fd, SYSTEM.ADR(sockadr), namelen + 2);  ASSERT(rv = 0);
 END ConnectToX11Server;
 
@@ -400,12 +442,41 @@ VAR
     colourMapEntries:                  SYSTEM.CARD16;
     redMask, greenMask, blueMask, pad: SYSTEM.CARD32;
   END;
-  vendor:  ARRAY 200 OF CHAR;
-  i, j, k: INTEGER;
-  ch:      CHAR;
+  vendor:   ARRAY 200 OF CHAR;
+  i, j, k:  INTEGER;
+  ch:       CHAR;
+  initlen:  INTEGER;
+  auth:     Files.File;
+  authname: ARRAY 50 OF CHAR;
+  namelen:  INTEGER;
+  authdata: ARRAY 100 OF BYTE;
+  datalen:  INTEGER;
 BEGIN
   H.ZeroFill(initmsg);  initmsg.byteorder := ORD("l");  initmsg.majorver := 11;
-  SendUnbuffered(initmsg, 0, 12);
+  initlen := 12;
+
+  GetAuthCookie(authname, authdata, datalen);
+  IF datalen > 0 THEN
+    (*
+    H.ws("Found auth cookie '"); H.ws(authname); H.wsn("':");
+    H.DumpMem(2, SYSTEM.ADR(authdata), 0, datalen);
+    *)
+    namelen := H.Length(authname);
+    initmsg.apnamelen := namelen;
+    SYSTEM.COPY(SYSTEM.ADR(authname), SYSTEM.ADR(initmsg)+initlen, namelen);
+    initlen := (initlen + namelen + 3) DIV 4 * 4;
+
+    initmsg.apdatalen := datalen;
+    SYSTEM.COPY(SYSTEM.ADR(authdata), SYSTEM.ADR(initmsg)+initlen, datalen);
+    initlen := (initlen + datalen + 3) DIV 4 * 4;
+    ASSERT(initlen <= 112);
+    (*
+    H.wsn("Initmsg:");
+    H.DumpMem(2, SYSTEM.ADR(initmsg), 0, initlen);
+    *)
+  END;
+
+  SendUnbuffered(initmsg, 0, initlen);
   IF ~Receive(initinfo)  THEN H.Trap(-1, "X server dropped connection.") END;
   IF initinfo.result # 1 THEN
     H.ws("initinfo.result:   "); H.wh(initinfo.result);   H.wsn("H.");
@@ -441,8 +512,8 @@ VAR bytecount: INTEGER;
 BEGIN
   ASSERT(Width MOD 8 = 0);
   bytecount := Width DIV 8;
-  SendByte(72);    (* command *)
-  SendByte(0);     (* format 0: 1 bit per pixel *)
+  SendByte(72);       (* command PutImage *)
+  SendByte(0);        (* format 0: Bitmap *)
   SendWord((bytecount + 3) DIV 4 + 6);
   SendDWord(Window);  SendDWord(Context);
   SendWord(Width);    SendWord(1);
@@ -967,5 +1038,5 @@ BEGIN
   MapWindow;
   Context := CreateGraphicsContext(Window, 0FFFFFFH, 0);
   ProcessAllPendingEvents;
-  wsn("Gui loaded.");
+  (*wsn("Gui loaded.");*)
 END Gui.
