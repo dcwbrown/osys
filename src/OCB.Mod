@@ -50,7 +50,7 @@ CONST
   Repeat*     = 28;  (* cond        body                           *)
   Case*       = 29;  (* expr        /                              *)
   Caseval*    = 30;  (* val         body                           *)
-(*CallSite*   = 31;*)(* 1st par     function                       *)
+  Call*       = 31;  (* function    1st par                        *)
   PassParam*  = 32;  (* type        val/expr                       *)
 
 
@@ -105,7 +105,7 @@ TYPE
   (*  Mod         key                                                         *)
   (*                                                                          *)
   (*  Selector    field offset                          variable     index    *)
-  (*  Expression  op symbol                 reg         1st arg      2nd arg  *)
+  (*  Expression  op symbol                 regset      1st arg      2nd arg  *)
   (*  Param                                             reg/stk      expr     *)
   (*  Statement                                         prev stmt    detail   *)
   (*  Assign                                            dest         expr     *)
@@ -194,9 +194,9 @@ PROCEDURE wsn*(s: ARRAY OF CHAR); BEGIN Texts.WriteString(W, s); wn    END wsn;
 PROCEDURE wi* (i: INTEGER);       BEGIN Texts.WriteInt(W, i, 1)        END wi;
 PROCEDURE wir*(i, n: INTEGER);    BEGIN Texts.WriteInt(W, i, n)        END wir;
 
-PROCEDURE wh*(n: INTEGER);
+PROCEDURE wh*(h: INTEGER);
 VAR hex: ARRAY 32 OF CHAR;
-BEGIN H.IntToHex(n, hex);  ws(hex) END wh;
+BEGIN H.IntToHex(h, hex);  ws(hex) END wh;
 
 PROCEDURE wtab*(n: INTEGER);
 BEGIN WHILE W.buf.len < n DO wc(" ") END;  wa END wtab;

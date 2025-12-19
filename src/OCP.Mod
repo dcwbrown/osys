@@ -9,6 +9,10 @@ IMPORT SYSTEM, H := Host, Kernel, Files, Modules, Texts, ORS, OCB, OCG;
     OCG to produce binary code. OCP performs type checking and data allocation.
     Parser is target-independent, except for part of the handling of allocations.*)
 
+CONST
+  (* Named registers *)
+  RAX = 0;  RCX = 1;  RDX = 2;  RBX = 3;
+  RSP = 4;  RBP = 5;  RSI = 6;  RDI = 7;
 
 TYPE
   PtrBase = POINTER TO PtrBaseDesc;
@@ -40,13 +44,23 @@ PROCEDURE wh (n: INTEGER);       BEGIN OCB.wh(n)    END wh;
 
 
 PROCEDURE GenExpr(sym: INTEGER; x, y: OCB.Object): OCB.Object;
-RETURN OCG.NewItem(OCB.Expression, sym, 0, x.type, x, y)
-END GenExpr;
-
+VAR used: SET;  result: OCB.Object;
+BEGIN used := OCG.RegsUsed(x) + OCG.RegsUsed(y);
+  result := OCG.NewItem(OCB.Expression, sym, x.type, x, y);
+  IF (x.type.form = OCB.Int64)
+  &  (sym IN {ORS.div, ORS.mod, ORS.times}) THEN
+    used := used + {RAX, RDX}
+  END;
+  result.ext := ORD(used);
+  (*
+  ws("GenExpr -> ");  OCG.wObject(result);
+  ws(", using regs ");  OCG.wRegSet(OCG.RegsUsed(result));  wsn(".");
+  *)
+RETURN result END GenExpr;
 
 PROCEDURE GenStmt(val: INTEGER; obj: OCB.Object);
 BEGIN
-  CodeSeq := OCG.NewItem(OCB.Statement, val, 0, NIL, CodeSeq, obj)
+  CodeSeq := OCG.NewItem(OCB.Statement, val, NIL, CodeSeq, obj)
 END GenStmt;
 
 PROCEDURE Check(s: INTEGER;  msg: ARRAY OF CHAR);
@@ -112,7 +126,7 @@ PROCEDURE CheckConst(VAR x: OCB.Object);
 BEGIN
   IF ~((x.class = OCB.Const) OR (x.type.form IN {OCB.ProcAdr, OCB.StrAdr})) THEN
     ORS.Mark("not a constant");
-    x := OCG.NewItem(OCB.Const, 0, 0, OCB.intType, NIL, NIL)
+    x := OCG.NewItem(OCB.Const, 0, OCB.intType, NIL, NIL)
   END
 END CheckConst;
 
@@ -306,42 +320,36 @@ BEGIN
     END
   END;
 
-  IF valid THEN res := OCG.NewItem(OCB.Param, 0, 0, NIL, par, x) END
+  IF valid THEN res := OCG.NewItem(OCB.Param, 0, NIL, par, x) END
 RETURN res END Parameter;
 
+(*
 PROCEDURE PassParameters(list: OCB.Object);
 BEGIN
   IF list.next # NIL THEN PassParameters(list.next) END;
   GenStmt(0, list.dsc)
 END PassParameters;
+*)
 
-PROCEDURE ParamList(par: OCB.Object; n: INTEGER);
+PROCEDURE ParamList(par: OCB.Object; n: INTEGER): OCB.Object;
 VAR list: OCB.Object;  i: INTEGER;
 BEGIN list := NIL;  i := 0;
   IF sym # ORS.rparen THEN
-    list := OCG.NewItem(0, i, 0, NIL, list, Parameter(par));
+    list := OCG.NewItem(0, i, NIL, list, Parameter(par));
     i := 1;
     WHILE sym <= ORS.comma DO
       Check(ORS.comma, "comma?");
       IF par # NIL THEN par := par.next END;
-      list := OCG.NewItem(0, i, 0, NIL, list, Parameter(par));
-      INC(i);
-
-(*
-IF FALSE THEN END  (* Crashes without this. Haven't found out why. May be to *)
-                   (* do with true chain, false chain, and jump generation?  *)
-                   (* TODO remove with new code generator                    *)
-*)
-
+      list := OCG.NewItem(0, i, NIL, list, Parameter(par));
+      INC(i)
     END;
     Check(ORS.rparen, ") missing")
   ELSE ORS.Get(sym);
   END;
   IF    i < n THEN ORS.Mark("too few params")
   ELSIF i > n THEN ORS.Mark("too many params")
-  ELSE IF list # NIL THEN PassParameters(list) END
   END
-END ParamList;
+RETURN list END ParamList;
 
 PROCEDURE StandFunc(fct: INTEGER;  restyp: OCB.Type): OCB.Object;
 VAR x, y: OCB.Object;  n, npar: INTEGER;
@@ -376,7 +384,7 @@ BEGIN Check(ORS.lparen, "missing (");
     ELSIF fct = 16 THEN (*VAL*)  IF x.type.size <= y.type.size THEN restyp := x.type;  x := y
                                  ELSE ORS.Mark("casting not allowed") END
     ELSIF fct = 17 THEN (*ADR*)  x := OCG.GenStdFunc(fct, x, NIL)
-    ELSIF fct = 18 THEN (*SIZE*) IF x.class = OCB.Typ THEN x := OCG.NewItem(OCB.Const, x.type.size, 0, OCB.intType, x, NIL)
+    ELSIF fct = 18 THEN (*SIZE*) IF x.class = OCB.Typ THEN x := OCG.NewItem(OCB.Const, x.type.size, OCB.intType, x, NIL)
                                  ELSE ORS.Mark("must be a type") END
     ELSIF fct = 19 THEN (*COND*) CheckConst(x);  CheckInt(x);  x := OCG.GenStdFunc(fct, x, NIL)
     END;
@@ -402,7 +410,7 @@ VAR x: OCB.Object;
 BEGIN
   IF sym >= ORS.if THEN
     IF sym # ORS.rbrace THEN ORS.Mark(" } missing") END;
-    x := OCG.NewItem(OCB.Const, 0, 0, OCB.setType, NIL, NIL) (*empty set*)
+    x := OCG.NewItem(OCB.Const, 0, OCB.setType, NIL, NIL) (*empty set*)
   ELSE x := element();
     WHILE (sym < ORS.rparen) OR (sym > ORS.rbrace) DO
       IF    sym = ORS.comma  THEN ORS.Get(sym)
@@ -431,24 +439,32 @@ BEGIN (*sync*)
       IF sym = ORS.lparen THEN
         ORS.Get(sym);
         IF (x.type.form = OCB.ProcAdr) & (x.type.base.form # OCB.NoTyp) THEN
-          ParamList(x.type.dsc, x.type.nofpar);
-          x.type := x.type.base
-        ELSE ORS.Mark("not a function");  ParamList(x.type.dsc, x.type.nofpar)
+          x := OCG.NewItem(OCB.Call, 0, x.type.base, x, NIL);
+          x.dsc := ParamList(x.next.type.dsc, x.next.type.nofpar);
+          (*x.type := x.type.base*)
+        ELSE
+          ORS.Mark("not a function");
+          ws(" -- type.form = ");      OCG.wForm(x.type.form);
+          ws(", type.base.form = ");
+          IF x.type.base = NIL THEN ws("<NIL>") ELSE OCG.wForm(x.type.base.form) END;
+          wn;
+          x := ParamList(x.type.dsc, x.type.nofpar);
+          x := NIL
         END
       END
     END
-  ELSIF sym = ORS.int    THEN x := OCG.NewItem(OCB.Const, ORS.ival, 0, OCB.intType,  NIL, NIL);  ORS.Get(sym)
-  ELSIF sym = ORS.char   THEN x := OCG.NewItem(OCB.Const, ORS.ival, 0, OCB.charType, NIL, NIL);  ORS.Get(sym)
-  ELSIF sym = ORS.nil    THEN x := OCG.NewItem(OCB.Const, 0,        0, OCB.nilType,  NIL, NIL);  ORS.Get(sym)
-  ELSIF sym = ORS.false  THEN x := OCG.NewItem(OCB.Const, 0,        0, OCB.boolType, NIL, NIL);  ORS.Get(sym)
-  ELSIF sym = ORS.true   THEN x := OCG.NewItem(OCB.Const, 1,        0, OCB.boolType, NIL, NIL);  ORS.Get(sym)
+  ELSIF sym = ORS.int    THEN x := OCG.NewItem(OCB.Const, ORS.ival, OCB.intType,  NIL, NIL);  ORS.Get(sym)
+  ELSIF sym = ORS.char   THEN x := OCG.NewItem(OCB.Const, ORS.ival, OCB.charType, NIL, NIL);  ORS.Get(sym)
+  ELSIF sym = ORS.nil    THEN x := OCG.NewItem(OCB.Const, 0,        OCB.nilType,  NIL, NIL);  ORS.Get(sym)
+  ELSIF sym = ORS.false  THEN x := OCG.NewItem(OCB.Const, 0,        OCB.boolType, NIL, NIL);  ORS.Get(sym)
+  ELSIF sym = ORS.true   THEN x := OCG.NewItem(OCB.Const, 1,        OCB.boolType, NIL, NIL);  ORS.Get(sym)
   ELSIF sym = ORS.real   THEN x := OCG.MakeRealItem(ORS.rval);                                  ORS.Get(sym)
   ELSIF sym = ORS.string THEN x := OCG.MakeStringItem(ORS.slen);                                ORS.Get(sym)
   ELSIF sym = ORS.lparen THEN ORS.Get(sym);  x := expression();  Check(ORS.rparen, "missing )")
   ELSIF sym = ORS.lbrace THEN ORS.Get(sym);  x := set();     Check(ORS.rbrace, "missing }")
   ELSIF sym = ORS.not    THEN ORS.Get(sym);  x := factor();  CheckBool(x);
                               x := GenExpr(ORS.not, x, NIL)
-  ELSE ORS.Mark("not a factor");  x := OCG.NewItem(OCB.Const, 0, 0, OCB.intType, NIL, NIL)
+  ELSE ORS.Mark("not a factor");  x := OCG.NewItem(OCB.Const, 0, OCB.intType, NIL, NIL)
   END
 RETURN x END factor;
 
@@ -547,7 +563,8 @@ BEGIN x := SimpleExpression();
   END
 RETURN x END expression0;
 
-(* statements *)
+
+(* ------------------------------- statements ------------------------------- *)
 
 PROCEDURE StandProc(VAR obj: OCB.Object);
 VAR
@@ -617,7 +634,7 @@ VAR
       CheckAccess(obj, Level);
       qualident(typobj);
       IF typobj.class # OCB.Typ THEN ORS.Mark("not a type") END;
-      GenStmt(0, OCG.NewItem(OCB.Caseval, 0, 0, NIL, TypeTest(obj, typobj.type, FALSE), StatSequence()));
+      GenStmt(0, OCG.NewItem(OCB.Caseval, 0, NIL, TypeTest(obj, typobj.type, FALSE), StatSequence()));
       obj.type := typobj.type;
       (* OXG.CFJump(x);  TODO jumps *)
       Check(ORS.colon, ": expected");
@@ -642,14 +659,15 @@ BEGIN (* StatSequence *)
     END;
     IF sym = ORS.ident THEN
       qualident(obj);
-      IF obj.class = OCB.StdProc THEN StandProc(obj)
+      IF obj.class = OCB.StdProc THEN
+        StandProc(obj)
       ELSE
         CheckAccess(obj, Level);
         obj := selector(obj);
 
         IF sym IN {ORS.becomes, ORS.eql} THEN (* assignment *)
-
           IF sym = ORS.eql THEN ORS.Mark("missing ':'") END;
+
           ORS.Get(sym);  CheckReadOnly(obj);
           y := expression();
           IF OCG.IsSingleCharacterString(y) & (obj.type.form = OCB.Char)  THEN
@@ -668,11 +686,15 @@ BEGIN (* StatSequence *)
 
           ORS.Get(sym);
           IF (obj.type.form = OCB.ProcAdr) & (obj.type.base.form = OCB.NoTyp) THEN
-            ParamList(obj.type.dsc, obj.type.nofpar);
+            obj := OCG.NewItem(OCB.Call, 0, obj.type.base, obj, NIL);
+            obj.dsc := ParamList(obj.next.type.dsc, obj.next.type.nofpar);
+            (*ParamList(obj.type.dsc, obj.type.nofpar);*)
             GenStmt(0, obj)
           ELSE
-            ORS.Mark("not a procedure");  ParamList(obj.type.dsc, obj.type.nofpar)
-          END
+            ORS.Mark("not a procedure");
+            obj := ParamList(obj.type.dsc, obj.type.nofpar);
+            obj := NIL
+          END;
 
         ELSIF obj.type.form = OCB.ProcAdr THEN (*procedure call without parameters*)
 
@@ -692,7 +714,7 @@ BEGIN (* StatSequence *)
       (* OXG.CFJump(x);  TODO jumps *)
       Check(ORS.then, "missing THEN");
       y := StatSequence();  jmp := -1;
-      GenStmt(0, OCG.NewItem(OCB.If, 0,0,NIL, obj, y));
+      GenStmt(0, OCG.NewItem(OCB.If, 0, NIL, obj, y));
       WHILE sym = ORS.elsif DO
         ORS.Get(sym);
         (* OXG.FJump(x); OXG.FixLink(x(OXG.ConditionArg).falsechain);  TODO jumps *)
@@ -700,13 +722,13 @@ BEGIN (* StatSequence *)
         (* OXG.CFJump(x);  TODO jumps *)
         Check(ORS.then, "missing THEN");
         y := StatSequence();
-        GenStmt(0, OCG.NewItem(OCB.Elsif, 0,0,NIL, obj, y))
+        GenStmt(0, OCG.NewItem(OCB.Elsif, 0, NIL, obj, y))
       END;
       IF sym = ORS.else THEN
         ORS.Get(sym);
         (* OXG.FJump(jmp); OXG.FixLink(x(OXG.ConditionArg).falsechain);  TODO jumps *)
         y := StatSequence();
-        GenStmt(0, OCG.NewItem(OCB.Else, 0,0,NIL, NIL, y))
+        GenStmt(0, OCG.NewItem(OCB.Else, 0, NIL, NIL, y))
       ELSE
         (* OXG.FixLink(x(OXG.ConditionArg).falsechain)  TODO jumps *)
       END;
@@ -749,7 +771,7 @@ BEGIN (* StatSequence *)
           Check(ORS.to, "TO expected");
           z := expression();  CheckInt(z);  obj.rdo := TRUE;
           IF sym = ORS.by THEN ORS.Get(sym); w := expression(); CheckConst(w); CheckInt(w)
-          ELSE w := OCG.NewItem(OCB.Const, 1, 0, OCB.intType, NIL, NIL)
+          ELSE w := OCG.NewItem(OCB.Const, 1, OCB.intType, NIL, NIL)
           END;
           Check(ORS.do, "DO expected");
           OCG.GenFor1(obj, y, z, w, jmp);  (* val, ini, lim, step *)
@@ -969,7 +991,8 @@ BEGIN ptype.base := OCB.noType;  nofpar := 0;  parlen := 0;  ptype.dsc := NIL;
       END
     END
   END;
-  ws("ProcedureType -> nofpar ");  wi(nofpar);  ws(", parlen ");  wi(parlen);
+  ws("ProcedureType ");  OCG.wType(ptype);
+  ws(" -> nofpar ");  wi(nofpar);  ws(", parlen ");  wi(parlen);
   IF ptype.base = NIL THEN
     ws(", no result")
   ELSE
@@ -1214,7 +1237,7 @@ BEGIN ORS.Get(sym);
         ORS.Get(sym)
       ELSE ORS.Mark("missing proc id")
       END;
-      OCG.GenReturn(y)
+      OCG.GenReturn(proc, y)
     END;
     OCB.CloseScope;  DEC(Level)
   END
