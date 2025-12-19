@@ -8,8 +8,8 @@ IMPORT SYSTEM, H := Host, Files, Texts;
   recorded in a table.
   Get(sym) delivers next symbol from input text with Reader R.
   Mark(msg) records error and delivers error message with Writer W.
-  If Get delivers ident, then the identifier (a string) is in variable id, if int or char
-  in ival, if real in rval, and if string in str (and slen) *)
+  If Get delivers ident, then the identifier (a string) is in variable id,
+  if int or char in ival, if real in rval, and if string in str (and slen) *)
   
 CONST IdLen* = 32;
   NKW = 34;  (* nof keywords *)
