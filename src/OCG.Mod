@@ -605,35 +605,11 @@ PROCEDURE RegsUsed*(x: OCB.Object): SET;
 VAR used: SET;
 BEGIN used := {};
   IF x # NIL THEN
-    IF    x.class = OCB.Expression THEN used := SYSTEM.VAL(SET, x.ext)
-    ELSIF x.class = OCB.Call       THEN used := {RAX, RCX, RDX, 8..11}
+    IF x.class IN {OCB.Expression, OCB.Call} THEN
+      used := SYSTEM.VAL(SET, x.ext)
     END
   END
 RETURN used END RegsUsed;
-
-(*
-PROCEDURE ResultReg(x: OCB.Object): INTEGER;
-VAR result: INTEGER;
-BEGIN result := -1;
-  IF (x # NIL)
-  &  (x.class = OCB.Expression)
-  &  (x.type.form = OCB.Int64)
-  &  (x.val IN {ORS.div, ORS.mod, ORS.times}) THEN
-    IF x.val = ORS.mod THEN result := RDX ELSE result := RAX END
-  END
-RETURN result END ResultReg;
-
-PROCEDURE ImplicitlyUsed(x: OCB.Object): SET;
-VAR uses: SET;
-BEGIN uses := {};
-  IF (x # NIL)
-  &  (x.class = OCB.Expression)
-  &  (x.type.form = OCB.Int64)
-  &  (x.val IN {ORS.div, ORS.mod, ORS.times}) THEN
-    uses := {RAX, RDX};
-  END
-RETURN uses END ImplicitlyUsed;
-*)
 
 PROCEDURE FirstFreeReg(avoid: SET): INTEGER;
 VAR free: INTEGER;
@@ -675,12 +651,43 @@ BEGIN
   DodgeRegisters(o.i, avoid)
 END DodgeOperand;
 
+PROCEDURE RegReg(op: ARRAY OF CHAR;  r1, r2: INTEGER);
+BEGIN wOp(op);  wReg(r1);  ws(", ");  wReg(r2);  wn;  INC(PC)
+END RegReg;
+
+
 PROCEDURE ResolveOperand(x: OCB.Object;  reg: INTEGER;  keep: SET;  VAR o: Operand);
 (* Returns object x in form suitable for AMD64 instruction (right) operand). *)
 (* Generates code to prepare the result where necessary.                     *)
 (* reg only used for expression evaluation: if >= 0 gives preferred          *)
 (* (not required) register to use for expression result.                     *)
-VAR dsco: Operand;  avoid: SET;  rleft: INTEGER;  divmod: BOOLEAN;
+VAR
+  dsco:    Operand;
+  avoid:   SET;
+  saveax:  INTEGER;
+  savedx:  INTEGER;
+
+  PROCEDURE SaveReg(reg: INTEGER;  VAR keep: SET;  VAR save: INTEGER);
+  BEGIN save := -1;
+    IF reg IN keep THEN
+      save := FirstFreeReg(keep);
+      INCL(keep, save);
+      RegReg("mov", save, reg)
+    END
+  END SaveReg;
+
+  PROCEDURE RestoreReg(save, original: INTEGER;  VAR result: INTEGER);
+  BEGIN
+    IF save >= 0 THEN
+      IF original = result THEN
+        RegReg("xchg", original, save);
+        result := save
+      ELSE
+        RegReg("mov", original, save)
+      END
+    END
+  END RestoreReg;
+
 BEGIN
   ASSERT(x # NIL);
   o.r := -1;  o.x := 0;  o.v := NIL;  o.i := -1;
@@ -694,12 +701,14 @@ BEGIN
   ELSIF x.class = OCB.RefPar THEN
     o.direct := FALSE;  o.r := SelReg(x.dsc, reg, keep);
     LoadReg(x.dsc, o.r, keep)
-  (*
-  ELSIF x.class = OCB.CallSite THEN
-    o.direct := FALSE;  o.r := RSP;  o.x := 111;  (* function result *)
-  *)
+  ELSIF x.class = OCB.Call THEN
+    o.direct := TRUE;  o.r := RAX;  (* function result *)
+    ws("Call x:      ");  wObject(x);
+    IF x.next # NIL THEN ws(",  x.next: ");  wObject(x.next) END;
+    IF x.dsc  # NIL THEN ws(",  x.dsc:  ");  wObject(x.dsc)  END;
+    wsn(".");
   ELSIF x.class = OCB.Expression THEN
-    wObject(x);  wn;
+    (*wObject(x);  wn;*)
     IF x.val = ORS.period THEN (* field *)
       ResolveOperand(x.next, reg, keep, o);
       IF o.direct THEN ws("o: ");  wOperand(o);  wn;  ASSERT(FALSE) END;
@@ -725,67 +734,48 @@ BEGIN
     ELSIF x.val = ORS.arrow THEN (* deref *)
       wsn("Deref:");
     ELSE  (* arithmetic or boolean instruction *)
-      (* Note - implicit registers in integer mul/div operations:
-         DIV    rax := rdx:rax DIV r/m64
-         MOD    rdx := rdx:rax rem r/m64
-         i*     rdx:rax := rax * r/m64
-      *)
-      divmod   := FALSE;
       o.direct := TRUE;
-      o.r      := -1;
-      rleft    := reg;
-
       (* resolve left argument (x.next) to register
          resolve right argument (x.dsc) to reg or mem
          generate code for operation
       *)
-
       IF (x.type.form = OCB.Int64) & (x.val IN {ORS.div, ORS.mod, ORS.times}) THEN
-        rleft := RAX;
-        IF    x.val = ORS.times THEN o.r := RAX
-        ELSIF x.val = ORS.div   THEN o.r := RAX;  divmod := TRUE
-        ELSIF x.val = ORS.mod   THEN o.r := RDX;  divmod := TRUE
-        END
-      END;
 
-      (* Check div expression x.dsc uses rax and rdx
-      IF (x.dsc.class = OCB.Expression)
-      &  (x.dsc.type.form = OCB.Int64)
-      &  (x.dsc.val IN {ORS.div, ORS.mod, ORS.times}) THEN
-        ws("x.dsc is div/mod/times ...  ");
-      END;
-      ws("RegsUsed(x.dsc) = ");  wRegSet(RegsUsed(x.dsc));  wsn(".");
-      *)
+        (* Implicit registers in integer mul/div operations:
+           DIV    rax := rdx:rax DIV r/m64
+           MOD    rdx := rdx:rax rem r/m64
+           i*     rdx:rax := rax * r/m64
+        *)
+        SaveReg(RAX, keep, saveax);
+        SaveReg(RDX, keep, savedx);
 
-      IF (rleft < 0) OR (rleft IN keep + RegsUsed(x.dsc))
-        THEN rleft := FirstFreeReg(keep + RegsUsed(x.dsc))
-      END;
-      LoadReg(x.next, rleft, keep);
+        LoadReg(x.next, RAX, keep + RegsUsed(x.dsc) - {RAX, RDX});
+        ResolveOperand(x.dsc, -1, keep + {RAX} - {RDX}, dsco);
+        IF x.val IN {ORS.div, ORS.mod} THEN RegReg("xor", RDX, RDX) END;
+        wDyadic(x, RAX, dsco);
 
-(*    o.r := ImplicitResult(x);
-      IF o.r < 0 THEN o.r := ImplicitResult(x.next) END;
-      IF o.r < 0 THEN o.r := reg END;
-      IF o.r < 0 THEN o.r := FirstFreeReg(keep) END;
+        IF x.val = ORS.mod THEN o.r := RDX ELSE o.r := RAX END;
+        RestoreReg(saveax, RAX, o.r);
+        RestoreReg(savedx, RDX, o.r);
 
-      IF x.dsc # NIL THEN
-        avoid := ImplicitlyUsed(x) + ImplicitlyUsed(x.next);
-        ResolveOperand(x.dsc, -1, keep + avoid + {o.r}, dsco);
-        DodgeOperand(avoid, dsco);
-        IF dsco.r >= 0 THEN INCL(keep, dsco.r) END;
-        IF dsco.i >= 0 THEN INCL(keep, dsco.i) END
-      END;
-
-      LoadReg(x.next, o.r, keep);
-*)
-
-      IF x.dsc = NIL THEN
-        ASSERT(o.r = rleft);
-        wMonadic(x, o.r)
       ELSE
-        INCL(keep, rleft);
-        ResolveOperand(x.dsc, -1, keep, dsco);
-        IF divmod THEN wOp("xor");  ws("edx, edx");  wn;  INC(PC) END;
-        wDyadic(x, rleft, dsco)
+
+        IF (reg >= 0) & ~(reg IN keep + RegsUsed(x.dsc)) THEN
+          o.r := reg
+        ELSE
+          o.r := FirstFreeReg(keep + RegsUsed(x.dsc));
+        END;
+
+        IF x.dsc = NIL THEN  (* Monadic - no right operand *)
+          LoadReg(x.next, o.r, keep);
+          wMonadic(x, o.r)
+        ELSE                 (* Dyadic - right operand in x.dsc *)
+          ASSERT(~(o.r IN RegsUsed(x.dsc)));
+          LoadReg(x.next, o.r, keep + RegsUsed(x.dsc));
+          INCL(keep, o.r);
+          ResolveOperand(x.dsc, -1, keep, dsco);
+          wDyadic(x, o.r, dsco);
+        END
       END
     END
   ELSE
@@ -801,6 +791,7 @@ PROCEDURE LoadReg0(x: OCB.Object; reg: INTEGER; keep: SET);
 VAR o: Operand;
 BEGIN
   ASSERT(reg >= 0);
+  ASSERT(~(reg IN keep));
   ResolveOperand(x, reg, keep, o);
   IF (~o.direct) OR (o.r # reg) THEN
       wOp("mov");  wReg(reg);  ws(", ");  wOperand(o);  wn;  INC(PC)
@@ -960,7 +951,9 @@ BEGIN
     ProcessStmtSeq(nest, tempcount, seq.next, stmttemp);
     IF stmttemp > maxtemp THEN maxtemp := stmttemp END;
 
-    wc("[");  wi(seq.modno);  ws("]  ");  wObject(seq.dsc);  wn;
+    wc("[");  wi(seq.modno);  ws("]  ");
+    (*wObject(seq.dsc);  wn;*)
+    DumpStatement(seq.dsc);
 
     ProcessStmt(nest, tempcount, seq.dsc, maxtemp)
   END

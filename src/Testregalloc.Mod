@@ -2,7 +2,7 @@ MODULE Testregalloc;
 
 VAR
   dummy: ARRAY 32 OF INTEGER;  (* Make module addresses start at 100H *)
-  I, J, K: INTEGER;
+  I, J, K, L, M, N: INTEGER;
 
 PROCEDURE f1(i:    INTEGER): INTEGER; RETURN i     END f1;
 PROCEDURE f2(i, j: INTEGER): INTEGER; RETURN i + j END f2;
@@ -11,6 +11,7 @@ BEGIN
   I := J;
   I := J + K;
   I := J + J DIV K;
+  I := (J DIV K) DIV (L DIV M);
   I := f1(K);
   I := f1(J) + f1(K);
   I := f2(J, K);

@@ -439,9 +439,9 @@ BEGIN (*sync*)
       IF sym = ORS.lparen THEN
         ORS.Get(sym);
         IF (x.type.form = OCB.ProcAdr) & (x.type.base.form # OCB.NoTyp) THEN
-          x := OCG.NewItem(OCB.Call, 0, x.type.base, x, NIL);
+          x     := OCG.NewItem(OCB.Call, 0, x.type.base, x, NIL);
+          x.ext := ORD({RAX, RCX, RDX, 8..11});
           x.dsc := ParamList(x.next.type.dsc, x.next.type.nofpar);
-          (*x.type := x.type.base*)
         ELSE
           ORS.Mark("not a function");
           ws(" -- type.form = ");      OCG.wForm(x.type.form);

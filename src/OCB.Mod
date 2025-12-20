@@ -106,6 +106,7 @@ TYPE
   (*                                                                          *)
   (*  Selector    field offset                          variable     index    *)
   (*  Expression  op symbol                 regset      1st arg      2nd arg  *)
+  (*  Call                                  regset      proc         parms    *)
   (*  Param                                             reg/stk      expr     *)
   (*  Statement                                         prev stmt    detail   *)
   (*  Assign                                            dest         expr     *)
