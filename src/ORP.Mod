@@ -1286,12 +1286,23 @@ BEGIN newSF := FALSE;
   END
 END Option;
 
+PROCEDURE WriteTicks(t: INTEGER);
+VAR ms: INTEGER;
+BEGIN
+    ms := t DIV 10;
+    Texts.WriteInt(W, ms DIV 1000, 1);  Texts.Write(W, ".");
+    Texts.WriteInt(W, ms MOD 1000 DIV 100, 1);
+    Texts.WriteString(W, " ms");
+END WriteTicks;
+
 PROCEDURE Compile*;
 VAR
   beg, end, time: INTEGER;
   T: Texts.Text;
   S: Texts.Scanner;
   start, ms: INTEGER;
+  systemstart, processstart: INTEGER;
+  systemend,   processend:   INTEGER;
 BEGIN Texts.OpenScanner(S, Texts.Par.text, Texts.Par.pos); Texts.Scan(S);
   IF S.class = Texts.Char THEN
     IF S.c = "@" THEN
@@ -1308,7 +1319,7 @@ BEGIN Texts.OpenScanner(S, Texts.Par.text, Texts.Par.pos); Texts.Scan(S);
       END
     END
   ELSE
-    start := H.Ticks();
+    start := H.Ticks();  H.ProcessTimes(processstart, systemstart);
     WHILE S.class = Texts.Name DO
       NEW(T); Texts.Open(T, S.s);
       IF T.len > 0 THEN Option(S); ORS.Init(T, 0); Module(newSF)
@@ -1317,12 +1328,19 @@ BEGIN Texts.OpenScanner(S, Texts.Par.text, Texts.Par.pos); Texts.Scan(S);
       END ;
       IF (T.len # 0) & (ORS.errcnt = 0) THEN Texts.Scan(S) ELSE S.class := 0 END
     END;
+    (*
     Texts.WriteString(W, "  total ");
     ms := (H.Ticks() - start) DIV 10;
     Texts.WriteInt(W, ms DIV 1000, 1); Texts.Write(W, ".");
     Texts.WriteInt(W, ms MOD 1000 DIV 100, 1);
     Texts.WriteString(W, " ms");
-    Texts.WriteLn(W); Texts.Append(Texts.Log, W.buf)
+    Texts.WriteLn(W); Texts.Append(Texts.Log, W.buf);
+    *)
+    H.ProcessTimes(processend, systemend);
+    Texts.WriteString(W, "  elapsed ");  WriteTicks(H.Ticks() - start);
+    Texts.WriteString(W, ", process ");  WriteTicks(processend - processstart);
+    Texts.WriteString(W, ", system ");   WriteTicks(systemend  - systemstart);
+    Texts.WriteLn(W); Texts.Append(Texts.Log, W.buf);
   END;
   Modules.Collect(0)  (* Trigger immediate garbage collection when ORP exits *)
 END Compile;

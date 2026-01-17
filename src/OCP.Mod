@@ -184,7 +184,7 @@ BEGIN (*t1 is an extension of t0*)
 END IsExtension;
 
 
-(* expressions *)
+(* ------------------------------ expressions ------------------------------- *)
 
 PROCEDURE TypeTest(VAR x: OCB.Object;  T: OCB.Type;  guard: BOOLEAN): OCB.Object;
 VAR xt: OCB.Type;  res: OCB.Object;
@@ -290,6 +290,7 @@ BEGIN (*check for assignment compatibility*)
       OR (t0.form = OCB.Int64) & (t1.form = OCB.Int64)  (* All int types are value compatible *)
 END CompTypes;
 
+(* --------------------------- parameter passing ---------------------------- *)
 
 PROCEDURE Parameter(par: OCB.Object): OCB.Object;
 VAR x, res: OCB.Object;  varpar: BOOLEAN;  valid: BOOLEAN;
@@ -323,17 +324,9 @@ BEGIN
   IF valid THEN res := OCG.NewItem(OCB.Param, 0, NIL, par, x) END
 RETURN res END Parameter;
 
-(*
-PROCEDURE PassParameters(list: OCB.Object);
-BEGIN
-  IF list.next # NIL THEN PassParameters(list.next) END;
-  GenStmt(0, list.dsc)
-END PassParameters;
-*)
-
-PROCEDURE ParamList(par: OCB.Object; n: INTEGER): OCB.Object;
-VAR list: OCB.Object;  i: INTEGER;
-BEGIN list := NIL;  i := 0;
+PROCEDURE ParamList(type: OCB.Type): OCB.Object;
+VAR par, list: OCB.Object;  i: INTEGER;
+BEGIN par := type.dsc;  list := NIL;  i := 0;
   IF sym # ORS.rparen THEN
     list := OCG.NewItem(0, i, NIL, list, Parameter(par));
     i := 1;
@@ -346,8 +339,8 @@ BEGIN list := NIL;  i := 0;
     Check(ORS.rparen, ") missing")
   ELSE ORS.Get(sym);
   END;
-  IF    i < n THEN ORS.Mark("too few params")
-  ELSIF i > n THEN ORS.Mark("too many params")
+  IF    i < type.nofpar THEN ORS.Mark("too few params")
+  ELSIF i > type.nofpar THEN ORS.Mark("too many params")
   END
 RETURN list END ParamList;
 
@@ -441,14 +434,14 @@ BEGIN (*sync*)
         IF (x.type.form = OCB.ProcAdr) & (x.type.base.form # OCB.NoTyp) THEN
           x     := OCG.NewItem(OCB.Call, 0, x.type.base, x, NIL);
           x.ext := ORD({RAX, RCX, RDX, 8..11});
-          x.dsc := ParamList(x.next.type.dsc, x.next.type.nofpar);
+          x.dsc := ParamList(x.next.type);
         ELSE
           ORS.Mark("not a function");
           ws(" -- type.form = ");      OCG.wForm(x.type.form);
           ws(", type.base.form = ");
           IF x.type.base = NIL THEN ws("<NIL>") ELSE OCG.wForm(x.type.base.form) END;
           wn;
-          x := ParamList(x.type.dsc, x.type.nofpar);
+          x := ParamList(x.type);
           x := NIL
         END
       END
@@ -687,12 +680,11 @@ BEGIN (* StatSequence *)
           ORS.Get(sym);
           IF (obj.type.form = OCB.ProcAdr) & (obj.type.base.form = OCB.NoTyp) THEN
             obj := OCG.NewItem(OCB.Call, 0, obj.type.base, obj, NIL);
-            obj.dsc := ParamList(obj.next.type.dsc, obj.next.type.nofpar);
-            (*ParamList(obj.type.dsc, obj.type.nofpar);*)
+            obj.dsc := ParamList(obj.next.type);
             GenStmt(0, obj)
           ELSE
             ORS.Mark("not a procedure");
-            obj := ParamList(obj.type.dsc, obj.type.nofpar);
+            obj := ParamList(obj.type);
             obj := NIL
           END;
 
@@ -928,55 +920,96 @@ BEGIN NEW(typ);
   type := typ
 END RecordType;
 
-PROCEDURE ParameterSize(t: OCB.Type): INTEGER;  (* Number of 64 bit slots needed *)
-VAR len: INTEGER;
-BEGIN
-  IF (t.form = OCB.Array) & (t.len < 0) OR (t.form = OCB.Record)
-  THEN len := 2 ELSE len := 1
-  END
-RETURN len END ParameterSize;
-
-(* Formal parameter section - one or more comma separated vars of one type *)
-(* Each parameter takes either one or two 64 bit cells on the stack        *)
-(* Parameters are numbered in obj.val starting at 0                        *)
-PROCEDURE FPSection(VAR nofpar, parlen: INTEGER);
+(* Formal parameter section - one or more comma separated vars followed by type *)
+(* Each parameter takes either one or two 64 bit cells on the stack             *)
+PROCEDURE FPSection;
 VAR obj, first: OCB.Object;  tp: OCB.Type;  cl: INTEGER;  rdo: BOOLEAN;
 BEGIN
   IF sym = ORS.var THEN ORS.Get(sym); cl := OCB.RefPar ELSE cl := OCB.ValPar END;
-  IdentList(cl, first);  FormalType(tp, 0);  rdo := FALSE;
-  IF (cl = OCB.ValPar) & (tp.form >= OCB.Array) THEN
+  IdentList(cl, first);
+  FormalType(tp, 0);
+  rdo := FALSE;
+  IF (cl = OCB.ValPar) & (tp.form >= OCB.Array) THEN  (* Arrays and records always passed by reference *)
     cl := OCB.RefPar;  rdo := TRUE
   END;
   obj := first;
   WHILE obj # NIL DO
-    obj.class := cl;      obj.type  := tp;
-    obj.rdo   := rdo;     obj.modno := -Level;
-    obj.val   := parlen;
+    obj.class := cl;   obj.type  := tp;
+    obj.rdo   := rdo;  obj.modno := -Level;
     IF TRUE THEN
       ws("Parsing formal parameter object ");  OCG.wObject(obj);
       ws(", type ");  OCG.wType(obj.type);
       IF obj.type.form = OCB.Array THEN ws(" len ");  wi(obj.type.len) END;
       wn
     END;
-    INC(nofpar);  INC(parlen, ParameterSize(obj.type));
     obj := obj.next
-  END;
-  IF TRUE THEN
-    ws("FPSection -> nofpar ");  wi(nofpar);  ws(", parlen ");  wi(parlen);  wn
   END
 END FPSection;
 
+PROCEDURE AllocSlot(obj: OCB.Object;
+                    r: ARRAY OF BYTE;
+                    numregs, numxmms: INTEGER;
+                    VAR nextreg, nextxmm, nextslot: INTEGER): INTEGER;
+VAR slot: INTEGER;
+BEGIN
+  slot := -1;
+  IF obj.type.form = OCB.Real THEN
+    IF nextxmm < numxmms THEN slot := 16 + nextxmm;  INC(nextxmm) END
+  ELSE
+    IF nextreg < numregs THEN slot := r[nextreg];  INC(nextreg) END
+  END;
+  IF slot < 0 THEN  (* No reg available *)
+    slot := 32 + nextslot;  INC(nextslot)
+  END
+RETURN slot END AllocSlot;
+
+PROCEDURE AssignParameterSlots(ptype: OCB.Type);
+(* Register usage for parameters
+  Linux and Oberon. General: rdi, rsi, rdx, rcx, r8, r9;  real: xmm0 - xmm7
+  Windows.          General: rcx, rdx, r8,  r9;           real: xmm0 - xmm3 *)
+VAR obj: OCB.Object;
+  r: ARRAY 6 OF BYTE;  nextreg, numregs, nextxmm, numxmms, nextslot: INTEGER;
+BEGIN
+  IF ptype.hosted = 3 THEN (* Windows *)
+    numregs := 4;  numxmms := 4;
+    r[0] := RCX;  r[1] := RDX;  r[2] := 8;  r[3] := 9
+  ELSE (* Oberon / Linux *)
+    (*
+    numregs := 6;  numxmms := 8;
+    r[0] := RDI;  r[1] := RSI;  r[2] := RDX;  r[3] := RCX;  r[4] := 8;  r[5] := 9
+    *)
+    (* For testing purposes use only one register *)
+    numregs := 1;  numxmms := 1;
+    r[0] := RDI
+  END;
+  nextreg  := 0;
+  nextxmm  := 0;
+  nextslot := 0;
+  obj := OCB.topScope.next;  ptype.nofpar := 0;
+  WHILE obj # NIL DO
+    INC(ptype.nofpar);
+    obj.val := AllocSlot(obj, r, numregs, numxmms, nextreg, nextxmm, nextslot);
+    IF (obj.type.form = OCB.Array) & (obj.type.len < 0)
+    OR (obj.type.form = OCB.Record) THEN
+      (* Extra parameter slot for record tag or array length *)
+      obj.ext := AllocSlot(obj, r, numregs, numxmms, nextreg, nextxmm, nextslot)
+    ELSE
+      obj.ext := -1;
+    END;
+    obj := obj.next
+  END
+END AssignParameterSlots;
+
+
 PROCEDURE ProcedureType(ptype: OCB.Type);
-VAR obj: OCB.Object;  nofpar, parlen: INTEGER;
-BEGIN ptype.base := OCB.noType;  nofpar := 0;  parlen := 0;  ptype.dsc := NIL;
+VAR obj: OCB.Object;
+BEGIN ptype.base := OCB.noType;  ptype.dsc := NIL;
   IF sym = ORS.lparen THEN                     (* Parse formal parameters *)
     ORS.Get(sym);
     IF sym = ORS.rparen THEN ORS.Get(sym)
     ELSE
-      FPSection(nofpar, parlen);
-      WHILE sym = ORS.semicolon DO
-        ORS.Get(sym);  FPSection(nofpar, parlen)
-      END;
+      FPSection;
+      WHILE sym = ORS.semicolon DO ORS.Get(sym);  FPSection END;
       Check(ORS.rparen, "missing )")
     END;
     IF sym = ORS.colon THEN                    (* Parse function result type *)
@@ -991,16 +1024,15 @@ BEGIN ptype.base := OCB.noType;  nofpar := 0;  parlen := 0;  ptype.dsc := NIL;
       END
     END
   END;
+  AssignParameterSlots(ptype);
   ws("ProcedureType ");  OCG.wType(ptype);
-  ws(" -> nofpar ");  wi(nofpar);  ws(", parlen ");  wi(parlen);
+  ws(" -> nofpar ");  wi(ptype.nofpar);
   IF ptype.base = NIL THEN
     ws(", no result")
   ELSE
     ws(", result: ");  OCG.wType(ptype.base)
   END;
-  wn;
-  ptype.nofpar := nofpar;
-  ptype.len    := parlen
+  wn
 END ProcedureType;
 
 PROCEDURE FormalType0(VAR typ: OCB.Type;  dim: INTEGER);
@@ -1239,6 +1271,7 @@ BEGIN ORS.Get(sym);
       END;
       OCG.GenReturn(proc, y)
     END;
+
     OCB.CloseScope;  DEC(Level)
   END
 END ProcedureDecl;

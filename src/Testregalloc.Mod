@@ -4,8 +4,9 @@ VAR
   dummy: ARRAY 32 OF INTEGER;  (* Make module addresses start at 100H *)
   I, J, K, L, M, N: INTEGER;
 
-PROCEDURE f1(i:    INTEGER): INTEGER; RETURN i     END f1;
-PROCEDURE f2(i, j: INTEGER): INTEGER; RETURN i + j END f2;
+PROCEDURE f1(    i:    INTEGER): INTEGER; RETURN i     END f1;
+PROCEDURE f2(VAR i, j: INTEGER): INTEGER; RETURN i + j END f2;
+PROCEDURE f3(    i, j: INTEGER): INTEGER; RETURN i + j END f3;
 
 BEGIN
   I := J;
