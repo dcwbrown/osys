@@ -16,6 +16,16 @@ IMPORT SYSTEM, H := Host, Files, Texts, ORS;
     initialized.
 *)
 
+(*  TODO
+
+    o  Pass parameters in regs: pre-load reg then move to specific parameter
+       reg before call
+    o  Unify abstract instruction set ready for separate codegen
+    o  Flow control - boolean expressions, conditionals and loops
+    o  Floating point
+*)
+
+
 
 CONST
   WordSize*   = 8;
@@ -51,7 +61,6 @@ CONST
   Case*       = 29;  (* expr        /                              *)
   Caseval*    = 30;  (* val         body                           *)
   Call*       = 31;  (* function    1st par                        *)
-  PassParam*  = 32;  (* type        val/expr                       *)
 
 
   (* form values *)

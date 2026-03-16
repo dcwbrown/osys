@@ -16,6 +16,7 @@ BEGIN
   I := f1(K);
   I := f1(J) + f1(K);
   I := f2(J, K);
+  I := f2(J, f2(K, L));
 END Testregalloc.
 
 

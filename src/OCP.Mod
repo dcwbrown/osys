@@ -16,22 +16,24 @@ CONST
 
 TYPE
   PtrBase = POINTER TO PtrBaseDesc;
-  PtrBaseDesc = RECORD  (*list of names of pointer base types*)
+  PtrBaseDesc = RECORD  (* list of names of pointer base types *)
     name: ORS.Ident; type: OCB.Type; next: PtrBase
   END;
 
 VAR
   sym:         INTEGER;    (* last symbol read *)
-  VarSize:     INTEGER;    (* Global VAR size *)
-  Level:       INTEGER;    (* Procedure nesting level *)
-  newSF:       BOOLEAN;    (* option flag *)
-  expression:  PROCEDURE(): OCB.Object;  (* to avoid forward reference *)
-  Type:        PROCEDURE(VAR type: OCB.Type);
-  FormalType:  PROCEDURE(VAR typ: OCB.Type;  dim: INTEGER);
+  VarSize:     INTEGER;    (* global VAR size *)
+  Level:       INTEGER;    (* procedure nesting level *)
+  newSF:       BOOLEAN;    (* create new symbol file option flag *)
   modid:       ORS.Ident;
   pbsList:     PtrBase;    (* list of names of pointer base types *)
   dummy:       OCB.Object;
   CodeSeq:     OCB.Object;
+
+  (* Forward procedures *)
+  expression:  PROCEDURE(): OCB.Object;  (* to avoid forward reference *)
+  Type:        PROCEDURE(VAR type: OCB.Type);
+  FormalType:  PROCEDURE(VAR typ: OCB.Type;  dim: INTEGER);
 
 
 PROCEDURE wa;                    BEGIN OCB.wa       END wa;
@@ -278,12 +280,12 @@ BEGIN com := TRUE;
   RETURN com
 END EqualSignatures;
 
-PROCEDURE CompTypes(t0, t1: OCB.Type;  varpar: BOOLEAN): BOOLEAN;
+PROCEDURE CompTypes(t0, t1: OCB.Type;  refpar: BOOLEAN): BOOLEAN;
 BEGIN (*check for assignment compatibility*)
   RETURN (t0 = t1)    (*openarray assignment disallowed in ORG*)
     OR (t0.form = OCB.Array) & (t1.form = OCB.Array) & (t0.base =  t1.base) & (t0.len = t1.len)
     OR (t0.form = OCB.Record) & (t1.form = OCB.Record)  & IsExtension(t0, t1)
-    OR ~varpar &
+    OR ~refpar &
       (  (t0.form = OCB.Pointer) & (t1.form = OCB.Pointer) & IsExtension(t0.base, t1.base)
       OR (t0.form = OCB.ProcAdr) & (t1.form = OCB.ProcAdr) & EqualSignatures(t0, t1)
       OR (t0.form IN {OCB.Pointer, OCB.ProcAdr}) & (t1.form = OCB.NilTyp))
@@ -293,22 +295,22 @@ END CompTypes;
 (* --------------------------- parameter passing ---------------------------- *)
 
 PROCEDURE Parameter(par: OCB.Object): OCB.Object;
-VAR x, res: OCB.Object;  varpar: BOOLEAN;  valid: BOOLEAN;
+VAR x, res: OCB.Object;  refpar: BOOLEAN;  valid: BOOLEAN;
 BEGIN
   x := expression();  res := NIL;  valid := FALSE;
   IF par # NIL THEN
-    varpar := par.class = OCB.RefPar;
+    refpar := par.class = OCB.RefPar;
     valid  := TRUE;
-    IF CompTypes(par.type, x.type, varpar) THEN
-      IF varpar & ~par.rdo THEN CheckReadOnly(x) END;
+    IF CompTypes(par.type, x.type, refpar) THEN
+      IF refpar & ~par.rdo THEN CheckReadOnly(x) END;
 
     ELSIF (par.type.form = OCB.Array) & (par.type.len < 0)
         & (   (x.type.form = OCB.Array)  & (x.type.base = par.type.base)
-           OR (x.type.form = OCB.StrAdr) & varpar & par.rdo & (par.type.base.form = OCB.Char)
+           OR (x.type.form = OCB.StrAdr) & refpar & par.rdo & (par.type.base.form = OCB.Char)
            OR (par.type.base = OCB.byteType)) THEN
       IF ~par.rdo THEN CheckReadOnly(x) END;
 
-    ELSIF ~varpar & (par.type.form = OCB.Int64) & (x.type.form = OCB.Int64) THEN
+    ELSIF ~refpar & (par.type.form = OCB.Int64) & (x.type.form = OCB.Int64) THEN
       ASSERT(FALSE); (* should not reach here because it Looks like *)
                      (* this case is already handled in comptypes   *)
 
