@@ -32,38 +32,39 @@ CONST
   versionkey* = 1;
   maxTypTab   = 100;
 
-  (* class values *)
-  Head*    = 0;
-  Const*   = 1;  (* Atomic constant value *)
-  String*  = 2;  (* String constant *)
-  Typ*     = 3;  (* Type descriptor *)
-  Proc*    = 4;  (* Procedure body address constant *)
-  GlobVar* = 5;  (* Module global / imported VAR *)
-  ProcVar* = 6;  (* Procedure local variable *)
-  ValPar*  = 7;  (* Atomic value parameter *)
-  RefPar*  = 8;  (* VAR parameter or structured value parameter *)
-  Field*   = 9;
-  StdProc* = 10;
-  StdFunc* = 11;
-  Mod*     = 12;
+  (* Object classes: parsed source *)
+  Head*     = 0;
+  Const*    = 1;  (* Atomic constant value                         *)
+  String*   = 2;  (* String constant                               *)
+  Typ*      = 3;  (* Type descriptor                               *)
+  Proc*     = 4;  (* Procedure body address constant               *)
+  GlobVar*  = 5;  (* Module global / imported VAR                  *)
+  ProcVar*  = 6;  (* Procedure local variable                      *)
+  ValPar*   = 7;  (* Atomic value parameter                        *)
+  RefPar*   = 8;  (* VAR parameter or structured value parameter   *)
+  Field*    = 9;
+  StdProc*  = 10;
+  StdFunc*  = 11;
+  Mod*      = 12;
+  (* Object classes: generated code structure *)
+  Expression* = 20;
+  Param*      = 21;
+  Statement*  = 22;
+  Assign*     = 23;
+  If*         = 24;
+  Elsif*      = 25;
+  Else*       = 26;
+  While*      = 27;
+  Repeat*     = 28;
+  Case*       = 29;
+  Caseval*    = 30;
+  Call*       = 31;
+  (* Object classes: expression evaluation *)
+  Register*   = 32;
+  Indirect*   = 33;
 
-  (* Generated classes *)
-  (*                    next        dsc       val            expo  *)
-  Expression* = 20;  (* 1st arg     2nd arg                        *)
-  Param*      = 21;  (* formal      expr      1st slot used        *)
-  Statement*  = 22;  (* prev stmt   detail                         *)
-  Assign*     = 23;  (* dest        expr                           *)
-  If*         = 24;  (* cond        body                           *)
-  Elsif*      = 25;  (* cond        body                           *)
-  Else*       = 26;  (* /           body                           *)
-  While*      = 27;  (* cond        body                           *)
-  Repeat*     = 28;  (* cond        body                           *)
-  Case*       = 29;  (* expr        /                              *)
-  Caseval*    = 30;  (* val         body                           *)
-  Call*       = 31;  (* function    1st par                        *)
 
-
-  (* form values *)
+  (* Type forms *)
   Byte*    = 1;
   Bool*    = 2;
   Char*    = 3;
@@ -83,7 +84,8 @@ CONST
   Array*   = 17;
   Record*  = 18;
 
-  (* hosted values *)
+
+  (* Operating system host options *)
   Nohost*  = 0;  (* Normal Oberon behaviour                      *)
   Nogc*    = 1;  (* Record or pointer with no garbage collection *)
   LinABI*  = 2;  (* Procedure with Linux X64 ABI                 *)
@@ -98,25 +100,24 @@ TYPE
 
   (* Object classes                                                           *)
   (*                                                                          *)
-  (*  class       val                       ext  modno  next         dsc      *)
-  (*  -------     ------------------------  ---  -----  -----------  -------- *)
+  (*  class       val              ext     modno  exno  next         dsc      *)
+  (*  -------     --------------   ---     -----  ----  -----------  -------- *)
   (*  Const       value                                                       *)
-  (*  String      code address              len                               *)
-  (*  Typ         descriptor address/impno       modno                        *)
-  (*  Proc        code address/impno             modno                        *)
-  (*  GlobVar     data address/impno             modno                        *)
+  (*  String      code address     len                                        *)
+  (*  Typ         descriptor loc           modno                              *)
+  (*  Proc        code loc                 modno                              *)
+  (*  GlobVar     data loc                 modno                              *)
   (*  ProcVar     parid                                                       *)
-  (*  ValPar      parid                     tag                               *)
-  (*  RefPar      parid                     tag                               *)
+  (*  ValPar      parid            tag                                        *)
+  (*  RefPar      parid            tag                                        *)
   (*  Field       offset                                                      *)
-  (*  StdProc     inline code number                                          *)
-  (*  StdFunc     inline code number                                          *)
+  (*  StdProc     inline code id                                              *)
+  (*  StdFunc     inline code id                                              *)
   (*  Mod         key                                                         *)
   (*                                                                          *)
-  (*  Selector    field offset                          variable     index    *)
-  (*  Expression  op symbol                 regset      1st arg      2nd arg  *)
-  (*  Call                                  regset      proc         parms    *)
-  (*  Param                                             reg/stk      expr     *)
+  (*  Expression  operation (sym)  regset               1st arg      2nd arg  *)
+  (*  Call                         regset               proc         parms    *)
+  (*  Param       slot                                  formal       expr     *)
   (*  Statement                                         prev stmt    detail   *)
   (*  Assign                                            dest         expr     *)
   (*  If                                                cond         body     *)
@@ -126,8 +127,24 @@ TYPE
   (*  Repeat                                            cond         body     *)
   (*  Case                                              expr         /        *)
   (*  Caseval                                           val          body     *)
-  (*                                                                          *)
-  (*  For selector, expo means dereference before index/field offset          *)
+  (*  Register    regno                                                       *)
+  (*  Indirect    regno            offset  indrg  scale              basevar  *)
+
+(*
+  (*                    next        dsc       val           *)
+  Assign*     = 23;  (* dest        expr                    *)
+  If*         = 24;  (* cond        body                    *)
+  Elsif*      = 25;  (* cond        body                    *)
+  Else*       = 26;  (* /           body                    *)
+  While*      = 27;  (* cond        body                    *)
+  Repeat*     = 28;  (* cond        body                    *)
+  Case*       = 29;  (* expr        /                       *)
+  Caseval*    = 30;  (* val         body                    *)
+  Call*       = 31;  (* function    1st par                 *)
+  Register*   = 32;  (*                       regno          offset            *)
+  Indirect*   = 33;  (*             base var  regno                         *)
+*)
+
 
   ObjDesc* = RECORD
     class*: BYTE;

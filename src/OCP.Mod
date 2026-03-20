@@ -426,7 +426,7 @@ BEGIN (*sync*)
   IF sym = ORS.ident THEN
     ws("factor, sym is ident: ");  ws(ORS.id);
     qualident(x);
-    ws(", --> qualident returned ");  OCG.wObject(x);
+    ws(", --> qualident returned ");  OCG.wObject(x^);
     ws(", type ");  OCG.wType(x.type);  wn;
     IF x.class = OCB.StdFunc THEN x := StandFunc(x.val, x.type)
     ELSE CheckAccess(x, Level);
@@ -939,7 +939,7 @@ BEGIN
     obj.class := cl;   obj.type  := tp;
     obj.rdo   := rdo;  obj.modno := -Level;
     IF TRUE THEN
-      ws("Parsing formal parameter object ");  OCG.wObject(obj);
+      ws("Parsing formal parameter object ");  OCG.wObject(obj^);
       ws(", type ");  OCG.wType(obj.type);
       IF obj.type.form = OCB.Array THEN ws(" len ");  wi(obj.type.len) END;
       wn
