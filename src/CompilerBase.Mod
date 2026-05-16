@@ -9,11 +9,11 @@ IMPORT Files, CS := CompilerScanner;
   Import and Export. This module contains the list of standard identifiers, with which
   the symbol table (universe), and that of the pseudo-module SYSTEM are initialized. *)
 
-CONST 
+CONST
   versionkey* = 1;  maxTypTab = 64;
   (* class values*)
-    Head*  = 0;
-    Const* = 1;  Var*   = 2;  Par* = 3;  Fld* = 4;  Typ* = 5;
+    Head* = 0;
+    Const* = 1;  Var* = 2;  Par* = 3;  Fld* = 4;  Typ* = 5;
     SProc* = 6;  SFunc* = 7;  Mod* = 8;
 
   (* form values*)
@@ -21,19 +21,19 @@ CONST
     Pointer* = 7;  NilTyp* = 8;  NoTyp* = 9;  Proc* = 10;
     String* = 11;  Array* = 12;  Record* = 13;
 
-TYPE 
+TYPE
   Object* = POINTER TO ObjDesc;
   Module* = POINTER TO ModDesc;
-  Type* = POINTER TO TypeDesc;
+  Type*   = POINTER TO TypeDesc;
 
   ObjDesc*= RECORD
     class*, exno*: BYTE;
-    expo*, rdo*: BOOLEAN;   (*exported / read-only*)
-    lev*: INTEGER;
-    next*, dsc*: Object;
-    type*: Type;
-    name*: CS.Ident;
-    val*: INTEGER
+    expo*,  rdo*:  BOOLEAN;   (*exported / read-only*)
+    lev*:          INTEGER;
+    next*, dsc*:   Object;
+    type*:         Type;
+    name*:         CS.Ident;
+    val*:          INTEGER
   END;
 
   ModDesc* = RECORD (ObjDesc) orgname*: CS.Ident END;
@@ -46,7 +46,7 @@ TYPE
     len*:    INTEGER;  (*for arrays, len < 0 => open array;  for records: adr of descriptor*)
     dsc*:    Object;
     typobj*: Object;
-    base*:   Type;  (*for arrays, records, pointers*)
+    base*:   Type;     (*for arrays, records, pointers*)
     size*:   INTEGER;  (*in bytes;  always multiple of 4, except for Byte, Bool and Char*)
   END;
 
@@ -85,7 +85,7 @@ VAR
   strType*:   Type;
   nofmod:     INTEGER;
   Ref:        INTEGER;
-  typtab: ARRAY maxTypTab OF Type;
+  typtab:     ARRAY maxTypTab OF Type;
 
 PROCEDURE NewObj*(VAR obj: Object;  id: CS.Ident;  class: INTEGER);  (*insert new Object with name id*)
 VAR new, x: Object;
@@ -276,7 +276,7 @@ PROCEDURE OutType(VAR R: Files.Rider;  t: Type);
 VAR obj, mod, fld, bot: Object;
 
   PROCEDURE OutPar(VAR R: Files.Rider;  par: Object;  n: INTEGER);
-  VAR cl: INTEGER;
+    VAR cl: INTEGER;
   BEGIN
     IF n > 0 THEN
       OutPar(R, par.next, n-1);  cl := par.class;
@@ -287,7 +287,7 @@ VAR obj, mod, fld, bot: Object;
   END OutPar;
 
   PROCEDURE FindHiddenPointers(VAR R: Files.Rider;  typ: Type;  offset: INTEGER);
-  VAR fld: Object;  i, n: INTEGER;
+    VAR fld: Object;  i, n: INTEGER;
   BEGIN
     IF (typ.form = Pointer) OR (typ.form = NilTyp) THEN Write(R, Fld);  Write(R, 0);  Files.WriteNum(R, offset)
     ELSIF typ.form = Record THEN fld := typ.dsc;

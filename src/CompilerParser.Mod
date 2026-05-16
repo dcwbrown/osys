@@ -1,35 +1,44 @@
 MODULE CompilerParser;  (*N. Wirth 1.7.97 / 8.3.2020  Oberon compiler for RISC in Oberon-07*)
 
-IMPORT Texts, Oberon, CS := CompilerScanner, CB := CompilerBase, CG := CompilerGenerator;
+IMPORT Modules, Texts, CS := CompilerScanner, CB := CompilerBase, CG := CompilerGenerator;
 
 (*Author: Niklaus Wirth, 2014.
-  Parser of Oberon-RISC compiler. Uses Scanner CS to obtain symbols (tokens),
-  CB for definition of data structures and for handling import and export, and
-  CG to produce binary code. CompilerParser performs type checking and data allocation.
+  Parser of Oberon-RISC compiler. Uses CompilerScanner to obtain symbols (tokens),
+  CompilerBase for definition of data structures and for handling import and export, and
+  CompilerGenerator to produce binary code. CompilerParser performs type checking and data allocation.
   Parser is target-independent, except for part of the handling of allocations.*)
 
-TYPE 
+TYPE
   PtrBase     = POINTER TO PtrBaseDesc;
   PtrBaseDesc = RECORD  (*list of names of pointer base types*)
-    name: CS.Ident;  
-    type: CB.Type;  
+    name: CS.Ident;
+    type: CB.Type;
     next: PtrBase
   END;
   
-VAR 
-  sym:        INTEGER;   (*last symbol read*)
+VAR
+  sym:        INTEGER;    (*last symbol read*)
   dc:         INTEGER;    (*data counter*)
   level:      INTEGER; 
   exno:       INTEGER;
   version:    INTEGER;
-  newSF:      BOOLEAN;  (*option flag*)
-  expression: PROCEDURE (VAR x: CG.Item);  (*to avoid forward reference*)
-  Type:       PROCEDURE (VAR type: CB.Type);
-  FormalType: PROCEDURE (VAR typ: CB.Type;  dim: INTEGER);
+  newSF:      BOOLEAN;    (*option flag*)
+  expression: PROCEDURE(VAR x: CG.Item);  (*to avoid forward reference*)
+  Type:       PROCEDURE(VAR type: CB.Type);
+  FormalType: PROCEDURE(VAR typ: CB.Type;  dim: INTEGER);
   modid:      CS.Ident;
-  pbsList:    PtrBase;   (*list of names of pointer base types*)
+  pbsList:    PtrBase;    (*list of names of pointer base types*)
   dummy:      CB.Object;
-  W:          Texts.Writer;
+
+PROCEDURE wa;                     BEGIN CS.wa       END wa;
+PROCEDURE wn;                     BEGIN CS.wn       END wn;
+PROCEDURE wc (c: CHAR);           BEGIN CS.wc(c)    END wc;
+PROCEDURE ws (s: ARRAY OF CHAR);  BEGIN CS.ws(s)    END ws;
+PROCEDURE wsn(s: ARRAY OF CHAR);  BEGIN CS.wsn(s)   END wsn;
+PROCEDURE wi (i: INTEGER);        BEGIN CS.wi(i)    END wi;
+PROCEDURE wir(i, n: INTEGER);     BEGIN CS.wir(i,n) END wir;
+PROCEDURE wh (n: INTEGER);        BEGIN CS.wh(n)    END wh;
+
 
 PROCEDURE Check(s: INTEGER;  msg: ARRAY OF CHAR);
 BEGIN
@@ -190,7 +199,7 @@ END EqualSignatures;
 
 PROCEDURE CompTypes(t0, t1: CB.Type;  varpar: BOOLEAN): BOOLEAN;
 BEGIN (*check for assignment compatibility*)
-  RETURN (t0 = t1)    (*openarray assignment disallowed in CG*)
+  RETURN (t0 = t1)    (*openarray assignment disallowed in CompilerGenerator*)
     OR (t0.form = CB.Array) & (t1.form = CB.Array) & (t0.base =  t1.base) & (t0.len = t1.len)
     OR (t0.form = CB.Record) & (t1.form = CB.Record)  & IsExtension(t0, t1)
     OR ~varpar &
@@ -475,7 +484,7 @@ VAR obj: CB.Object;
     L0, L1, rx: INTEGER;
 
   PROCEDURE TypeCase(obj: CB.Object;  VAR x: CG.Item);
-  VAR typobj: CB.Object;
+    VAR typobj: CB.Object;
   BEGIN
     IF sym = CS.ident THEN
       qualident(typobj);  CG.MakeItem(x, obj, level);
@@ -661,7 +670,7 @@ BEGIN NEW(typ);  typ.form := CB.NoTyp;  typ.base := NIL;  typ.mno := -level;  ty
       obj0 := obj;
       WHILE (obj0 # NIL) & (obj0.name # CS.id) DO obj0 := obj0.next END;
       IF obj0 # NIL THEN CS.Mark("mult def") END;
-      NEW(new);  CS.CopyId(new.name);  new.class := CB.Fld;  new.next := obj;  obj := new;  INC(n);
+      NEW(new);  new.name := CS.id;  new.class := CB.Fld;  new.next := obj;  obj := new;  INC(n);
       CS.Get(sym);  CheckExport(new.expo);
       IF (sym # CS.comma) & (sym # CS.colon) THEN CS.Mark("comma expected")
       ELSIF sym = CS.comma THEN CS.Get(sym)
@@ -772,7 +781,7 @@ BEGIN type := CB.intType;  (*sync*)
         ELSE CS.Mark("no valid base type")
         END
       ELSE CheckRecLevel(level);  (*enter into list of forward references to be fixed in Declarations*)
-        NEW(ptbase);  CS.CopyId(ptbase.name);  ptbase.type := type;  ptbase.next := pbsList;  pbsList := ptbase
+        NEW(ptbase);  ptbase.name := CS.id;  ptbase.type := type;  ptbase.next := pbsList;  pbsList := ptbase
       END;
       CS.Get(sym)
     ELSE Type(type.base);
@@ -798,7 +807,7 @@ BEGIN (*sync*) pbsList := NIL;
   IF sym = CS.const THEN
     CS.Get(sym);
     WHILE sym = CS.ident DO
-      CS.CopyId(id);  CS.Get(sym);  CheckExport(expo);
+      id := CS.id;  CS.Get(sym);  CheckExport(expo);
       IF sym = CS.eql THEN CS.Get(sym) ELSE CS.Mark("= ?") END;
       expression(x);
       IF (x.type.form = CB.String) & (x.b = 2) THEN CG.StrToChar(x) END;
@@ -812,7 +821,7 @@ BEGIN (*sync*) pbsList := NIL;
   IF sym = CS.type THEN
     CS.Get(sym);
     WHILE sym = CS.ident DO
-      CS.CopyId(id);  CS.Get(sym);  CheckExport(expo);
+      id := CS.id;  CS.Get(sym);  CheckExport(expo);
       IF sym = CS.eql THEN CS.Get(sym) ELSE CS.Mark("=?") END;
       Type(tp);
       CB.NewObj(obj, id, CB.Typ);  obj.type := tp;  obj.expo := expo;  obj.lev := level;
@@ -863,7 +872,7 @@ VAR proc: CB.Object;
 BEGIN (* ProcedureDecl *) int := FALSE;  CS.Get(sym);
   IF sym = CS.times THEN CS.Get(sym);  int := TRUE END;
   IF sym = CS.ident THEN
-    CS.CopyId(procid);  CS.Get(sym);
+    procid := CS.id;  CS.Get(sym);
     CB.NewObj(proc, CS.id, CB.Const);
     IF int THEN parblksize := 12 ELSE parblksize := 4 END;
     NEW(type);  type.form := CB.Proc;  type.size := CG.WordSize;
@@ -905,10 +914,10 @@ PROCEDURE Import;
 VAR impid, impid1: CS.Ident;
 BEGIN
   IF sym = CS.ident THEN
-    CS.CopyId(impid);  CS.Get(sym);
+    impid := CS.id;  CS.Get(sym);
     IF sym = CS.becomes THEN
       CS.Get(sym);
-      IF sym = CS.ident THEN CS.CopyId(impid1);  CS.Get(sym)
+      IF sym = CS.ident THEN impid1 := CS.id;  CS.Get(sym)
       ELSE CS.Mark("id expected");  impid1 := impid
       END
     ELSE impid1 := impid
@@ -920,14 +929,14 @@ END Import;
 
 PROCEDURE Module;
 VAR key: INTEGER;
-BEGIN Texts.WriteString(W, "  compiling ");  CS.Get(sym);
+BEGIN ws("  compiling ");  CS.Get(sym);
   IF sym = CS.module THEN
     CS.Get(sym);
-    IF sym = CS.times THEN version := 0;  dc := 8;  Texts.Write(W, "*");  CS.Get(sym) ELSE dc := 0;  version := 1 END;
+    IF sym = CS.times THEN version := 0;  dc := 8;  wc("*");  CS.Get(sym) ELSE dc := 0;  version := 1 END;
     CB.Init;  CB.OpenScope;
     IF sym = CS.ident THEN
-      CS.CopyId(modid);  CS.Get(sym);
-      Texts.WriteString(W, modid);  Texts.Append(Oberon.Log, W.buf)
+      modid := CS.id;  CS.Get(sym);
+      ws(modid);  wa
     ELSE CS.Mark("identifier expected")
     END;
     Check(CS.semicolon, "no ;");  level := 0;  exno := 1;  key := 0;
@@ -949,14 +958,14 @@ BEGIN Texts.WriteString(W, "  compiling ");  CS.Get(sym);
     IF sym # CS.period THEN CS.Mark("period missing") END;
     IF (CS.errcnt = 0) & (version # 0) THEN
       CB.Export(modid, newSF, key);
-      IF newSF THEN Texts.WriteString(W, " new symbol file") END
+      IF newSF THEN ws(" new symbol file") END
     END;
     IF CS.errcnt = 0 THEN
       CG.Close(modid, key, exno);
-      Texts.WriteInt(W, CG.pc, 6);  Texts.WriteInt(W, dc, 6);  Texts.WriteHex(W, key)
-    ELSE Texts.WriteLn(W);  Texts.WriteString(W, "compilation FAILED")
+      wir(CG.pc, 6);  wir(dc, 6);  wh(key)
+    ELSE wn;  ws("compilation FAILED")
     END;
-    Texts.WriteLn(W);  Texts.Append(Oberon.Log, W.buf);
+    wn;  wa;
     CB.CloseScope;  pbsList := NIL
   ELSE CS.Mark("must start with MODULE")
   END
@@ -964,46 +973,45 @@ END Module;
 
 PROCEDURE Option(VAR S: Texts.Scanner);
 BEGIN newSF := FALSE;
-  IF S.nextCh = "/" THEN
+  IF CS.nextCh = "/" THEN
     Texts.Scan(S);  Texts.Scan(S);
-    IF (S.class = Texts.Name) & (S.s[0] = "s") THEN newSF := TRUE END
+    IF (CS.class = Texts.Name) & (CS.s[0] = "s") THEN newSF := TRUE END
   END
 END Option;
 
 PROCEDURE Compile*;
 VAR beg, end, time: INTEGER;
-    T: Texts.Text;
-    S: Texts.Scanner;
-BEGIN Texts.OpenScanner(S, Oberon.Par.text, Oberon.Par.pos);  Texts.Scan(S);
-  IF S.class = Texts.Char THEN
-    IF S.c = "@" THEN
-      Option(S);  Oberon.GetSelection(T, beg, end, time);
+    T:  Texts.Text;
+    Sc: Texts.Scanner;
+BEGIN Texts.OpenScanner(Sc, Texts.Par.text, Texts.Par.pos);  Texts.Scan(Sc);
+  IF Sc.class = Texts.Char THEN
+    IF Sc.c = "@" THEN
+      Option(Sc);  Texts.GetSelection(T, beg, end, time);
       IF time >= 0 THEN CS.Init(T, beg);  Module END
-    ELSIF S.c = "^" THEN
-      Option(S);  Oberon.GetSelection(T, beg, end, time);
+    ELSIF Sc.c = "^" THEN
+      Option(Sc);  Texts.GetSelection(T, beg, end, time);
       IF time >= 0 THEN
-        Texts.OpenScanner(S, T, beg);  Texts.Scan(S);
-        IF S.class = Texts.Name THEN
-          Texts.WriteString(W, S.s);  NEW(T);  Texts.Open(T, S.s);
+        Texts.OpenScanner(Sc, T, beg);  Texts.Scan(Sc);
+        IF Sc.class = Texts.Name THEN
+          ws(Sc.s);  NEW(T);  Texts.Open(T, Sc.s);
           IF T.len > 0 THEN CS.Init(T, 0);  Module END
         END
       END
     END
   ELSE
-    WHILE S.class = Texts.Name DO
-      NEW(T);  Texts.Open(T, S.s);
-      IF T.len > 0 THEN Option(S);  CS.Init(T, 0);  Module
-      ELSE Texts.WriteString(W, S.s);  Texts.WriteString(W, " not found");
-        Texts.WriteLn(W);  Texts.Append(Oberon.Log, W.buf)
+    WHILE Sc.class = Texts.Name DO
+      NEW(T);  Texts.Open(T, Sc.s);
+      IF T.len > 0 THEN Option(Sc);  CS.Init(T, 0);  Module
+      ELSE ws(Sc.s);  ws(" not found");
+        wn;  wa
       END;
-      IF (T.len # 0) & (CS.errcnt = 0) THEN Texts.Scan(S) ELSE S.class := 0 END
+      IF (T.len # 0) & (CS.errcnt = 0) THEN Texts.Scan(Sc) ELSE Sc.class := 0 END
     END
   END;
-  Oberon.Collect(0)
+  Modules.Collect(0)  (* Trigger immediate garbage collection when OP exits *)
 END Compile;
 
-BEGIN Texts.OpenWriter(W);  Texts.WriteString(W, "OR Compiler  8.3.2020");
-  Texts.WriteLn(W);  Texts.Append(Oberon.Log, W.buf);
+BEGIN wsn("OR Compiler  8.3.2020");  wa;
   NEW(dummy);  dummy.class := CB.Var;  dummy.type := CB.intType;
   expression := expression0;  Type := Type0;  FormalType := FormalType0
 END CompilerParser.
