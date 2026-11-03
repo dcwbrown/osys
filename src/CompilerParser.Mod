@@ -868,9 +868,7 @@ VAR proc: CB.Object;
     procid: CS.Ident;
     x: CG.Item;
     locblksize, parblksize, L: INTEGER;
-    int: BOOLEAN;
-BEGIN (* ProcedureDecl *) int := FALSE;  CS.Get(sym);
-  IF sym = CS.times THEN CS.Get(sym);  int := TRUE END;
+BEGIN (* ProcedureDecl *)  CS.Get(sym);
   IF sym = CS.ident THEN
     procid := CS.id;  CS.Get(sym);
     CB.NewObj(proc, CS.id, CB.Const);
@@ -889,15 +887,18 @@ BEGIN (* ProcedureDecl *) int := FALSE;  CS.Get(sym);
       REPEAT ProcedureDecl;  Check(CS.semicolon, "no ;") UNTIL sym # CS.procedure;
       CG.FixOne(L);  proc.val := CG.Here() * 4;  proc.type.dsc := CB.topScope.next
     END;
-    CG.Enter(parblksize, locblksize, int);
+    CG.Enter(parblksize, locblksize);
     IF sym = CS.begin THEN CS.Get(sym);  StatSequence END;
     IF sym = CS.return THEN
       CS.Get(sym);  expression(x);
       IF type.base = CB.noType THEN CS.Mark("this is not a function")
       ELSIF ~CompTypes(type.base, x.type, FALSE) THEN CS.Mark("wrong result type")
       END
-    ELSIF type.base.form # CB.NoTyp THEN
-      CS.Mark("function without result");  type.base := CB.noType
+    ELSE
+      x.class := -1;
+      IF type.base.form # CB.NoTyp THEN
+        CS.Mark("function without result");  type.base := CB.noType
+      END
     END;
     CG.Return(type.base.form, x, locblksize, int);
     CB.CloseScope;  DEC(level);  Check(CS.end, "no END");
