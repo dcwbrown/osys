@@ -12,9 +12,11 @@ IMPORT Files, CS := CompilerScanner;
 CONST
   versionkey* = 1;  maxTypTab = 64;
   (* class values*)
-    Head* = 0;
-    Const* = 1;  Var* = 2;  Par* = 3;  Fld* = 4;  Typ* = 5;
-    SProc* = 6;  SFunc* = 7;  Mod* = 8;
+    Head*  = 0;
+    Const* = 1;  Var*   = 2;  Par* = 3;
+    Fld*   = 4;  Typ*   = 5;
+    SProc* = 6;  SFunc* = 7;
+    Mod*   = 8;
 
   (* form values*)
     Byte* = 1;  Bool* = 2;  Char* = 3;  Int* = 4;  Real* = 5;  Set* = 6;
