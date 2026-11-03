@@ -1,6 +1,9 @@
 MODULE CompilerParser;  (*N. Wirth 1.7.97 / 8.3.2020  Oberon compiler for RISC in Oberon-07*)
 
-IMPORT Modules, Texts, CS := CompilerScanner, CB := CompilerBase, CG := CompilerGenerator;
+IMPORT Modules, Texts,
+  CS := CompilerScanner,
+  CB := CompilerBase,
+  CI := CompilerIntermediate;
 
 (*Author: Niklaus Wirth, 2014.
   Parser of Oberon-RISC compiler. Uses CompilerScanner to obtain symbols (tokens),
@@ -23,7 +26,7 @@ VAR
   exno:       INTEGER;
   version:    INTEGER;
   newSF:      BOOLEAN;    (*option flag*)
-  expression: PROCEDURE(VAR x: CG.Item);  (*to avoid forward reference*)
+  expression: PROCEDURE(VAR x: CI.Item);  (*to avoid forward reference*)
   Type:       PROCEDURE(VAR type: CB.Type);
   FormalType: PROCEDURE(VAR typ: CB.Type;  dim: INTEGER);
   modid:      CS.Ident;
@@ -57,27 +60,27 @@ BEGIN obj := CB.thisObj();  CS.Get(sym);
   END
 END qualident;
 
-PROCEDURE CheckBool(VAR x: CG.Item);
+PROCEDURE CheckBool(VAR x: CI.Item);
 BEGIN
   IF x.type.form # CB.Bool THEN CS.Mark("not Boolean");  x.type := CB.boolType END
 END CheckBool;
 
-PROCEDURE CheckInt(VAR x: CG.Item);
+PROCEDURE CheckInt(VAR x: CI.Item);
 BEGIN
   IF x.type.form # CB.Int THEN CS.Mark("not Integer");  x.type := CB.intType END
 END CheckInt;
 
-PROCEDURE CheckReal(VAR x: CG.Item);
+PROCEDURE CheckReal(VAR x: CI.Item);
 BEGIN
   IF x.type.form # CB.Real THEN CS.Mark("not Real");  x.type := CB.realType END
 END CheckReal;
 
-PROCEDURE CheckSet(VAR x: CG.Item);
+PROCEDURE CheckSet(VAR x: CI.Item);
 BEGIN
   IF x.type.form # CB.Set THEN CS.Mark("not Set");  x.type := CB.setType END
 END CheckSet;
 
-PROCEDURE CheckSetVal(VAR x: CG.Item);
+PROCEDURE CheckSetVal(VAR x: CI.Item);
 BEGIN
   IF x.type.form # CB.Int THEN CS.Mark("not Int");  x.type := CB.setType
   ELSIF x.mode = CB.Const THEN
@@ -85,12 +88,12 @@ BEGIN
   END
 END CheckSetVal;
 
-PROCEDURE CheckConst(VAR x: CG.Item);
+PROCEDURE CheckConst(VAR x: CI.Item);
 BEGIN
   IF x.mode # CB.Const THEN CS.Mark("not a constant");  x.mode := CB.Const END
 END CheckConst;
 
-PROCEDURE CheckReadOnly(VAR x: CG.Item);
+PROCEDURE CheckReadOnly(VAR x: CI.Item);
 BEGIN
   IF x.rdo THEN CS.Mark("read-only") END
 END CheckReadOnly;
@@ -111,48 +114,48 @@ END IsExtension;
 
 (* expressions *)
 
-PROCEDURE TypeTest(VAR x: CG.Item;  T: CB.Type;  guard: BOOLEAN);
+PROCEDURE TypeTest(VAR x: CI.Item;  T: CB.Type;  guard: BOOLEAN);
 VAR xt: CB.Type;
 BEGIN xt := x.type;
   IF (T.form = xt.form ) & ((T.form = CB.Pointer) OR (T.form = CB.Record) & (x.mode = CB.Par)) THEN
     WHILE (xt # T) & (xt # NIL) DO xt := xt.base END;
     IF xt # T THEN xt := x.type;
       IF xt.form = CB.Pointer THEN
-        IF IsExtension(xt.base, T.base) THEN CG.TypeTest(x, T.base, FALSE, guard);  x.type := T
+        IF IsExtension(xt.base, T.base) THEN CI.TypeTest(x, T.base, FALSE, guard);  x.type := T
         ELSE CS.Mark("not an extension")
         END
       ELSIF (xt.form = CB.Record) & (x.mode = CB.Par) THEN
-        IF IsExtension(xt, T) THEN  CG.TypeTest(x, T, TRUE, guard);  x.type := T
+        IF IsExtension(xt, T) THEN  CI.TypeTest(x, T, TRUE, guard);  x.type := T
         ELSE CS.Mark("not an extension")
         END
       ELSE CS.Mark("incompatible types")
       END
-    ELSIF ~guard THEN CG.TypeTest(x, NIL, FALSE, FALSE)
+    ELSIF ~guard THEN CI.TypeTest(x, NIL, FALSE, FALSE)
     END
   ELSE CS.Mark("type mismatch")
   END;
   IF ~guard THEN x.type := CB.boolType END
 END TypeTest;
 
-PROCEDURE selector(VAR x: CG.Item);
-VAR y: CG.Item;  obj: CB.Object;
+PROCEDURE selector(VAR x: CI.Item);
+VAR y: CI.Item;  obj: CB.Object;
 BEGIN
   WHILE (sym = CS.lbrak) OR (sym = CS.period) OR (sym = CS.arrow)
       OR (sym = CS.lparen) & (x.type.form IN {CB.Record, CB.Pointer}) DO
     IF sym = CS.lbrak THEN
       REPEAT CS.Get(sym);  expression(y);
         IF x.type.form = CB.Array THEN
-          CheckInt(y);  CG.Index(x, y);  x.type := x.type.base
+          CheckInt(y);  CI.Index(x, y);  x.type := x.type.base
         ELSE CS.Mark("not an array")
         END
       UNTIL sym # CS.comma;
       Check(CS.rbrak, "no ]")
     ELSIF sym = CS.period THEN CS.Get(sym);
       IF sym = CS.ident THEN
-        IF x.type.form = CB.Pointer THEN CG.DeRef(x);  x.type := x.type.base END;
+        IF x.type.form = CB.Pointer THEN CI.DeRef(x);  x.type := x.type.base END;
         IF x.type.form = CB.Record THEN
           obj := CB.thisfield(x.type);  CS.Get(sym);
-          IF obj # NIL THEN CG.Field(x, obj);  x.type := obj.type
+          IF obj # NIL THEN CI.Field(x, obj);  x.type := obj.type
           ELSE CS.Mark("undef")
           END
         ELSE CS.Mark("not a record")
@@ -161,7 +164,7 @@ BEGIN
       END
     ELSIF sym = CS.arrow THEN
       CS.Get(sym);
-      IF x.type.form = CB.Pointer THEN CG.DeRef(x);  x.type := x.type.base
+      IF x.type.form = CB.Pointer THEN CI.DeRef(x);  x.type := x.type.base
       ELSE CS.Mark("not a pointer")
       END
     ELSIF (sym = CS.lparen) & (x.type.form IN {CB.Record, CB.Pointer}) THEN (*type guard*)
@@ -209,34 +212,34 @@ BEGIN (*check for assignment compatibility*)
 END CompTypes;
 
 PROCEDURE Parameter(par: CB.Object);
-VAR x: CG.Item;  varpar: BOOLEAN;
+VAR x: CI.Item;  varpar: BOOLEAN;
 BEGIN expression(x);
   IF par # NIL THEN
     varpar := par.class = CB.Par;
     IF CompTypes(par.type, x.type, varpar) THEN
-      IF ~varpar THEN CG.ValueParam(x)
+      IF ~varpar THEN CI.ValueParam(x)
       ELSE (*par.class = Par*)
         IF ~par.rdo THEN CheckReadOnly(x) END;
-        CG.VarParam(x, par.type)
+        CI.VarParam(x, par.type)
       END
     ELSIF (x.type.form = CB.Array) & (par.type.form = CB.Array) &
         (x.type.base = par.type.base) & (par.type.len < 0) THEN
       IF ~par.rdo THEN CheckReadOnly(x) END;
-      CG.OpenArrayParam(x)
+      CI.OpenArrayParam(x)
     ELSIF (x.type.form = CB.String) & varpar & par.rdo & (par.type.form = CB.Array) &
-        (par.type.base.form = CB.Char) & (par.type.len < 0) THEN CG.StringParam(x)
-    ELSIF ~varpar & (par.type.form = CB.Int) & (x.type.form = CB.Int) THEN CG.ValueParam(x)  (*BYTE*)
+        (par.type.base.form = CB.Char) & (par.type.len < 0) THEN CI.StringParam(x)
+    ELSIF ~varpar & (par.type.form = CB.Int) & (x.type.form = CB.Int) THEN CI.ValueParam(x)  (*BYTE*)
     ELSIF (x.type.form = CB.String) & (x.b = 2) & (par.class = CB.Var) & (par.type.form = CB.Char) THEN
-      CG.StrToChar(x);  CG.ValueParam(x)
+      CI.StrToChar(x);  CI.ValueParam(x)
     ELSIF (par.type.form = CB.Array) & (par.type.base = CB.byteType) &
         (par.type.len >= 0) & (par.type.size = x.type.size) THEN
-      CG.VarParam(x, par.type)
+      CI.VarParam(x, par.type)
     ELSE CS.Mark("incompatible parameters")
     END
   END
 END Parameter;
 
-PROCEDURE ParamList(VAR x: CG.Item);
+PROCEDURE ParamList(VAR x: CI.Item);
 VAR n: INTEGER;  par: CB.Object;
 BEGIN par := x.type.dsc;  n := 0;
   IF sym # CS.rparen THEN
@@ -254,76 +257,76 @@ BEGIN par := x.type.dsc;  n := 0;
   END
 END ParamList;
 
-PROCEDURE StandFunc(VAR x: CG.Item;  fct: INTEGER;  restyp: CB.Type);
-VAR y: CG.Item;  n, npar: INTEGER;
+PROCEDURE StandFunc(VAR x: CI.Item;  fct: INTEGER;  restyp: CB.Type);
+VAR y: CI.Item;  n, npar: INTEGER;
 BEGIN Check(CS.lparen, "no (");
   npar := fct MOD 10;  fct := fct DIV 10;  expression(x);  n := 1;
   WHILE sym = CS.comma DO CS.Get(sym);  expression(y);  INC(n) END;
   Check(CS.rparen, "no )");
   IF n = npar THEN
     IF fct = 0 THEN (*ABS*)
-      IF x.type.form IN {CB.Int, CB.Real} THEN CG.Abs(x);  restyp := x.type ELSE CS.Mark("bad type") END
-    ELSIF fct = 1 THEN (*ODD*) CheckInt(x);  CG.Odd(x)
-    ELSIF fct = 2 THEN (*FLOOR*) CheckReal(x);  CG.Floor(x)
-    ELSIF fct = 3 THEN (*FLT*) CheckInt(x);  CG.Float(x)
+      IF x.type.form IN {CB.Int, CB.Real} THEN CI.Abs(x);  restyp := x.type ELSE CS.Mark("bad type") END
+    ELSIF fct = 1 THEN (*ODD*) CheckInt(x);  CI.Odd(x)
+    ELSIF fct = 2 THEN (*FLOOR*) CheckReal(x);  CI.Floor(x)
+    ELSIF fct = 3 THEN (*FLT*) CheckInt(x);  CI.Float(x)
     ELSIF fct = 4 THEN (*ORD*)
-      IF x.type.form <= CB.Proc THEN CG.Ord(x)
-      ELSIF (x.type.form = CB.String) & (x.b = 2) THEN CG.StrToChar(x)
+      IF x.type.form <= CB.Proc THEN CI.Ord(x)
+      ELSIF (x.type.form = CB.String) & (x.b = 2) THEN CI.StrToChar(x)
       ELSE CS.Mark("bad type")
       END
-    ELSIF fct = 5 THEN (*CHR*) CheckInt(x);  CG.Ord(x)
+    ELSIF fct = 5 THEN (*CHR*) CheckInt(x);  CI.Ord(x)
     ELSIF fct = 6 THEN (*LEN*)
-        IF x.type.form = CB.Array THEN CG.Len(x) ELSE CS.Mark("not an array") END
+        IF x.type.form = CB.Array THEN CI.Len(x) ELSE CS.Mark("not an array") END
     ELSIF fct IN {7, 8, 9} THEN (*LSL, ASR, ROR*) CheckInt(y);
-      IF x.type.form IN {CB.Int, CB.Set} THEN CG.Shift(fct-7, x, y);  restyp := x.type ELSE CS.Mark("bad type") END
-    ELSIF fct = 11 THEN (*ADC*) CG.ADC(x, y)
-    ELSIF fct = 12 THEN (*SBC*) CG.SBC(x, y)
-    ELSIF fct = 13 THEN (*UML*) CG.UML(x, y)
-    ELSIF fct = 14 THEN (*BIT*) CheckInt(x);  CheckInt(y);  CG.Bit(x, y)
-    ELSIF fct = 15 THEN (*REG*) CheckConst(x);  CheckInt(x);  CG.Register(x)
+      IF x.type.form IN {CB.Int, CB.Set} THEN CI.Shift(fct-7, x, y);  restyp := x.type ELSE CS.Mark("bad type") END
+    ELSIF fct = 11 THEN (*ADC*) CI.ADC(x, y)
+    ELSIF fct = 12 THEN (*SBC*) CI.SBC(x, y)
+    ELSIF fct = 13 THEN (*UML*) CI.UML(x, y)
+    ELSIF fct = 14 THEN (*BIT*) CheckInt(x);  CheckInt(y);  CI.Bit(x, y)
+    ELSIF fct = 15 THEN (*REG*) CheckConst(x);  CheckInt(x);  CI.Register(x)
     ELSIF fct = 16 THEN (*VAL*)
       IF (x.mode= CB.Typ) & (x.type.size <= y.type.size) THEN restyp := x.type;  x := y
       ELSE CS.Mark("casting not allowed")
       END
-    ELSIF fct = 17 THEN (*ADR*) CG.Adr(x)
+    ELSIF fct = 17 THEN (*ADR*) CI.Adr(x)
     ELSIF fct = 18 THEN (*SIZE*)
-      IF x.mode = CB.Typ THEN CG.MakeConstItem(x, CB.intType, x.type.size)
+      IF x.mode = CB.Typ THEN CI.MakeConstItem(x, CB.intType, x.type.size)
       ELSE CS.Mark("must be a type")
       END
-    ELSIF fct = 19 THEN (*COND*) CheckConst(x);  CheckInt(x);  CG.Condition(x)
-    ELSIF fct = 20 THEN (*H*) CheckConst(x);  CheckInt(x);  CG.H(x)
+    ELSIF fct = 19 THEN (*COND*) CheckConst(x);  CheckInt(x);  CI.Condition(x)
+    ELSIF fct = 20 THEN (*H*) CheckConst(x);  CheckInt(x);  CI.H(x)
     END;
     x.type := restyp
   ELSE CS.Mark("wrong nof params")
   END
 END StandFunc;
 
-PROCEDURE element(VAR x: CG.Item);
-VAR y: CG.Item;
+PROCEDURE element(VAR x: CI.Item);
+VAR y: CI.Item;
 BEGIN expression(x);  CheckSetVal(x);
-  IF sym = CS.upto THEN CS.Get(sym);  expression(y);  CheckSetVal(y);  CG.Set(x, y)
-  ELSE CG.Singleton(x)
+  IF sym = CS.upto THEN CS.Get(sym);  expression(y);  CheckSetVal(y);  CI.Set(x, y)
+  ELSE CI.Singleton(x)
   END;
   x.type := CB.setType
 END element;
 
-PROCEDURE set(VAR x: CG.Item);
-VAR y: CG.Item;
+PROCEDURE set(VAR x: CI.Item);
+VAR y: CI.Item;
 BEGIN
   IF sym >= CS.if THEN
     IF sym # CS.rbrace THEN CS.Mark(" } missing") END;
-    CG.MakeConstItem(x, CB.setType, 0) (*empty set*)
+    CI.MakeConstItem(x, CB.setType, 0) (*empty set*)
   ELSE element(x);
     WHILE (sym < CS.rparen) OR (sym > CS.rbrace) DO
       IF sym = CS.comma THEN CS.Get(sym)
       ELSIF sym # CS.rbrace THEN CS.Mark("missing comma")
       END;
-      element(y);  CG.SetOp(CS.plus, x, y)
+      element(y);  CI.SetOp(CS.plus, x, y)
     END
   END
 END set;
 
-PROCEDURE factor(VAR x: CG.Item);
+PROCEDURE factor(VAR x: CI.Item);
 VAR obj: CB.Object;  rx: INTEGER;
 BEGIN (*sync*)
   IF (sym < CS.char) OR (sym > CS.ident) THEN CS.Mark("expression expected");
@@ -332,105 +335,105 @@ BEGIN (*sync*)
   IF sym = CS.ident THEN
     qualident(obj);
     IF obj.class = CB.SFunc THEN StandFunc(x, obj.val, obj.type)
-    ELSE CG.MakeItem(x, obj, level);  selector(x);
+    ELSE CI.MakeItem(x, obj, level);  selector(x);
       IF sym = CS.lparen THEN
         CS.Get(sym);
         IF (x.type.form = CB.Proc) & (x.type.base.form # CB.NoTyp) THEN
-          CG.PrepCall(x, rx);  ParamList(x);  CG.Call(x, rx);  x.type := x.type.base
+          CI.PrepCall(x, rx);  ParamList(x);  CI.Call(x, rx);  x.type := x.type.base
         ELSE CS.Mark("not a function");  ParamList(x)
         END
       END
     END
-  ELSIF sym = CS.int THEN CG.MakeConstItem(x, CB.intType, CS.ival);  CS.Get(sym)
-  ELSIF sym = CS.real THEN CG.MakeRealItem(x, CS.rval);  CS.Get(sym)
-  ELSIF sym = CS.char THEN CG.MakeConstItem(x, CB.charType, CS.ival);  CS.Get(sym)
-  ELSIF sym = CS.nil THEN CS.Get(sym);  CG.MakeConstItem(x, CB.nilType, 0)
-  ELSIF sym = CS.string THEN CG.MakeStringItem(x, CS.slen);  CS.Get(sym)
+  ELSIF sym = CS.int THEN CI.MakeConstItem(x, CB.intType, CS.ival);  CS.Get(sym)
+  ELSIF sym = CS.real THEN CI.MakeRealItem(x, CS.rval);  CS.Get(sym)
+  ELSIF sym = CS.char THEN CI.MakeConstItem(x, CB.charType, CS.ival);  CS.Get(sym)
+  ELSIF sym = CS.nil THEN CS.Get(sym);  CI.MakeConstItem(x, CB.nilType, 0)
+  ELSIF sym = CS.string THEN CI.MakeStringItem(x, CS.slen);  CS.Get(sym)
   ELSIF sym = CS.lparen THEN CS.Get(sym);  expression(x);  Check(CS.rparen, "no )")
   ELSIF sym = CS.lbrace THEN CS.Get(sym);  set(x);  Check(CS.rbrace, "no }")
-  ELSIF sym = CS.not THEN CS.Get(sym);  factor(x);  CheckBool(x);  CG.Not(x)
-  ELSIF sym = CS.false THEN CS.Get(sym);  CG.MakeConstItem(x, CB.boolType, 0)
-  ELSIF sym = CS.true THEN CS.Get(sym);  CG.MakeConstItem(x, CB.boolType, 1)
-  ELSE CS.Mark("not a factor");  CG.MakeConstItem(x, CB.intType, 0)
+  ELSIF sym = CS.not THEN CS.Get(sym);  factor(x);  CheckBool(x);  CI.Not(x)
+  ELSIF sym = CS.false THEN CS.Get(sym);  CI.MakeConstItem(x, CB.boolType, 0)
+  ELSIF sym = CS.true THEN CS.Get(sym);  CI.MakeConstItem(x, CB.boolType, 1)
+  ELSE CS.Mark("not a factor");  CI.MakeConstItem(x, CB.intType, 0)
   END
 END factor;
 
-PROCEDURE term(VAR x: CG.Item);
-VAR y: CG.Item;  op, f: INTEGER;
+PROCEDURE term(VAR x: CI.Item);
+VAR y: CI.Item;  op, f: INTEGER;
 BEGIN factor(x);  f := x.type.form;
   WHILE (sym >= CS.times) & (sym <= CS.and) DO
     op := sym;  CS.Get(sym);
     IF op = CS.times THEN
-      IF f = CB.Int THEN factor(y);  CheckInt(y);  CG.MulOp(x, y)
-      ELSIF f = CB.Real THEN factor(y);  CheckReal(y);  CG.RealOp(op, x, y)
-      ELSIF f = CB.Set THEN factor(y);  CheckSet(y);  CG.SetOp(op, x, y)
+      IF f = CB.Int THEN factor(y);  CheckInt(y);  CI.MulOp(x, y)
+      ELSIF f = CB.Real THEN factor(y);  CheckReal(y);  CI.RealOp(op, x, y)
+      ELSIF f = CB.Set THEN factor(y);  CheckSet(y);  CI.SetOp(op, x, y)
       ELSE CS.Mark("bad type")
       END
     ELSIF (op = CS.div) OR (op = CS.mod) THEN
-      CheckInt(x);  factor(y);  CheckInt(y);  CG.DivOp(op, x, y)
+      CheckInt(x);  factor(y);  CheckInt(y);  CI.DivOp(op, x, y)
     ELSIF op = CS.rdiv THEN
-      IF f = CB.Real THEN factor(y);  CheckReal(y);  CG.RealOp(op, x, y)
-      ELSIF f = CB.Set THEN factor(y);  CheckSet(y);  CG.SetOp(op, x, y)
+      IF f = CB.Real THEN factor(y);  CheckReal(y);  CI.RealOp(op, x, y)
+      ELSIF f = CB.Set THEN factor(y);  CheckSet(y);  CI.SetOp(op, x, y)
       ELSE CS.Mark("bad type")
       END
-    ELSE (*op = and*) CheckBool(x);  CG.And1(x);  factor(y);  CheckBool(y);  CG.And2(x, y)
+    ELSE (*op = and*) CheckBool(x);  CI.And1(x);  factor(y);  CheckBool(y);  CI.And2(x, y)
     END
   END
 END term;
 
-PROCEDURE SimpleExpression(VAR x: CG.Item);
-VAR y: CG.Item;  op: INTEGER;
+PROCEDURE SimpleExpression(VAR x: CI.Item);
+VAR y: CI.Item;  op: INTEGER;
 BEGIN
   IF sym = CS.minus THEN CS.Get(sym);  term(x);
-    IF x.type.form IN {CB.Int, CB.Real, CB.Set} THEN CG.Neg(x) ELSE CheckInt(x) END
+    IF x.type.form IN {CB.Int, CB.Real, CB.Set} THEN CI.Neg(x) ELSE CheckInt(x) END
   ELSIF sym = CS.plus THEN CS.Get(sym);  term(x);
   ELSE term(x)
   END;
   WHILE (sym >= CS.plus) & (sym <= CS.or) DO
     op := sym;  CS.Get(sym);
-    IF op = CS.or THEN CG.Or1(x);  CheckBool(x);  term(y);  CheckBool(y);  CG.Or2(x, y)
-    ELSIF x.type.form = CB.Int THEN term(y);  CheckInt(y);  CG.AddOp(op, x, y)
-    ELSIF x.type.form = CB.Real THEN term(y);  CheckReal(y);  CG.RealOp(op, x, y)
-    ELSE CheckSet(x);  term(y);  CheckSet(y);  CG.SetOp(op, x, y)
+    IF op = CS.or THEN CI.Or1(x);  CheckBool(x);  term(y);  CheckBool(y);  CI.Or2(x, y)
+    ELSIF x.type.form = CB.Int THEN term(y);  CheckInt(y);  CI.AddOp(op, x, y)
+    ELSIF x.type.form = CB.Real THEN term(y);  CheckReal(y);  CI.RealOp(op, x, y)
+    ELSE CheckSet(x);  term(y);  CheckSet(y);  CI.SetOp(op, x, y)
     END
   END
 END SimpleExpression;
 
-PROCEDURE expression0(VAR x: CG.Item);
-VAR y: CG.Item;  obj: CB.Object;  rel, xf, yf: INTEGER;
+PROCEDURE expression0(VAR x: CI.Item);
+VAR y: CI.Item;  obj: CB.Object;  rel, xf, yf: INTEGER;
 BEGIN SimpleExpression(x);
   IF (sym >= CS.eql) & (sym <= CS.geq) THEN
     rel := sym;  CS.Get(sym);  SimpleExpression(y);  xf := x.type.form;  yf := y.type.form;
     IF x.type = y.type THEN
-      IF (xf IN {CB.Char, CB.Int}) THEN CG.IntRelation(rel, x, y)
-      ELSIF xf = CB.Real THEN CG.RealRelation(rel, x, y)
+      IF (xf IN {CB.Char, CB.Int}) THEN CI.IntRelation(rel, x, y)
+      ELSIF xf = CB.Real THEN CI.RealRelation(rel, x, y)
       ELSIF (xf IN {CB.Set, CB.Pointer, CB.Proc, CB.NilTyp, CB.Bool}) THEN
-        IF rel <= CS.neq THEN CG.IntRelation(rel, x, y) ELSE CS.Mark("only = or #") END
+        IF rel <= CS.neq THEN CI.IntRelation(rel, x, y) ELSE CS.Mark("only = or #") END
       ELSIF (xf = CB.Array) & (x.type.base.form = CB.Char) OR (xf = CB.String) THEN
-        CG.StringRelation(rel, x, y)
+        CI.StringRelation(rel, x, y)
       ELSE CS.Mark("illegal comparison")
       END
     ELSIF (xf IN {CB.Pointer, CB.Proc}) & (yf = CB.NilTyp)
         OR (yf IN {CB.Pointer, CB.Proc}) & (xf = CB.NilTyp) THEN
-      IF rel <= CS.neq THEN CG.IntRelation(rel, x,  y) ELSE CS.Mark("only = or #") END
+      IF rel <= CS.neq THEN CI.IntRelation(rel, x,  y) ELSE CS.Mark("only = or #") END
     ELSIF (xf = CB.Pointer) & (yf = CB.Pointer) &
         (IsExtension(x.type.base, y.type.base) OR IsExtension(y.type.base, x.type.base))
         OR (xf = CB.Proc) & (yf = CB.Proc) & EqualSignatures(x.type, y.type) THEN
-      IF rel <= CS.neq THEN CG.IntRelation(rel,  x, y) ELSE CS.Mark("only = or #") END
+      IF rel <= CS.neq THEN CI.IntRelation(rel,  x, y) ELSE CS.Mark("only = or #") END
     ELSIF (xf = CB.Array) & (x.type.base.form = CB.Char) &
           ((yf = CB.String) OR (yf = CB.Array) & (y.type.base.form = CB.Char))
         OR (yf = CB.Array) & (y.type.base.form = CB.Char) & (xf = CB.String) THEN
-      CG.StringRelation(rel, x, y)
+      CI.StringRelation(rel, x, y)
     ELSIF (xf = CB.Char) & (yf = CB.String) & (y.b = 2) THEN
-      CG.StrToChar(y);  CG.IntRelation(rel, x, y)
+      CI.StrToChar(y);  CI.IntRelation(rel, x, y)
     ELSIF (yf = CB.Char) & (xf = CB.String) & (x.b = 2) THEN
-      CG.StrToChar(x);  CG.IntRelation(rel, x, y)
-    ELSIF (xf = CB.Int) & (yf = CB.Int) THEN CG.IntRelation(rel,  x, y)  (*BYTE*)
+      CI.StrToChar(x);  CI.IntRelation(rel, x, y)
+    ELSIF (xf = CB.Int) & (yf = CB.Int) THEN CI.IntRelation(rel,  x, y)  (*BYTE*)
     ELSE CS.Mark("illegal comparison")
     END;
     x.type := CB.boolType
   ELSIF sym = CS.in THEN
-    CS.Get(sym);  CheckInt(x);  SimpleExpression(y);  CheckSet(y);  CG.In(x, y) ;
+    CS.Get(sym);  CheckInt(x);  SimpleExpression(y);  CheckSet(y);  CI.In(x, y) ;
     x.type := CB.boolType
   ELSIF sym = CS.is THEN
     CS.Get(sym);  qualident(obj);  TypeTest(x, obj.type, FALSE) ;
@@ -442,7 +445,7 @@ END expression0;
 
 PROCEDURE StandProc(pno: INTEGER);
 VAR nap, npar: INTEGER;  (*nof actual/formal parameters*)
-    x, y, z: CG.Item;
+    x, y, z: CI.Item;
 BEGIN Check(CS.lparen, "no (");
   npar := pno MOD 10;  pno := pno DIV 10;  expression(x);  nap := 1;
   IF sym = CS.comma THEN
@@ -455,23 +458,23 @@ BEGIN Check(CS.lparen, "no (");
     IF pno IN {0, 1} THEN (*INC, DEC*)
       CheckInt(x);  CheckReadOnly(x);
       IF y.type # CB.noType THEN CheckInt(y) END;
-      CG.Increment(pno, x, y)
+      CI.Increment(pno, x, y)
     ELSIF pno IN {2, 3} THEN (*INCL, EXCL*)
-      CheckSet(x);  CheckReadOnly(x);  CheckInt(y);  CG.Include(pno-2, x, y)
-    ELSIF pno = 4 THEN CheckBool(x);  CG.Assert(x)
+      CheckSet(x);  CheckReadOnly(x);  CheckInt(y);  CI.Include(pno-2, x, y)
+    ELSIF pno = 4 THEN CheckBool(x);  CI.Assert(x)
     ELSIF pno = 5 THEN(*NEW*) CheckReadOnly(x);
-       IF (x.type.form = CB.Pointer) & (x.type.base.form = CB.Record) THEN CG.New(x)
+       IF (x.type.form = CB.Pointer) & (x.type.base.form = CB.Record) THEN CI.New(x)
        ELSE CS.Mark("not a pointer to record")
        END
-    ELSIF pno = 6 THEN CheckReal(x);  CheckInt(y);  CheckReadOnly(x);  CG.Pack(x, y)
-    ELSIF pno = 7 THEN CheckReal(x);  CheckInt(y);  CheckReadOnly(x);  CG.Unpk(x, y)
+    ELSIF pno = 6 THEN CheckReal(x);  CheckInt(y);  CheckReadOnly(x);  CI.Pack(x, y)
+    ELSIF pno = 7 THEN CheckReal(x);  CheckInt(y);  CheckReadOnly(x);  CI.Unpk(x, y)
     ELSIF pno = 8 THEN
-      IF x.type.form <= CB.Set THEN CG.Led(x) ELSE CS.Mark("bad type") END
-    ELSIF pno = 10 THEN CheckInt(x);  CG.Get(x, y)
-    ELSIF pno = 11 THEN CheckInt(x);  CG.Put(x, y)
-    ELSIF pno = 12 THEN CheckInt(x);  CheckInt(y);  CheckInt(z);  CG.Copy(x, y, z)
-    ELSIF pno = 13 THEN CheckConst(x);  CheckInt(x);  CG.LDPSR(x)
-    ELSIF pno = 14 THEN CheckInt(x);  CG.LDREG(x, y)
+      IF x.type.form <= CB.Set THEN CI.Led(x) ELSE CS.Mark("bad type") END
+    ELSIF pno = 10 THEN CheckInt(x);  CI.Get(x, y)
+    ELSIF pno = 11 THEN CheckInt(x);  CI.Put(x, y)
+    ELSIF pno = 12 THEN CheckInt(x);  CheckInt(y);  CheckInt(z);  CI.Copy(x, y, z)
+    ELSIF pno = 13 THEN CheckConst(x);  CheckInt(x);  CI.LDPSR(x)
+    ELSIF pno = 14 THEN CheckInt(x);  CI.LDREG(x, y)
     END
   ELSE CS.Mark("wrong nof parameters")
   END
@@ -480,18 +483,18 @@ END StandProc;
 PROCEDURE StatSequence;
 VAR obj: CB.Object;
     orgtype: CB.Type;  (*original type of case var*)
-    x, y, z, w: CG.Item;
+    x, y, z, w: CI.Item;
     L0, L1, rx: INTEGER;
 
-  PROCEDURE TypeCase(obj: CB.Object;  VAR x: CG.Item);
+  PROCEDURE TypeCase(obj: CB.Object;  VAR x: CI.Item);
     VAR typobj: CB.Object;
   BEGIN
     IF sym = CS.ident THEN
-      qualident(typobj);  CG.MakeItem(x, obj, level);
+      qualident(typobj);  CI.MakeItem(x, obj, level);
       IF typobj.class # CB.Typ THEN CS.Mark("not a type") END;
       TypeTest(x, typobj.type, FALSE);  obj.type := typobj.type;
-      CG.CFJump(x);  Check(CS.colon, ": expected");  StatSequence
-    ELSE CG.CFJump(x);  CS.Mark("type id expected")
+      CI.CFJump(x);  Check(CS.colon, ": expected");  StatSequence
+    ELSE CI.CFJump(x);  CS.Mark("type id expected")
     END
    END TypeCase;
 
@@ -508,77 +511,77 @@ BEGIN (* StatSequence *)
       REPEAT CS.Get(sym) UNTIL (sym >= CS.ident)
     END;
     IF sym = CS.ident THEN
-      qualident(obj);  CG.MakeItem(x, obj, level);
+      qualident(obj);  CI.MakeItem(x, obj, level);
       IF x.mode = CB.SProc THEN StandProc(obj.val)
       ELSE selector(x);
         IF sym = CS.becomes THEN (*assignment*)
           CS.Get(sym);  CheckReadOnly(x);  expression(y);
           IF CompTypes(x.type, y.type, FALSE) THEN
-            IF (x.type.form <= CB.Pointer) OR (x.type.form = CB.Proc) THEN CG.Store(x, y)
-            ELSE CG.StoreStruct(x, y)
+            IF (x.type.form <= CB.Pointer) OR (x.type.form = CB.Proc) THEN CI.Store(x, y)
+            ELSE CI.StoreStruct(x, y)
             END
           ELSIF (x.type.form = CB.Array) & (y.type.form = CB.Array) & (x.type.base = y.type.base) & (y.type.len < 0) THEN
-            CG.StoreStruct(x, y)
+            CI.StoreStruct(x, y)
           ELSIF (x.type.form = CB.Array) & (x.type.base.form = CB.Char) & (y.type.form = CB.String) THEN
-            CG.CopyString(x, y)
-          ELSIF (x.type.form = CB.Int) & (y.type.form = CB.Int) THEN CG.Store(x, y)  (*BYTE*)
+            CI.CopyString(x, y)
+          ELSIF (x.type.form = CB.Int) & (y.type.form = CB.Int) THEN CI.Store(x, y)  (*BYTE*)
           ELSIF (x.type.form = CB.Char) & (y.type.form = CB.String) & (y.b = 2) THEN
-            CG.StrToChar(y);  CG.Store(x, y)
+            CI.StrToChar(y);  CI.Store(x, y)
           ELSE CS.Mark("illegal assignment")
           END
         ELSIF sym = CS.eql THEN CS.Mark("should be :=");  CS.Get(sym);  expression(y)
         ELSIF sym = CS.lparen THEN (*procedure call*)
           CS.Get(sym);
           IF (x.type.form = CB.Proc) & (x.type.base.form = CB.NoTyp) THEN
-            CG.PrepCall(x, rx);  ParamList(x);  CG.Call(x, rx)
+            CI.PrepCall(x, rx);  ParamList(x);  CI.Call(x, rx)
           ELSE CS.Mark("not a procedure");  ParamList(x)
           END
         ELSIF x.type.form = CB.Proc THEN (*procedure call without parameters*)
           IF x.type.nofpar > 0 THEN CS.Mark("missing parameters") END;
-          IF x.type.base.form = CB.NoTyp THEN CG.PrepCall(x, rx);  CG.Call(x, rx) ELSE CS.Mark("not a procedure") END
+          IF x.type.base.form = CB.NoTyp THEN CI.PrepCall(x, rx);  CI.Call(x, rx) ELSE CS.Mark("not a procedure") END
         ELSIF x.mode = CB.Typ THEN CS.Mark("illegal assignment")
         ELSE CS.Mark("not a procedure")
         END
       END
     ELSIF sym = CS.if THEN
-      CS.Get(sym);  expression(x);  CheckBool(x);  CG.CFJump(x);
+      CS.Get(sym);  expression(x);  CheckBool(x);  CI.CFJump(x);
       Check(CS.then, "no THEN");
       StatSequence;  L0 := 0;
       WHILE sym = CS.elsif DO
-        CS.Get(sym);  CG.FJump(L0);  CG.Fixup(x);  expression(x);  CheckBool(x);
-        CG.CFJump(x);  Check(CS.then, "no THEN");  StatSequence
+        CS.Get(sym);  CI.FJump(L0);  CI.Fixup(x);  expression(x);  CheckBool(x);
+        CI.CFJump(x);  Check(CS.then, "no THEN");  StatSequence
       END;
-      IF sym = CS.else THEN CS.Get(sym);  CG.FJump(L0);  CG.Fixup(x);  StatSequence
-      ELSE CG.Fixup(x)
+      IF sym = CS.else THEN CS.Get(sym);  CI.FJump(L0);  CI.Fixup(x);  StatSequence
+      ELSE CI.Fixup(x)
       END;
-      CG.FixLink(L0);  Check(CS.end, "no END")
+      CI.FixLink(L0);  Check(CS.end, "no END")
     ELSIF sym = CS.while THEN
-      CS.Get(sym);  L0 := CG.Here();  expression(x);  CheckBool(x);  CG.CFJump(x);
-      Check(CS.do, "no DO");  StatSequence;  CG.BJump(L0);
+      CS.Get(sym);  L0 := CI.Here();  expression(x);  CheckBool(x);  CI.CFJump(x);
+      Check(CS.do, "no DO");  StatSequence;  CI.BJump(L0);
       WHILE sym = CS.elsif DO
-        CS.Get(sym);  CG.Fixup(x);  expression(x);  CheckBool(x);  CG.CFJump(x);
-        Check(CS.do, "no DO");  StatSequence;  CG.BJump(L0)
+        CS.Get(sym);  CI.Fixup(x);  expression(x);  CheckBool(x);  CI.CFJump(x);
+        Check(CS.do, "no DO");  StatSequence;  CI.BJump(L0)
       END;
-      CG.Fixup(x);  Check(CS.end, "no END")
+      CI.Fixup(x);  Check(CS.end, "no END")
     ELSIF sym = CS.repeat THEN
-      CS.Get(sym);  L0 := CG.Here();  StatSequence;
+      CS.Get(sym);  L0 := CI.Here();  StatSequence;
       IF sym = CS.until THEN
-        CS.Get(sym);  expression(x);  CheckBool(x);  CG.CBJump(x, L0)
+        CS.Get(sym);  expression(x);  CheckBool(x);  CI.CBJump(x, L0)
       ELSE CS.Mark("missing UNTIL")
       END
     ELSIF sym = CS.for THEN
       CS.Get(sym);
       IF sym = CS.ident THEN
-        qualident(obj);  CG.MakeItem(x, obj, level);  CheckInt(x);  CheckReadOnly(x);
+        qualident(obj);  CI.MakeItem(x, obj, level);  CheckInt(x);  CheckReadOnly(x);
         IF sym = CS.becomes THEN
-          CS.Get(sym);  expression(y);  CheckInt(y);  CG.For0(x, y);  L0 := CG.Here();
+          CS.Get(sym);  expression(y);  CheckInt(y);  CI.For0(x, y);  L0 := CI.Here();
           Check(CS.to, "no TO");  expression(z);  CheckInt(z);  obj.rdo := TRUE;
           IF sym = CS.by THEN CS.Get(sym);  expression(w);  CheckConst(w);  CheckInt(w)
-          ELSE CG.MakeConstItem(w, CB.intType, 1)
+          ELSE CI.MakeConstItem(w, CB.intType, 1)
           END;
-          Check(CS.do, "no DO");  CG.For1(x, y, z, w, L1);
+          Check(CS.do, "no DO");  CI.For1(x, y, z, w, L1);
           StatSequence;  Check(CS.end, "no END");
-          CG.For2(x, y, w);  CG.BJump(L0);  CG.FixLink(L1);  obj.rdo := FALSE
+          CI.For2(x, y, w);  CI.BJump(L0);  CI.FixLink(L1);  obj.rdo := FALSE
         ELSE CS.Mark(":= expected")
         END
       ELSE CS.Mark("identifier expected")
@@ -590,9 +593,9 @@ BEGIN (* StatSequence *)
         IF (orgtype.form = CB.Pointer) OR (orgtype.form = CB.Record) & (obj.class = CB.Par) THEN
           Check(CS.of, "OF expected");  TypeCase(obj, x);  L0 := 0;
           WHILE sym = CS.bar DO
-            CS.Get(sym);  CG.FJump(L0);  CG.Fixup(x);  obj.type := orgtype;  TypeCase(obj, x)
+            CS.Get(sym);  CI.FJump(L0);  CI.Fixup(x);  obj.type := orgtype;  TypeCase(obj, x)
           END;
-          CG.Fixup(x);  CG.FixLink(L0);  obj.type := orgtype
+          CI.Fixup(x);  CI.FixLink(L0);  obj.type := orgtype
         ELSE CS.Mark("numeric case not implemented");
           Check(CS.of, "OF expected");  SkipCase;
           WHILE sym = CS.bar DO SkipCase END
@@ -601,7 +604,7 @@ BEGIN (* StatSequence *)
       END;
       Check(CS.end, "no END")
     END;
-    CG.CheckRegs;
+    CI.CheckRegs;
     IF sym = CS.semicolon THEN CS.Get(sym)
     ELSIF sym < CS.semicolon THEN CS.Mark("missing semicolon?")
     END
@@ -627,7 +630,7 @@ BEGIN
 END IdentList;
 
 PROCEDURE ArrayType(VAR type: CB.Type);
-VAR x: CG.Item;  typ: CB.Type;  len: INTEGER;
+VAR x: CI.Item;  typ: CB.Type;  len: INTEGER;
 BEGIN NEW(typ);  typ.form := CB.NoTyp;
   expression(x);
   IF (x.mode = CB.Const) & (x.type.form = CB.Int) & (x.a >= 0) THEN len := x.a
@@ -695,8 +698,8 @@ BEGIN
   IdentList(cl, first);  FormalType(tp, 0);  rdo := FALSE;
   IF (cl = CB.Var) & (tp.form >= CB.Array) THEN cl := CB.Par;  rdo := TRUE END;
   IF (tp.form = CB.Array) & (tp.len < 0) OR (tp.form = CB.Record) THEN
-    parsize := 2*CG.WordSize  (*open array or record, needs second word for length or type tag*)
-  ELSE parsize := CG.WordSize
+    parsize := 2*CI.WordSize  (*open array or record, needs second word for length or type tag*)
+  ELSE parsize := CI.WordSize
   END;
   obj := first;
   WHILE obj # NIL DO
@@ -739,11 +742,11 @@ BEGIN
   ELSIF sym = CS.array THEN
     CS.Get(sym);  Check(CS.of, "OF ?");
     IF dim >= 1 THEN CS.Mark("multi-dimensional open arrays not implemented") END;
-    NEW(typ);  typ.form := CB.Array;  typ.len := -1;  typ.size := 2*CG.WordSize;
+    NEW(typ);  typ.form := CB.Array;  typ.len := -1;  typ.size := 2*CI.WordSize;
     FormalType(typ.base, dim+1)
   ELSIF sym = CS.procedure THEN
     CS.Get(sym);  CB.OpenScope;
-    NEW(typ);  typ.form := CB.Proc;  typ.size := CG.WordSize;  dmy := 0;  ProcedureType(typ, dmy);
+    NEW(typ);  typ.form := CB.Proc;  typ.size := CI.WordSize;  dmy := 0;  ProcedureType(typ, dmy);
     typ.dsc := CB.topScope.next;  CB.CloseScope
   ELSE CS.Mark("identifier expected");  typ := CB.noType
   END
@@ -771,7 +774,7 @@ BEGIN type := CB.intType;  (*sync*)
     CS.Get(sym);  RecordType(type);  Check(CS.end, "no END")
   ELSIF sym = CS.pointer THEN
     CS.Get(sym);  Check(CS.to, "no TO");
-    NEW(type);  type.form := CB.Pointer;  type.size := CG.WordSize;  type.base := CB.intType;
+    NEW(type);  type.form := CB.Pointer;  type.size := CI.WordSize;  type.base := CB.intType;
     IF sym = CS.ident THEN
       obj := CB.thisObj();
       IF obj # NIL THEN
@@ -790,7 +793,7 @@ BEGIN type := CB.intType;  (*sync*)
     END
   ELSIF sym = CS.procedure THEN
     CS.Get(sym);  CB.OpenScope;
-    NEW(type);  type.form := CB.Proc;  type.size := CG.WordSize;  dmy := 0;
+    NEW(type);  type.form := CB.Proc;  type.size := CI.WordSize;  dmy := 0;
     ProcedureType(type, dmy);  type.dsc := CB.topScope.next;  CB.CloseScope
   ELSE CS.Mark("illegal type")
   END
@@ -798,7 +801,7 @@ END Type0;
 
 PROCEDURE Declarations(VAR varsize: INTEGER);
 VAR obj, first: CB.Object;
-    x: CG.Item;  tp: CB.Type;  ptbase: PtrBase;
+    x: CI.Item;  tp: CB.Type;  ptbase: PtrBase;
     expo: BOOLEAN;  id: CS.Ident;
 BEGIN (*sync*) pbsList := NIL;
   IF (sym < CS.const) & (sym # CS.end) & (sym # CS.return) THEN CS.Mark("declaration?");
@@ -810,7 +813,7 @@ BEGIN (*sync*) pbsList := NIL;
       id := CS.id;  CS.Get(sym);  CheckExport(expo);
       IF sym = CS.eql THEN CS.Get(sym) ELSE CS.Mark("= ?") END;
       expression(x);
-      IF (x.type.form = CB.String) & (x.b = 2) THEN CG.StrToChar(x) END;
+      IF (x.type.form = CB.String) & (x.b = 2) THEN CI.StrToChar(x) END;
       CB.NewObj(obj, id, CB.Const);  obj.expo := expo;
       IF x.mode = CB.Const THEN obj.val := x.a;  obj.lev := x.b;  obj.type := x.type
       ELSE CS.Mark("expression not constant");  obj.type := CB.intType
@@ -833,7 +836,7 @@ BEGIN (*sync*) pbsList := NIL;
           IF obj.name = ptbase.name THEN ptbase.type.base := obj.type END;
           ptbase := ptbase.next
         END;
-        IF level = 0 THEN CG.BuildTD(tp, dc) END    (*type descriptor;  len used as its address*)
+        IF level = 0 THEN CI.BuildTD(tp, dc) END    (*type descriptor;  len used as its address*)
       END;
       Check(CS.semicolon, ";  missing")
     END
@@ -863,17 +866,18 @@ BEGIN (*sync*) pbsList := NIL;
 END Declarations;
 
 PROCEDURE ProcedureDecl;
+CONST int = FALSE;
 VAR proc: CB.Object;
     type: CB.Type;
     procid: CS.Ident;
-    x: CG.Item;
+    x: CI.Item;
     locblksize, parblksize, L: INTEGER;
 BEGIN (* ProcedureDecl *)  CS.Get(sym);
   IF sym = CS.ident THEN
     procid := CS.id;  CS.Get(sym);
     CB.NewObj(proc, CS.id, CB.Const);
     IF int THEN parblksize := 12 ELSE parblksize := 4 END;
-    NEW(type);  type.form := CB.Proc;  type.size := CG.WordSize;
+    NEW(type);  type.form := CB.Proc;  type.size := CI.WordSize;
     proc.type := type;  proc.val := -1;  proc.lev := level;
     CheckExport(proc.expo);
     IF proc.expo THEN proc.exno := exno;  INC(exno) END;
@@ -881,13 +885,13 @@ BEGIN (* ProcedureDecl *)  CS.Get(sym);
     ProcedureType(type, parblksize);  (*formal parameter list*)
     Check(CS.semicolon, "no ;");  locblksize := parblksize;
     Declarations(locblksize);
-    proc.val := CG.Here() * 4;  proc.type.dsc := CB.topScope.next;
+    proc.val := CI.Here() * 4;  proc.type.dsc := CB.topScope.next;
     IF sym = CS.procedure THEN
-      L := 0;  CG.FJump(L);
+      L := 0;  CI.FJump(L);
       REPEAT ProcedureDecl;  Check(CS.semicolon, "no ;") UNTIL sym # CS.procedure;
-      CG.FixOne(L);  proc.val := CG.Here() * 4;  proc.type.dsc := CB.topScope.next
+      CI.FixOne(L);  proc.val := CI.Here() * 4;  proc.type.dsc := CB.topScope.next
     END;
-    CG.Enter(parblksize, locblksize);
+    CI.Enter(parblksize, locblksize);
     IF sym = CS.begin THEN CS.Get(sym);  StatSequence END;
     IF sym = CS.return THEN
       CS.Get(sym);  expression(x);
@@ -895,12 +899,11 @@ BEGIN (* ProcedureDecl *)  CS.Get(sym);
       ELSIF ~CompTypes(type.base, x.type, FALSE) THEN CS.Mark("wrong result type")
       END
     ELSE
-      x.class := -1;
       IF type.base.form # CB.NoTyp THEN
         CS.Mark("function without result");  type.base := CB.noType
       END
     END;
-    CG.Return(type.base.form, x, locblksize, int);
+    CI.Return(type.base.form, x, locblksize(*, int*));
     CB.CloseScope;  DEC(level);  Check(CS.end, "no END");
     IF sym = CS.ident THEN
       IF CS.id # procid THEN CS.Mark("no match") END;
@@ -946,9 +949,9 @@ BEGIN ws("  compiling ");  CS.Get(sym);
       WHILE sym = CS.comma DO CS.Get(sym);  Import END;
       Check(CS.semicolon, ";  missing")
     END;
-    CG.Open(version);  Declarations(dc);  CG.SetDataSize((dc + 3) DIV 4 * 4);
+    CI.Open(version);  Declarations(dc);  CI.SetDataSize((dc + 3) DIV 4 * 4);
     WHILE sym = CS.procedure DO ProcedureDecl;  Check(CS.semicolon, "no ;") END;
-    CG.Header;
+    CI.Header;
     IF sym = CS.begin THEN CS.Get(sym);  StatSequence END;
     Check(CS.end, "no END");
     IF sym = CS.ident THEN
@@ -962,8 +965,8 @@ BEGIN ws("  compiling ");  CS.Get(sym);
       IF newSF THEN ws(" new symbol file") END
     END;
     IF CS.errcnt = 0 THEN
-      CG.Close(modid, key, exno);
-      wir(CG.pc, 6);  wir(dc, 6);  wh(key)
+      CI.Close(modid, key, exno);
+      wir(CI.pc, 6);  wir(dc, 6);  wh(key)
     ELSE wn;  ws("compilation FAILED")
     END;
     wn;  wa;
@@ -974,9 +977,9 @@ END Module;
 
 PROCEDURE Option(VAR S: Texts.Scanner);
 BEGIN newSF := FALSE;
-  IF CS.nextCh = "/" THEN
+  IF S.nextCh = "/" THEN
     Texts.Scan(S);  Texts.Scan(S);
-    IF (CS.class = Texts.Name) & (CS.s[0] = "s") THEN newSF := TRUE END
+    IF (S.class = Texts.Name) & (S.s[0] = "s") THEN newSF := TRUE END
   END
 END Option;
 
