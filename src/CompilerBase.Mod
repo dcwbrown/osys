@@ -19,9 +19,10 @@ CONST
     Mod*   = 8;
 
   (* form values*)
-    Byte* = 1;  Bool* = 2;  Char* = 3;  Int* = 4;  Real* = 5;  Set* = 6;
-    Pointer* = 7;  NilTyp* = 8;  NoTyp* = 9;  Proc* = 10;
-    String* = 11;  Array* = 12;  Record* = 13;
+    Byte*    = 1;   Bool*   = 2;   Char*   = 3;
+    Int*     = 4;   Real*   = 5;   Set*    = 6;
+    Pointer* = 7;   NilTyp* = 8;   NoTyp*  = 9;  Proc* = 10;
+    String*  = 11;  Array*  = 12;  Record* = 13;
 
 TYPE
   Object* = POINTER TO ObjDesc;
@@ -57,12 +58,15 @@ TYPE
   -------------------------------------
   Var      address
   Par      address
-  Const    value
+  Const    value*
   Fld      offset
   Typ      type descriptor (TD) address
   SProc    inline code number
   SFunc    inline code number
   Mod      key
+
+* for Const where type.form = String, val is an offset into the string table and
+  the string length including trailing 0 byte is in lev.
 
 Type forms and the meaning of "dsc" and "base":
   form     dsc      base
