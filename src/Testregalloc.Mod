@@ -6,7 +6,13 @@ VAR
 
 PROCEDURE f1(    i:    INTEGER): INTEGER; RETURN i     END f1;
 PROCEDURE f2(VAR i, j: INTEGER): INTEGER; RETURN i + j END f2;
-PROCEDURE f3(    i, j: INTEGER): INTEGER; RETURN i + j END f3;
+PROCEDURE f3(    i, j: INTEGER): INTEGER;
+  PROCEDURE f4;
+  VAR i: INTEGER;
+  BEGIN i := f3(0,1) END f4;
+BEGIN
+  RETURN i + j
+END f3;
 
 BEGIN
   I := J;
@@ -17,6 +23,7 @@ BEGIN
   I := f1(J) + f1(K);
   I := f2(J, K);
   I := f2(J, f2(K, L));
+  I := f3(1, 2);
 END Testregalloc.
 
 
