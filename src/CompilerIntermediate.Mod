@@ -8,8 +8,11 @@ CONST
   MaxString = 2400;
   MaxInst   = 1000;
   WordSize* = 8;
+
+  (*additional object classes*)
   Op        = 10;  (*result of prior operation*)
   Type      = 11;  (*used by varparam*)
+  Cond      = 12;  (*condition to be tested*)
 
   (*instruction opcodes*)
   opstore  = 1;
@@ -18,23 +21,25 @@ CONST
   opdiv    = 4;
   opmod    = 5;
   opret    = 7;
-  opcfjump = 8;
-  opfjump  = 9;
-  opbjump  = 10;
-  opcbjump = 11;
-  opprep   = 12;
-  opvalpar = 13;
-  opvarpar = 14;
-  opoarpar = 15;
-  opstrpar = 16;
-  opcall   = 17;
+  opprep   = 8;
+  opvalpar = 9;
+  opvarpar = 10;
+  opoarpar = 11;
+  opstrpar = 12;
+  opcall   = 13;
+  opcmp    = 14;
+  opjmp    = 15;
+
+  uncond = 7;
 
 
 TYPE
-  Item* = RECORD
+  ItemPtr = POINTER TO Item;
+  Item*   = RECORD
     mode*:   BYTE;
     rdo*:    BOOLEAN;  (*read only*)
     global:  BOOLEAN;  (*module global variable*)
+    cond:    BYTE;     (*CS symbol-eql, or 7 for uncondtional*)
     type*:   CB.Type;
     val:     INTEGER;  (*from object.val*)
     len:     INTEGER;  (*string length, when mode const and type.form string*)
@@ -42,7 +47,7 @@ TYPE
 
   Instruction = RECORD
     op:   INTEGER;
-    x, y: POINTER TO Item
+    x, y: ItemPtr
   END;
 
 VAR
@@ -161,6 +166,18 @@ BEGIN
   END
 END wsym;
 
+PROCEDURE wcond(cond: INTEGER);
+BEGIN ASSERT(cond <= uncond);
+  IF    cond = uncond          THEN ws("unc")
+  ELSIF cond = CS.eql - CS.eql THEN ws("eql")
+  ELSIF cond = CS.neq - CS.eql THEN ws("neq")
+  ELSIF cond = CS.lss - CS.eql THEN ws("lss")
+  ELSIF cond = CS.leq - CS.eql THEN ws("leq")
+  ELSIF cond = CS.gtr - CS.eql THEN ws("gtr")
+  ELSIF cond = CS.geq - CS.eql THEN ws("geq")
+  ELSE ASSERT(FALSE)
+  END
+END wcond;
 
 PROCEDURE wmode(mode: INTEGER);
 BEGIN
@@ -207,10 +224,6 @@ BEGIN
       wi(x.val)
     ELSIF x.type.form = CB.String THEN
       wc(22X);  FOR i := 0 TO x.len-1 DO wc(strings[x.val+i]) END;  wc(22X)
-    (*
-    ELSIF x.type.form = CB.Proc THEN
-      ws("proc ");  ws(x.type.typobj.name)
-    *)
     ELSE
       ws("const "); wform(x.type.form); ws("?")
     END
@@ -223,6 +236,11 @@ BEGIN
     wform(x.type.form);  ws("[[s");  wi(x.val);  ws("]]")
   ELSIF x.mode = Op THEN
     wc("<");  wi(x.val);  wc(">")
+  ELSIF x.mode = Cond THEN
+    wc("<");  wcond(x.cond);
+    IF x.val # 0 THEN wc(" "); wi(x.val) END;
+    IF x.len # 0 THEN ws(" (f: ");  wi(x.len);  wc(")") END;
+    wc(">")
   ELSE
     ws("(");         wmode(x.mode);
     IF x.type # NIL THEN ws(": ");  wtype(x.type) END;
@@ -246,25 +264,34 @@ BEGIN
   ELSIF op = opdiv    THEN ws("div    ")
   ELSIF op = opmod    THEN ws("mod    ")
   ELSIF op = opret    THEN ws("ret    ")
-  ELSIF op = opcfjump THEN ws("cfjump ")
-  ELSIF op = opfjump  THEN ws("fjump  ")
-  ELSIF op = opbjump  THEN ws("bjump  ")
-  ELSIF op = opcbjump THEN ws("cbjump ")
   ELSIF op = opprep   THEN ws("prep   ")
   ELSIF op = opvalpar THEN ws("valpar ")
   ELSIF op = opvarpar THEN ws("varpar ")
   ELSIF op = opoarpar THEN ws("oarpar ")
   ELSIF op = opstrpar THEN ws("strpar ")
   ELSIF op = opcall   THEN ws("call   ")
+  ELSIF op = opcmp    THEN ws("cmp    ")
+  ELSIF op = opjmp    THEN ws("jmp    ");
   ELSE wc("?"); wi(op); wsn("?");  ASSERT(FALSE)
   END
 END wop;
 
 PROCEDURE winst(inst: Instruction);
 BEGIN
-  wop(inst.op);
-  IF inst.x # NIL THEN witem(inst.x^) END;
-  IF inst.y # NIL THEN ws(", ");  witem(inst.y^) END
+  IF inst.op = opjmp THEN
+    ASSERT(inst.x # NIL);
+    ASSERT(inst.x.mode = CB.Const);
+    IF inst.x.cond = uncond THEN
+      ws("jump   ")
+    ELSE
+      wc("j"); wcond(inst.x.cond); ws("   ")
+    END;
+    wi(inst.x.val)
+  ELSE
+    wop(inst.op);
+    IF inst.x # NIL THEN witem(inst.x^) END;
+    IF inst.y # NIL THEN ws(", ");  witem(inst.y^) END
+  END
 END winst;
 
 PROCEDURE writeinstructions();
@@ -315,6 +342,7 @@ PROCEDURE MakeItem*(VAR x: Item;  y: CB.Object;  curlev: INTEGER);
 BEGIN
   x.mode := y.class;  x.type := y.type;  x.val    := y.val;
   x.rdo  := y.rdo;    x.len  := 0;       x.global := FALSE;
+  x.cond := 0;
   IF y.class = CB.Const THEN
     IF y.type.form = CB.String THEN x.len := y.lev END
   ELSIF y.lev = 0 THEN
@@ -328,6 +356,7 @@ PROCEDURE MakeConstItem*(VAR x: Item;  typ: CB.Type;  val: INTEGER);
 BEGIN
   x.mode := CB.Const;  x.type := typ;  x.val    := val;
   x.rdo  := FALSE;     x.len  := 0;    x.global := FALSE;
+  x.cond := 0;
 END MakeConstItem;
 
 PROCEDURE MakeRealItem*(VAR x: Item;  val: REAL);
@@ -340,6 +369,7 @@ VAR i: INTEGER;
 BEGIN
   x.mode := CB.Const;  x.type := CB.strType;  x.val    := sc;
   x.len  := len;       x.rdo  := FALSE;       x.global := FALSE;
+  x.cond := 0;
   IF sc + len > MaxString THEN
     CS.Mark("too many strings")
   ELSE
@@ -352,43 +382,54 @@ PROCEDURE MakeTypeItem(VAR x: Item;  t: CB.Type);
 BEGIN
   x.mode := Type;  x.type := t;      x.val    := 0;
   x.len  := 0;     x.rdo  := FALSE;  x.global := FALSE;
+  x.cond := 0;
 END MakeTypeItem;
 
-PROCEDURE Niladic(op: INTEGER);
+PROCEDURE MakeCondItem(VAR x: Item;  cond: INTEGER);
 BEGIN
-  IF ic < MaxInst THEN
-    instructions[ic].op := op;
-    wc(" ");  wil(ic, 10);  winst(instructions[ic]);  wn;
-    INC(ic)
-  ELSE
-    CS.Mark("too many instructions")
-  END
-END Niladic;
+  x.mode := Cond;   x.type := NIL;  x.val    := 0;
+  x.rdo  := FALSE;  x.len  := 0;    x.global := FALSE;
+  x.cond := cond
+END MakeCondItem;
 
-PROCEDURE Monadic(op: INTEGER;  x: Item);
+PROCEDURE AddInstruction(op: INTEGER; x, y: ItemPtr);
 BEGIN
   IF ic < MaxInst THEN
     instructions[ic].op := op;
-    NEW(instructions[ic].x);  instructions[ic].x^ := x;
+    instructions[ic].x  := x;
+    instructions[ic].y  := y;
     wc(" ");  wil(ic, 10);  winst(instructions[ic]);  wn;
     INC(ic)
   ELSE
     CS.Mark("too many instructions")
   END
-END Monadic;
+END AddInstruction;
 
-PROCEDURE Dyadic(op: INTEGER;  x, y: Item);
+PROCEDURE AddNiladic(op: INTEGER);
+BEGIN AddInstruction(op, NIL, NIL) END AddNiladic;
+
+PROCEDURE AddMonadic(op: INTEGER;  x: Item);
+VAR xp: ItemPtr;
 BEGIN
-  IF ic < MaxInst THEN
-    instructions[ic].op := op;
-    NEW(instructions[ic].x);  instructions[ic].x^ := x;
-    NEW(instructions[ic].y);  instructions[ic].y^ := y;
-    wc(" ");  wil(ic, 10);  winst(instructions[ic]);  wn;
-    INC(ic)
-  ELSE
-    CS.Mark("too many instructions")
-  END
-END Dyadic;
+  NEW(xp);  xp^ := x;
+  AddInstruction(op, xp, NIL)
+END AddMonadic;
+
+PROCEDURE AddDyadic(op: INTEGER;  x, y: Item);
+VAR xp, yp: ItemPtr;
+BEGIN
+  NEW(xp);  xp^ := x;
+  NEW(yp);  yp^ := y;
+  AddInstruction(op, xp, yp)
+END AddDyadic;
+
+PROCEDURE AddJump(cond, target: INTEGER);
+VAR xp: ItemPtr;
+BEGIN
+  NEW(xp);  MakeConstItem(xp^, CB.intType, target);
+  xp.cond := cond;
+  AddInstruction(opjmp, xp, NIL)
+END AddJump;
 
 PROCEDURE BuildTD* (T: CB.Type;  VAR dc: INTEGER);                         END BuildTD;
 PROCEDURE TypeTest*(VAR x: Item;  T: CB.Type;  varpar, isguard: BOOLEAN);  END TypeTest;
@@ -415,36 +456,48 @@ PROCEDURE New*      (VAR x: Item);  END New;
 PROCEDURE Led*      (VAR x: Item);  END Led;
 PROCEDURE LDPSR*    (VAR x: Item);  END LDPSR;
 
+PROCEDURE FixChain*(at, target: INTEGER);
+VAR prev: INTEGER;
+BEGIN
+  ws("FixChain at ");  wi(at);  ws(", target ");  wi(target);  wn;
+  WHILE at # 0 DO
+    ws("Fix instruction at ");  wi(at);  ws(", target ");  wi(target);  wn;
+    ASSERT(instructions[at].op = opjmp);
+    ASSERT(instructions[at].x # NIL);
+    ASSERT(instructions[at].x.mode = CB.Const);
+    prev := instructions[at].x.val;
+    instructions[at].x.val := target;
+    at := prev
+  END
+END FixChain;
+
+PROCEDURE Fixup*(VAR x: Item);  BEGIN FixChain(x.val, ic) END Fixup;
+
+PROCEDURE negated(cond: INTEGER): INTEGER;
+BEGIN ASSERT((cond >= 0) & (cond <= CS.geq - CS.eql));
+RETURN (cond + 3) MOD 6 END negated;
+
 PROCEDURE CFJump*(VAR x: Item);
-BEGIN Monadic(opcfjump, x) END CFJump;
+BEGIN
+  ASSERT(x.mode = Cond);
+  AddJump(negated(x.cond), x.val);
+  FixChain(x.len, ic);
+  x.val := ic-1
+END CFJump;
 
 PROCEDURE FJump*(VAR L: INTEGER);
-BEGIN Niladic(opfjump);  L := ic-1 END FJump;
+BEGIN AddJump(uncond, L);  L := ic-1 END FJump;
 
 PROCEDURE BJump*(VAR L: INTEGER);
-BEGIN Niladic(opbjump);  L := ic-1 END BJump;
+BEGIN AddJump(uncond, L) END BJump;
 
 PROCEDURE CBJump*(VAR x: Item;  L: INTEGER);
-BEGIN Monadic(opcbjump, x);  L := ic-1 END CBJump;
-
-PROCEDURE Fixup*(VAR x: Item);
 BEGIN
-  ws(" fixup  ");  witem(x);  wn;
-END Fixup;
-
-PROCEDURE FixLink*(L: INTEGER);
-BEGIN
-  ws(" fixlnk <");  wi(L);  wsn(">");
-END FixLink;
-
-PROCEDURE FixOne*(at: INTEGER);  (*set jump target at <at> to current ic*)
-BEGIN
-  ws(" fixone <");  wi(at);  ws(">: fixing '"); winst(instructions[at]);  wsn("'");
-  ASSERT(instructions[3].op IN {opcfjump, opfjump, opbjump, opcbjump});
-  ASSERT(instructions[3].x = NIL);
-  NEW(instructions[3].x);
-  MakeConstItem(instructions[3].x^, CB.intType, ic)
-END FixOne;
+  ASSERT(x.mode = Cond);
+  AddJump(negated(x.cond), L);
+  FixChain(x.len, ic);
+  FixChain(x.val, L)
+END CBJump;
 
 
 PROCEDURE For0*(VAR x, y: Item);                         END For0;
@@ -465,7 +518,7 @@ PROCEDURE Put*  (VAR x, y: Item);  END Put;
 PROCEDURE LDREG*(VAR x, y: Item);  END LDREG;
 
 PROCEDURE Store*(VAR x, y: Item);
-BEGIN Dyadic(opstore, x, y) END Store;
+BEGIN AddDyadic(opstore, x, y) END Store;
 
 PROCEDURE StoreStruct*(VAR x, y: Item);
 END StoreStruct;
@@ -481,7 +534,7 @@ BEGIN
   IF (x.mode = CB.Const) & (y.mode = CB.Const) THEN
     IF op = CS.plus THEN INC(x.val, y.val) ELSE DEC(x.val, y.val) END
   ELSE
-    IF op = CS.plus THEN Dyadic(opadd, x, y) ELSE Dyadic(opsub, x, y) END;
+    IF op = CS.plus THEN AddDyadic(opadd, x, y) ELSE AddDyadic(opsub, x, y) END;
     x.mode := Op;  x.val := ic-1
   END
 END AddOp;
@@ -495,7 +548,7 @@ BEGIN
     IF (x.mode = CB.Const) & (y.mode = CB.Const) THEN
       IF op = CS.div THEN x.val := x.val DIV y.val ELSE x.val := x.val MOD y.val END
     ELSE
-      IF op = CS.div THEN Dyadic(opdiv, x, y) ELSE Dyadic(opmod, x, y) END;
+      IF op = CS.div THEN AddDyadic(opdiv, x, y) ELSE AddDyadic(opmod, x, y) END;
       x.mode := Op;  x.val := ic-1
     END
   END
@@ -508,13 +561,70 @@ PROCEDURE Shift*    (fct: INTEGER;       VAR x, y: Item);  END Shift;
 PROCEDURE Increment*(upordown: INTEGER;  VAR x, y: Item);  END Increment;
 PROCEDURE Include*  (inorex: INTEGER;    VAR x, y: Item);  END Include;  (*x := x | or &~ 1<<y*)
 
-PROCEDURE And1*(VAR x: Item);     END And1;  (*x := x &*)
-PROCEDURE And2*(VAR x, y: Item);  END And2;
-PROCEDURE Or1* (VAR x: Item);     END Or1;   (*x := x OR*)
-PROCEDURE Or2* (VAR x, y: Item);  END Or2;
+PROCEDURE chainprev(i: INTEGER): INTEGER;
+BEGIN
+  ASSERT(i > 0);
+  ASSERT(instructions[i].op = opjmp);
+  ASSERT(instructions[i].x # NIL);
+  ASSERT(instructions[i].x.mode = Cond);
+RETURN instructions[i].x.val END chainprev;
+
+PROCEDURE MergeChains(i, j: INTEGER): INTEGER;
+VAR k, l: INTEGER;
+BEGIN
+  IF i # 0 THEN
+    (*ws("Merge chains ");  wi(i);  ws(", ");  wi(j);  wn;*)
+    l := i;
+    REPEAT k := l; l := chainprev(k) UNTIL l = 0;
+    instructions[k].x.val := j;
+    j := i
+  END;
+RETURN j END MergeChains;
+
+PROCEDURE And1*(VAR x: Item);  (*x := x &*)
+BEGIN
+  ASSERT(x.mode = Cond);
+  AddJump(negated(x.cond), x.val);
+  x.val := ic-1;
+  FixChain(x.len, ic);
+  x.val := 0
+END And1;
+
+PROCEDURE And2*(VAR x, y: Item);
+BEGIN
+  ASSERT(x.mode = Cond);
+  ASSERT(y.mode = Cond);
+  x.val  := MergeChains(y.val, x.val);
+  x.len  := y.len;
+  x.cond := y.cond
+END And2;
+
+PROCEDURE Or1* (VAR x: Item);  (*x := x OR*)
+BEGIN
+  ASSERT(x.mode = Cond);
+  AddJump(x.cond, x.len);
+  x.len := ic-1;
+  FixChain(x.val, ic);
+  x.val := 0
+END Or1;
+
+PROCEDURE Or2* (VAR x, y: Item);
+BEGIN
+  ASSERT(x.mode = Cond);
+  ASSERT(y.mode = Cond);
+  x.val  := y.val;
+  x.len  := MergeChains(y.len, x.len);
+  x.cond := y.cond
+END Or2;
 
 
-PROCEDURE IntRelation*   (op: INTEGER;  VAR x, y: Item);  END IntRelation;    (*x := x < y*)
+PROCEDURE IntRelation*(op: INTEGER;  VAR x, y: Item);    (*x := x < y*)
+BEGIN
+  ASSERT((op >= CS.eql) & (op <= CS.geq));
+  AddDyadic(opcmp, x, y);
+  MakeCondItem(x, op-CS.eql);
+END IntRelation;
+
 PROCEDURE RealRelation*  (op: INTEGER;  VAR x, y: Item);  END RealRelation;   (*x := x < y*)
 PROCEDURE StringRelation*(op: INTEGER;  VAR x, y: Item);  END StringRelation; (*x := x < y*)
 
@@ -523,26 +633,26 @@ PROCEDURE CheckRegs*;  END CheckRegs;
 (* ---------------------------- Procedure calls ----------------------------- *)
 
 PROCEDURE PrepCall*(VAR x: Item;  VAR r: INTEGER);
-BEGIN Monadic(opprep, x) END PrepCall;
+BEGIN AddMonadic(opprep, x) END PrepCall;
 
 PROCEDURE ValueParam*(VAR x: Item);
-BEGIN Monadic(opvalpar, x)END ValueParam;
+BEGIN AddMonadic(opvalpar, x)END ValueParam;
 
 PROCEDURE VarParam*(VAR x: Item;  ftype: CB.Type);
 VAR ty: Item;
 BEGIN
   ty.mode := Type;  ty.type := ftype;
-  Dyadic(opvarpar, x, ty)
+  AddDyadic(opvarpar, x, ty)
 END VarParam;
 
 PROCEDURE OpenArrayParam*(VAR x: Item);
-BEGIN Monadic(opoarpar, x) END OpenArrayParam;
+BEGIN AddMonadic(opoarpar, x) END OpenArrayParam;
 
 PROCEDURE StringParam*(VAR x: Item);
-BEGIN Monadic(opstrpar, x) END StringParam;
+BEGIN AddMonadic(opstrpar, x) END StringParam;
 
 PROCEDURE Call*(VAR x: Item;  r: INTEGER);
-BEGIN Monadic(opcall, x) END Call;
+BEGIN AddMonadic(opcall, x) END Call;
 
 
 (* ------------------------- Procedure declaration -------------------------- *)
@@ -557,7 +667,7 @@ END Enter;
 
 PROCEDURE Return*(procid: CS.Ident;  form: INTEGER;  VAR x: Item;  size: INTEGER);
 BEGIN
-  Monadic(opret, x);
+  AddMonadic(opret, x);
   ws(" End ");        ws(procid);
   ws(", ic ");        wi(ic);
   ws(", loc size ");  wi(size);  wsn(".");

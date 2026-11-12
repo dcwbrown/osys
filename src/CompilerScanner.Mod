@@ -19,8 +19,12 @@ CONST
 
   (* lexical symbols *)
   null    = 0;  times*     = 1;  rdiv*      = 2;  div*    = 3;  mod*    = 4;
-  and*    = 5;  plus*      = 6;  minus*     = 7;  or*     = 8;  eql*    = 9;
-  neq*    = 10; lss*       = 11; leq*       = 12; gtr*    = 13; geq*    = 14;
+  and*    = 5;  plus*      = 6;  minus*     = 7;  or*     = 8;
+  (*conditions are arranged so that ((condition - eql) + 3) MOD 6 + condition
+    is negated condition*)
+  eql*    = 9;  leq*       = 10; lss*       = 11;
+  neq*    = 12; gtr*       = 13; geq*       = 14;
+
   in*     = 15; is*        = 16; arrow*     = 17; period* = 18; bslash* = 19;
   char*   = 20; int*       = 21; real*      = 22; false*  = 23; true*   = 24;
   nil*    = 25; string*    = 26; not*       = 27; lparen* = 28; lbrak*  = 29;

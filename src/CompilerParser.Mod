@@ -594,7 +594,7 @@ BEGIN (* StatSequence *)
       ELSE
        CI.Fixup(x)
       END;
-      CI.FixLink(L0);  Check(CS.end, "no END")
+      CI.FixChain(L0, CI.ic);  Check(CS.end, "no END")
     ELSIF sym = CS.while THEN
       CS.Get(sym);  L0 := CI.ic;  expression(x);  CheckBool(x);  CI.CFJump(x);
       Check(CS.do, "no DO");  StatSequence;  CI.BJump(L0);
@@ -626,7 +626,7 @@ BEGIN (* StatSequence *)
           CI.For1(x, y, z, w, L1);
           StatSequence;  Check(CS.end, "no END");
           CI.For2(x, y, w);
-          CI.BJump(L0);  CI.FixLink(L1);  obj.rdo := FALSE
+          CI.BJump(L0);  CI.FixChain(L1, CI.ic);  obj.rdo := FALSE
         ELSE CS.Mark(":= expected")
         END
       ELSE CS.Mark("identifier expected")
@@ -640,7 +640,7 @@ BEGIN (* StatSequence *)
           WHILE sym = CS.bar DO
             CS.Get(sym);  CI.FJump(L0);  CI.Fixup(x);  obj.type := orgtype;  TypeCase(obj, x)
           END;
-          CI.Fixup(x);  CI.FixLink(L0);  obj.type := orgtype
+          CI.Fixup(x);  CI.FixChain(L0, CI.ic);  obj.type := orgtype
         ELSE CS.Mark("numeric case not implemented");
           Check(CS.of, "OF expected");  SkipCase;
           WHILE sym = CS.bar DO SkipCase END
@@ -935,7 +935,7 @@ BEGIN (* ProcedureDecl *)
     IF sym = CS.procedure THEN
       L := 0;  CI.FJump(L);
       REPEAT ProcedureDecl;  Check(CS.semicolon, "no ;") UNTIL sym # CS.procedure;
-      CI.FixOne(L);  proc.val := CI.ic;  proc.type.dsc := CB.topScope.next
+      CI.FixChain(L, CI.ic);  proc.val := CI.ic;  proc.type.dsc := CB.topScope.next
     END;
     CI.Enter(procid, parblksize, locblksize);
     IF sym = CS.begin THEN CS.Get(sym);  StatSequence END;
